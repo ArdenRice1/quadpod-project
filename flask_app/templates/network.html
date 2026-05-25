@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Network{% endblock %}
+
+{% block content %}
+<h1 class="page-title">Network & System</h1>
+
+<section class="section">
+  <h2>Field Connection</h2>
+  <div class="item">
+    <strong>Default Pi hotspot mode</strong>
+    <div class="muted small">Phone URL: http://quadpod.local:5000</div>
+    <div class="muted small">Fallback URL: http://{{ hotspot_ip }}:5000</div>
+  </div>
+</section>
+
+<section class="section">
+  <h2>Hardware Status</h2>
+  <div class="grid">
+    <div class="item"><strong>Mock hardware:</strong> {{ status.mock_hardware }}</div>
+    <div class="item"><strong>Load cell:</strong> {{ "OK" if status.load_cell.ok else status.load_cell.last_error }}</div>
+    <div class="item"><strong>Actuator:</strong> {{ "OK" if status.actuator.ok else status.actuator.last_error }}</div>
+    <div class="item"><strong>Last command:</strong> {{ status.actuator.last_command }} / {{ status.actuator.last_pulse_us }} us</div>
+  </div>
+</section>
+
+<section class="section">
+  <h2>Operator Notes</h2>
+  <div class="status warn">Email is queued locally when the Pi hotspot has no internet. Use Ethernet, USB Wi-Fi, phone tethering, or router mode to send later.</div>
+  <div class="status">Production target is Raspberry Pi OS Lite with systemd starting this app at boot.</div>
+</section>
+{% endblock %}

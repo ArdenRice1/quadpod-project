@@ -1,0 +1,7 @@
+Flask==3.1.1
+Werkzeug==3.1.3
+gunicorn==23.0.0
+Adafruit-PCA9685
+RPi.GPIO
+hx711
+pytest==8.3.5

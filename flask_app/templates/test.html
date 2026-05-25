@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}Live Pull{% endblock %}
+
+{% block content %}
+<h1 class="page-title">Live Pull - Test {{ test.form.test_number or test.id }}</h1>
+
+<div id="systemStatus" class="status warn">Ready. Stand clear before starting pull.</div>
+
+<section class="metric">
+  <div class="label">Live Tension</div>
+  <div class="value"><span id="liveForce">0.00</span></div>
+  <div class="unit">lbs</div>
+</section>
+
+<section class="section">
+  <h2>Run Data</h2>
+  <div class="grid">
+    <div class="item"><strong>Peak:</strong> <span id="peakForce">0.00</span> lbs</div>
+    <div class="item"><strong>Elapsed:</strong> <span id="elapsed">0.0</span> s</div>
+    <div class="item"><strong>Samples:</strong> <span id="samples">0</span></div>
+    <div class="item"><strong>Actuator:</strong> <span id="actuator">neutral</span></div>
+  </div>
+</section>
+
+<div class="btnrow">
+  <button class="success" id="startBtn" type="button">Start 5 in/min Pull</button>
+  <button class="danger" id="stopBtn" type="button">Emergency Stop</button>
+</div>
+
+<a class="button secondary full-width" href="{{ url_for('pretest') }}">Back to Setup</a>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const liveForce = document.getElementById("liveForce");
+  const peakForce = document.getElementById("peakForce");
+  const elapsed = document.getElementById("elapsed");
+  const samples = document.getElementById("samples");
+  const actuator = document.getElementById("actuator");
+  const systemStatus = document.getElementById("systemStatus");
+  const startBtn = document.getElementById("startBtn");
+  const stopBtn = document.getElementById("stopBtn");
+
+  startBtn.addEventListener("click", () => {
+    startBtn.disabled = true;
+    systemStatus.className = "status warn";
+    systemStatus.textContent = "Actuator running. Stand clear.";
+    fetch("{{ url_for('api_start_pull') }}", { method: "POST" })
+      .then((res) => res.json())
+      .then((data) => {
+        if (!data.ok) {
+          startBtn.disabled = false;
+          systemStatus.className = "status bad";
+          systemStatus.textContent = data.message;
+        }
+      });
+  });
+
+  stopBtn.addEventListener("click", () => {
+    fetch("{{ url_for('api_stop') }}", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason: "operator emergency stop" })
+    });
+  });
+
+  setInterval(() => {
+    fetch("{{ url_for('api_status') }}")
+      .then((res) => res.json())
+      .then((data) => {
+        liveForce.textContent = data.current_load.toFixed(2);
+        peakForce.textContent = data.peak_load.toFixed(2);
+        elapsed.textContent = data.elapsed_s.toFixed(1);
+        samples.textContent = data.sample_count;
+        actuator.textContent = data.actuator_command;
+        if (data.last_error) {
+          systemStatus.className = "status bad";
+          systemStatus.textContent = data.last_error;
+        } else if (data.test_running) {
+          systemStatus.className = "status warn";
+          systemStatus.textContent = "Pull running. Stand clear.";
+        } else if (data.test_complete && data.active_test_id === {{ test.id }}) {
+          window.location.href = "{{ url_for('result') }}";
+        }
+      });
+  }, 200);
+</script>
+{% endblock %}

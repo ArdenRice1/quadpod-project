@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}Pre-Test Setup{% endblock %}
+
+{% block content %}
+<h1 class="page-title">Pre-Test Setup</h1>
+
+<section class="section">
+  <h2>Rig Positioning</h2>
+  <div id="preloadStatus" class="status warn">Reading load cell...</div>
+  <div class="metric">
+    <div class="label">Current Load</div>
+    <div class="value"><span id="liveLoad">0.00</span></div>
+    <div class="unit">lbs</div>
+  </div>
+  <div class="btnrow">
+    <button class="secondary" type="button" id="jogUp">Jog Up</button>
+    <button class="secondary" type="button" id="jogDown">Jog Down</button>
+    <button class="warn" type="button" id="tareBtn">Tare</button>
+  </div>
+</section>
+
+<form method="POST" enctype="multipart/form-data">
+  <section class="section">
+    <h2>Test Point</h2>
+    <div class="grid">
+      <div class="field"><label>Test #</label><input name="test_number" value="{{ defaults.test_number }}" required></div>
+      <div class="field"><label>Test Area</label><input name="test_area" placeholder="Roof area / slope / grid"></div>
+      <div class="field"><label>Roof Area</label><input name="roof_area" placeholder="e.g. 50-100 squares"></div>
+      <div class="field"><label>Angle (85-95 degrees)</label><input name="angle_degrees" type="number" min="85" max="95" step="0.1" required></div>
+      <div class="field"><label>Air Temp (F)</label><input name="air_temperature_f" type="number" step="0.1" inputmode="decimal"></div>
+      <div class="field"><label>Roof Temp (F)</label><input name="roof_temperature_f" type="number" step="0.1" inputmode="decimal"></div>
+      <div class="field full"><label>Wind Speed & Direction</label><input name="wind_speed_direction" placeholder="e.g. 8 mph N"></div>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>Shingle & Photo Record</h2>
+    <div class="grid">
+      <div class="field"><label>Manufacturer</label><input name="shingle_manufacturer"></div>
+      <div class="field"><label>Product / Rating</label><input name="shingle_product"></div>
+      <div class="field full"><label>Shingle Observations</label><textarea name="shingle_observations"></textarea></div>
+      <div class="field full"><label>Evidence of Wind Lift</label><textarea name="wind_lift_evidence"></textarea></div>
+      <div class="field full"><label>Nail Size / Placement Notes</label><textarea name="nail_observations"></textarea></div>
+      <div class="field full"><label>Photo</label><input name="photo" type="file" accept="image/*" capture="environment"></div>
+      <div class="field full"><label>Photo Reference</label><input name="photo_reference" placeholder="Optional filename, camera roll ref, or board ID"></div>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>Deviation Record</h2>
+    <div class="checkline"><input id="dev" name="deviation_from_standard" type="checkbox"><label for="dev">Deviation from standard method occurred.</label></div>
+    <div class="grid">
+      <div class="field full"><label>Description of Deviation</label><textarea name="deviation_description"></textarea></div>
+      <div class="field full"><label>Effect on Uncertainty</label><textarea name="effect_on_uncertainty"></textarea></div>
+      <div class="field"><label>Approved By</label><input name="approved_by"></div>
+      <div class="field"><label>Approved Date</label><input name="approved_date" type="date"></div>
+    </div>
+  </section>
+
+  <button id="continueBtn" class="full-width" type="submit">Save Setup & Continue</button>
+</form>
+
+{% if tests %}
+<section class="section">
+  <h2>Completed / Started Tests</h2>
+  <div class="list">
+    {% for test in tests %}
+      <div class="item">
+        <strong>Test {{ test.form.test_number or test.id }}</strong>
+        <span class="muted">- {{ test.status }} - peak {{ "%.2f"|format(test.peak_load_lbs) }} lbs</span>
+        {% if test.sample_count %}<a href="{{ url_for('download_trace', test_id=test.id) }}">Trace CSV</a>{% endif %}
+      </div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const liveLoad = document.getElementById("liveLoad");
+  const preloadStatus = document.getElementById("preloadStatus");
+
+  function jog(action) {
+    fetch("{{ url_for('api_jog') }}", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action })
+    });
+  }
+
+  for (const [id, action] of [["jogUp", "up"], ["jogDown", "down"]]) {
+    const el = document.getElementById(id);
+    el.addEventListener("pointerdown", (event) => { event.preventDefault(); jog(action); });
+    el.addEventListener("pointerup", () => jog("stop"));
+    el.addEventListener("pointercancel", () => jog("stop"));
+    el.addEventListener("pointerleave", () => jog("stop"));
+  }
+
+  document.getElementById("tareBtn").addEventListener("click", () => {
+    fetch("{{ url_for('api_tare') }}", { method: "POST" });
+  });
+
+  setInterval(() => {
+    fetch("{{ url_for('api_status') }}")
+      .then((res) => res.json())
+      .then((data) => {
+        liveLoad.textContent = data.current_load.toFixed(2);
+        if (data.preload_ready) {
+          preloadStatus.className = "status good";
+          preloadStatus.textContent = "10 lb preload reached. Setup can be saved.";
+        } else {
+          preloadStatus.className = "status warn";
+          preloadStatus.textContent = `Jog to ${data.preload_target_lbs.toFixed(1)} lb preload before pulling.`;
+        }
+      });
+  }, 250);
+</script>
+{% endblock %}

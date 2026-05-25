@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Result{% endblock %}
+
+{% block content %}
+<h1 class="page-title">Test Complete</h1>
+
+<section class="metric">
+  <div class="label">Peak Load</div>
+  <div class="value">{{ "%.2f"|format(test.peak_load_lbs) }}</div>
+  <div class="unit">lbs</div>
+</section>
+
+<section class="section">
+  <h2>Captured</h2>
+  <div class="grid">
+    <div class="item"><strong>Stop reason:</strong> {{ test.stop_reason or "recorded" }}</div>
+    <div class="item"><strong>Samples:</strong> {{ test.sample_count }}</div>
+    <div class="item"><strong>Started:</strong> {{ test.started_at or "" }}</div>
+    <div class="item"><strong>Completed:</strong> {{ test.completed_at or "" }}</div>
+  </div>
+  <div class="btnrow">
+    <a class="button secondary" href="{{ url_for('download_trace', test_id=test.id) }}">Download Trace CSV</a>
+  </div>
+</section>
+
+<form method="POST">
+  <section class="section">
+    <h2>Result Notes</h2>
+    <div class="grid">
+      <div class="field">
+        <label>Failure Type</label>
+        <select name="failure_type">
+          <option value="">Select</option>
+          <option>Glue gave way</option>
+          <option>Shingle tear</option>
+          <option>Operator stop</option>
+          <option>No failure before limit</option>
+          <option>Other</option>
+        </select>
+      </div>
+      <div class="field full"><label>Operator Notes</label><textarea name="operator_notes">{{ test.form.operator_notes }}</textarea></div>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>Deviation Record</h2>
+    <div class="checkline"><input id="dev" name="deviation_from_standard" type="checkbox" {% if test.form.deviation_from_standard == "yes" %}checked{% endif %}><label for="dev">Deviation from standard method occurred.</label></div>
+    <div class="grid">
+      <div class="field full"><label>Description of Deviation</label><textarea name="deviation_description">{{ test.form.deviation_description }}</textarea></div>
+      <div class="field full"><label>Effect on Uncertainty</label><textarea name="effect_on_uncertainty">{{ test.form.effect_on_uncertainty }}</textarea></div>
+      <div class="field"><label>Approved By</label><input name="approved_by" value="{{ test.form.approved_by }}"></div>
+      <div class="field"><label>Approved Date</label><input name="approved_date" type="date" value="{{ test.form.approved_date }}"></div>
+    </div>
+  </section>
+
+  <button class="full-width success" type="submit">Save & Next Test</button>
+</form>
+{% endblock %}

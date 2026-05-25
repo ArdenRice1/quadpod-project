@@ -1,0 +1,9 @@
+{
+  "name": "APEC Quadpod",
+  "short_name": "Quadpod",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f4f6f7",
+  "theme_color": "#20262d",
+  "icons": []
+}
