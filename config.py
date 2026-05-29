@@ -45,6 +45,7 @@ LOADCELL_FILTER_WINDOW = env_int("QUADPOD_LOADCELL_FILTER_WINDOW", 5)
 
 # PCA9685 / Victor SPX PWM settings. Pulse widths are in microseconds.
 PWM_I2C_ADDRESS = env_int("QUADPOD_PWM_I2C_ADDRESS", 0x40)
+PWM_I2C_BUSNUM = env_int("QUADPOD_PWM_I2C_BUSNUM", 1)
 PWM_FREQUENCY_HZ = env_int("QUADPOD_PWM_FREQUENCY_HZ", 50)
 VICTOR_CHANNEL = env_int("QUADPOD_VICTOR_CHANNEL", 0)
 VICTOR_NEUTRAL_US = env_int("QUADPOD_VICTOR_NEUTRAL_US", 1500)
@@ -56,7 +57,7 @@ ACTUATOR_PULL_DIRECTION = os.getenv("QUADPOD_PULL_DIRECTION", "down").strip().lo
 ACTUATOR_INVERT = env_bool("QUADPOD_ACTUATOR_INVERT", False)
 
 # Pull-test defaults. These remain configurable because field validation may
-# tighten the numbers after APEC calibrates the assembled machine.
+tighten the numbers after APEC calibrates the assembled machine.
 SAMPLE_RATE_HZ = env_float("QUADPOD_SAMPLE_RATE_HZ", 20.0)
 PULL_TARGET_IN_PER_MIN = env_float("QUADPOD_PULL_TARGET_IPM", 5.0)
 PRELOAD_TARGET_LBS = env_float("QUADPOD_PRELOAD_TARGET_LBS", 10.0)
