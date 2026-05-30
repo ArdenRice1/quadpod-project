@@ -74,6 +74,14 @@ class LoadCell:
             except TypeError:
                 return method()
 
+    def _as_number(self, value):
+        if isinstance(value, (list, tuple)):
+            values = [float(item) for item in value]
+            if not values:
+                raise ValueError("HX711 returned no samples")
+            return sum(values) / len(values)
+        return float(value)
+
     def tare(self):
         self.samples.clear()
         if self.use_mock:
@@ -125,13 +133,15 @@ class LoadCell:
 
     def _read_hx711_value(self):
         if hasattr(self.hx, "get_weight"):
-            return self._call_sampled(self.hx.get_weight)
+            return self._as_number(self._call_sampled(self.hx.get_weight))
         if hasattr(self.hx, "get_weight_mean"):
-            return self._call_sampled(self.hx.get_weight_mean)
+            return self._as_number(self._call_sampled(self.hx.get_weight_mean))
+        if hasattr(self.hx, "get_raw_data"):
+            return self._as_number(self._call_sampled(self.hx.get_raw_data)) / self.reference_unit
         if hasattr(self.hx, "read_average"):
-            return self._call_sampled(self.hx.read_average)
+            return self._as_number(self._call_sampled(self.hx.read_average)) / self.reference_unit
         if hasattr(self.hx, "read"):
-            return self.hx.read()
+            return self._as_number(self.hx.read()) / self.reference_unit
         raise AttributeError("HX711 library does not expose a supported read method.")
 
     def _read_force(self):
