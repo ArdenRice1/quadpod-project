@@ -57,7 +57,7 @@ ACTUATOR_PULL_DIRECTION = os.getenv("QUADPOD_PULL_DIRECTION", "down").strip().lo
 ACTUATOR_INVERT = env_bool("QUADPOD_ACTUATOR_INVERT", False)
 
 # Pull-test defaults. These remain configurable because field validation may
-tighten the numbers after APEC calibrates the assembled machine.
+# tighten the numbers after APEC calibrates the assembled machine.
 SAMPLE_RATE_HZ = env_float("QUADPOD_SAMPLE_RATE_HZ", 20.0)
 PULL_TARGET_IN_PER_MIN = env_float("QUADPOD_PULL_TARGET_IPM", 5.0)
 PRELOAD_TARGET_LBS = env_float("QUADPOD_PRELOAD_TARGET_LBS", 10.0)
