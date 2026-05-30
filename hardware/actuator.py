@@ -2,6 +2,7 @@ from config import (
     ACTUATOR_INVERT,
     PWM_FREQUENCY_HZ,
     PWM_I2C_ADDRESS,
+    PWM_I2C_BUSNUM,
     USE_MOCK_HARDWARE,
     VICTOR_CHANNEL,
     VICTOR_FORWARD_US,
@@ -19,12 +20,14 @@ class Actuator:
         channel=VICTOR_CHANNEL,
         frequency_hz=PWM_FREQUENCY_HZ,
         address=PWM_I2C_ADDRESS,
+        busnum=PWM_I2C_BUSNUM,
         invert=ACTUATOR_INVERT,
     ):
         self.use_mock = use_mock
         self.channel = int(channel)
         self.frequency_hz = int(frequency_hz)
         self.address = int(address)
+        self.busnum = int(busnum)
         self.invert = bool(invert)
         self.pwm = None
         self.last_command = "neutral"
@@ -39,7 +42,7 @@ class Actuator:
         try:
             import Adafruit_PCA9685
 
-            self.pwm = Adafruit_PCA9685.PCA9685(address=self.address)
+            self.pwm = Adafruit_PCA9685.PCA9685(address=self.address, busnum=self.busnum)
             self.pwm.set_pwm_freq(self.frequency_hz)
             self.last_error = ""
         except Exception as exc:
@@ -102,6 +105,7 @@ class Actuator:
             "ok": not self.last_error,
             "last_error": self.last_error,
             "channel": self.channel,
+            "busnum": self.busnum,
             "last_command": self.last_command,
             "last_pulse_us": self.last_pulse_us,
         }
