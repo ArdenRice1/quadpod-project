@@ -17,6 +17,10 @@
     <button class="secondary" type="button" id="jogDown">Jog Down</button>
     <button class="warn" type="button" id="tareBtn">Tare</button>
   </div>
+  <div class="btnrow">
+    <button class="success" type="button" id="extendHold">Hold to Extend</button>
+    <button class="danger" type="button" id="positionStop">Stop Motion</button>
+  </div>
 </section>
 
 <form method="POST" enctype="multipart/form-data">
@@ -82,14 +86,14 @@
   const preloadStatus = document.getElementById("preloadStatus");
 
   function jog(action) {
-    fetch("{{ url_for('api_jog') }}", {
+    return fetch("{{ url_for('api_jog') }}", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action })
     });
   }
 
-  for (const [id, action] of [["jogUp", "up"], ["jogDown", "down"]]) {
+  function bindHoldButton(id, action) {
     const el = document.getElementById(id);
     el.addEventListener("pointerdown", (event) => { event.preventDefault(); jog(action); });
     el.addEventListener("pointerup", () => jog("stop"));
@@ -97,9 +101,17 @@
     el.addEventListener("pointerleave", () => jog("stop"));
   }
 
+  bindHoldButton("jogUp", "up");
+  bindHoldButton("jogDown", "down");
+  bindHoldButton("extendHold", "down");
+
+  document.getElementById("positionStop").addEventListener("click", () => jog("stop"));
+
   document.getElementById("tareBtn").addEventListener("click", () => {
     fetch("{{ url_for('api_tare') }}", { method: "POST" });
   });
+
+  window.addEventListener("pagehide", () => jog("stop"));
 
   setInterval(() => {
     fetch("{{ url_for('api_status') }}")
