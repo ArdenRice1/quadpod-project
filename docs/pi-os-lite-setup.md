@@ -19,17 +19,18 @@ pip install -r requirements.txt
 
 ## Hardware Settings
 
-Set production environment values before starting the service:
+The current calibrated Quadpod field values are:
 
 ```bash
 export QUADPOD_MOCK_HARDWARE=0
 export QUADPOD_SECRET_KEY="replace-with-random-text"
-export QUADPOD_LOADCELL_REFERENCE_UNIT="replace-after-calibration"
+export QUADPOD_LOADCELL_REFERENCE_UNIT=10433.64
+export QUADPOD_VICTOR_NEUTRAL_US=1650
 export QUADPOD_VICTOR_PULL_US=1600
 export QUADPOD_EMAIL_ENABLED=0
 ```
 
-Keep `QUADPOD_MOCK_HARDWARE=1` while developing away from the Pi hardware.
+Keep `QUADPOD_MOCK_HARDWARE=1` while developing away from the Pi hardware. Re-run `scripts/calibrate_loadcell.py` if the load cell, HX711, wiring, or mechanical load path changes.
 
 ## Pi WPA Hotspot
 
@@ -72,9 +73,9 @@ journalctl -u quadpod.service -f
 ## Calibration Workflow
 
 1. Confirm actuator wiring with the machine unloaded.
-2. Verify Victor SPX neutral pulse stops movement.
+2. Verify Victor SPX neutral pulse stops movement. Current neutral is `1650 us`.
 3. Verify jog direction; set `QUADPOD_ACTUATOR_INVERT=1` if up/down are reversed.
 4. Tare the load cell with the rig hanging freely.
-5. Apply a known load and update `QUADPOD_LOADCELL_REFERENCE_UNIT`.
+5. Apply a known load and update `QUADPOD_LOADCELL_REFERENCE_UNIT`. Current reference unit is `10433.64`.
 6. Measure actuator travel over time under realistic load and adjust `QUADPOD_VICTOR_PULL_US` until the pull rate is 5 in/min.
 7. Run at least three known-load repeatability checks and keep the results with the equipment calibration records.
