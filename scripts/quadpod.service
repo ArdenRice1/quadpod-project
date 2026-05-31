@@ -10,7 +10,7 @@ Environment=QUADPOD_MOCK_HARDWARE=0
 Environment=QUADPOD_DATABASE=/opt/quadpod/flask_app/data/quadpod.db
 Environment=QUADPOD_VICTOR_NEUTRAL_US=1650
 Environment=QUADPOD_LOADCELL_REFERENCE_UNIT=10433.64
-ExecStart=/opt/quadpod/flask_app/.venv/bin/gunicorn --workers 1 --threads 4 --bind 0.0.0.0:5000 app:app
+ExecStart=/opt/quadpod/venv/bin/gunicorn --workers 1 --threads 4 --bind 0.0.0.0:5000 app:app
 Restart=always
 RestartSec=3
 
