@@ -28,6 +28,7 @@
   <button class="danger" id="stopBtn" type="button">Stop Test</button>
 </div>
 
+<a id="reviewLink" class="button full-width" href="{{ url_for('result') }}" hidden>Review Result</a>
 <a class="button secondary full-width" href="{{ url_for('pretest') }}">Back to Setup</a>
 {% endblock %}
 
@@ -42,6 +43,7 @@
   const systemStatus = document.getElementById("systemStatus");
   const startBtn = document.getElementById("startBtn");
   const stopBtn = document.getElementById("stopBtn");
+  const reviewLink = document.getElementById("reviewLink");
 
   function setStatus(kind, message) {
     systemStatus.className = `status ${kind}`;
@@ -58,6 +60,7 @@
 
   startBtn.addEventListener("click", () => {
     startBtn.disabled = true;
+    reviewLink.hidden = true;
     setStatus("warn", "Starting pull. Stand clear.");
     postJson("{{ url_for('api_start_pull') }}", { test_id: {{ test.id }} })
       .then((data) => {
@@ -101,10 +104,12 @@
           setStatus("bad", data.last_error);
         } else if (data.test_running) {
           startBtn.disabled = true;
+          reviewLink.hidden = true;
           setStatus("warn", "Pull running. Stand clear.");
         } else if (data.test_complete && data.active_test_id === {{ test.id }}) {
+          startBtn.disabled = false;
+          reviewLink.hidden = false;
           setStatus("good", data.stop_reason ? `Test stopped: ${data.stop_reason}` : "Test stopped.");
-          window.setTimeout(() => { window.location.href = "{{ url_for('result') }}"; }, 900);
         } else {
           startBtn.disabled = false;
         }
