@@ -65,7 +65,7 @@ class LoadCellHardwareCompatibilityTests(unittest.TestCase):
             sys.modules[name] = original
 
     def _bits_for_raw(self, raw):
-        encoded = raw ^ 0x800000
+        encoded = raw & 0xFFFFFF
         return [0] + [(encoded >> bit) & 1 for bit in range(23, -1, -1)]
 
     def test_hardware_mode_does_not_initialize_until_tare(self):
