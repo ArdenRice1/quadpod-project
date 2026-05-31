@@ -4,7 +4,10 @@ import time
 from config import (
     APP_VERSION,
     DISCONNECT_STOP_SECONDS,
+    FAILURE_CONFIRM_SAMPLES,
     FAILURE_DROP_LBS,
+    FAILURE_DROP_PERCENT,
+    FAILURE_MIN_PEAK_LBS,
     MAX_FORCE_LBS,
     MAX_TEST_SECONDS,
     PRELOAD_TARGET_LBS,
@@ -26,6 +29,7 @@ class QuadpodEngine:
         self.running = False
         self.thread = None
         self.last_client_poll = time.monotonic()
+        self.failure_drop_samples = 0
         self.state = {
             "current_load": 0.0,
             "raw_load": 0.0,
@@ -91,6 +95,7 @@ class QuadpodEngine:
                 return False, "Test record not found."
 
             load = float(self.state["current_load"])
+            self.failure_drop_samples = 0
             self.state.update(
                 {
                     "peak_load": max(load, 0.0),
@@ -188,12 +193,16 @@ class QuadpodEngine:
         if self.state["peak_load"] >= MAX_FORCE_LBS:
             return "maximum force limit"
         if elapsed_s >= MAX_TEST_SECONDS:
-            return "maximum run time"
-        if (
-            self.state["peak_load"] > PRELOAD_TARGET_LBS
-            and self.state["peak_load"] - load >= FAILURE_DROP_LBS
-        ):
-            return "load drop detected"
+            return "maximum run time/end of travel timeout"
+
+        peak = float(self.state["peak_load"] or 0.0)
+        required_drop = max(FAILURE_DROP_LBS, peak * FAILURE_DROP_PERCENT)
+        if peak >= FAILURE_MIN_PEAK_LBS and peak - load >= required_drop:
+            self.failure_drop_samples += 1
+        else:
+            self.failure_drop_samples = 0
+        if self.failure_drop_samples >= max(1, FAILURE_CONFIRM_SAMPLES):
+            return "confirmed load drop/failure"
         return ""
 
     def _stop_locked(self, reason):
@@ -203,6 +212,7 @@ class QuadpodEngine:
         peak = round(float(self.state.get("peak_load") or 0.0), 3)
         sample_count = int(self.state.get("sample_count") or 0)
         was_running = bool(self.state.get("test_running"))
+        self.failure_drop_samples = 0
 
         self.state["test_running"] = False
         self.state["test_complete"] = True if test_id else False
