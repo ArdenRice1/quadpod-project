@@ -26,7 +26,8 @@ export QUADPOD_MOCK_HARDWARE=0
 export QUADPOD_SECRET_KEY="replace-with-random-text"
 export QUADPOD_LOADCELL_REFERENCE_UNIT=10433.64
 export QUADPOD_VICTOR_NEUTRAL_US=1650
-export QUADPOD_VICTOR_PULL_US=1600
+export QUADPOD_VICTOR_PULL_US=1850
+export QUADPOD_PULL_DIRECTION=up
 export QUADPOD_EMAIL_ENABLED=0
 ```
 
@@ -79,3 +80,14 @@ journalctl -u quadpod.service -f
 5. Apply a known load and update `QUADPOD_LOADCELL_REFERENCE_UNIT`. Current reference unit is `10433.64`.
 6. Measure actuator travel over time under realistic load and adjust `QUADPOD_VICTOR_PULL_US` until the pull rate is 5 in/min.
 7. Run at least three known-load repeatability checks and keep the results with the equipment calibration records.
+
+## Pull Speed Check
+
+Use measured travel, not PWM alone, to verify pull speed:
+
+```text
+speed_ipm = travel_inches / elapsed_seconds * 60
+elapsed_seconds = travel_inches / target_ipm * 60
+```
+
+For the 5 in/min target, 1 inch should take 12 seconds and a 6 inch stroke should take 72 seconds. If the actuator is too fast, move `QUADPOD_VICTOR_PULL_US` closer to neutral. If it is too slow, move it farther from neutral.
