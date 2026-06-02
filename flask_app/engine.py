@@ -149,11 +149,13 @@ class QuadpodEngine:
             self._update_mock_force_locked()
 
         load = self.load_cell.get_force()
-        raw = getattr(self.load_cell, "last_raw_lbs", load)
+        raw_counts = getattr(self.load_cell, "last_raw_counts", None)
+        if raw_counts is None:
+            raw_counts = getattr(self.load_cell, "last_raw_lbs", load)
 
         with self.lock:
             self.state["current_load"] = load
-            self.state["raw_load"] = raw
+            self.state["raw_load"] = raw_counts
             self.state["preload_ready"] = load >= (PRELOAD_TARGET_LBS - PRELOAD_TOLERANCE_LBS)
 
             if not self.state["test_running"]:
@@ -164,7 +166,7 @@ class QuadpodEngine:
             elapsed_s = time.monotonic() - start_time
             self.state["elapsed_s"] = elapsed_s
             self.state["peak_load"] = max(self.state["peak_load"], load)
-            sample_count = storage.add_sample(test_id, elapsed_s, load, raw)
+            sample_count = storage.add_sample(test_id, elapsed_s, load, raw_counts)
             self.state["sample_count"] = sample_count
 
             stop_reason = self._stop_reason_locked(load, elapsed_s)
