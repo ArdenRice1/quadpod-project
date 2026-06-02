@@ -17,10 +17,6 @@
     <button class="secondary" type="button" id="jogDown">Jog Down</button>
     <button class="warn" type="button" id="tareBtn">Tare</button>
   </div>
-  <div class="btnrow">
-    <button class="success" type="button" id="extendHold">Hold to Extend</button>
-    <button class="danger" type="button" id="positionStop">Stop Motion</button>
-  </div>
 </section>
 
 <form method="POST" enctype="multipart/form-data">
@@ -103,9 +99,6 @@
 
   bindHoldButton("jogUp", "up");
   bindHoldButton("jogDown", "down");
-  bindHoldButton("extendHold", "down");
-
-  document.getElementById("positionStop").addEventListener("click", () => jog("stop"));
 
   document.getElementById("tareBtn").addEventListener("click", () => {
     fetch("{{ url_for('api_tare') }}", { method: "POST" });
