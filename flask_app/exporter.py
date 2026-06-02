@@ -1,3 +1,4 @@
+import csv
 import json
 import zipfile
 from pathlib import Path
@@ -19,10 +20,56 @@ def export_test_trace_csv(test_id):
     test = storage.get_test(test_id)
     if not test:
         raise ValueError("Test not found")
+    job = storage.get_job(test["job_id"])
+    if not job:
+        raise ValueError("Job not found")
+
     path = Path(EXPORT_DIR) / f"test_{test_id}_trace.csv"
-    rows = storage.list_samples(test_id)
-    fieldnames = ["timestamp", "elapsed_s", "force_lbs", "raw_lbs"]
-    return storage.write_csv(path, rows, fieldnames)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    samples = storage.list_samples(test_id)
+
+    metadata = [
+        ("Quadpod Test Trace", ""),
+        ("software_version", test.get("software_version") or APP_VERSION),
+        ("job_id", job["id"]),
+        ("project_name", job["form"].get("project_name", "")),
+        ("project_address", job["form"].get("project_address", "")),
+        ("job_number", job["form"].get("job_number", "")),
+        ("test_id", test["id"]),
+        ("test_number", test["form"].get("test_number", "")),
+        ("test_area", test["form"].get("test_area", "")),
+        ("roof_area", test["form"].get("roof_area", "")),
+        ("angle_degrees", test["form"].get("angle_degrees", "")),
+        ("shingle_manufacturer", test["form"].get("shingle_manufacturer", "")),
+        ("shingle_product", test["form"].get("shingle_product", "")),
+        ("air_temperature_f", test["form"].get("air_temperature_f", "")),
+        ("roof_temperature_f", test["form"].get("roof_temperature_f", "")),
+        ("wind_speed_direction", test["form"].get("wind_speed_direction", "")),
+        ("started_at", test.get("started_at") or ""),
+        ("completed_at", test.get("completed_at") or ""),
+        ("initial_preload_lbs", _value(test.get("initial_preload_lbs"))),
+        ("peak_load_lbs", _value(test.get("peak_load_lbs"))),
+        ("stop_reason", test.get("stop_reason") or ""),
+        ("sample_count", test.get("sample_count") or 0),
+    ]
+
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.writer(handle)
+        for key, value in metadata:
+            writer.writerow([key, value])
+        writer.writerow([])
+        writer.writerow(["Samples"])
+        writer.writerow(["timestamp", "elapsed_s", "force_lbs", "raw_counts"])
+        for sample in samples:
+            writer.writerow(
+                [
+                    sample.get("timestamp", ""),
+                    _value(sample.get("elapsed_s")),
+                    _value(sample.get("force_lbs")),
+                    _value(sample.get("raw_lbs")),
+                ]
+            )
+    return path
 
 
 def build_audit_payload(job_id):
@@ -126,6 +173,14 @@ def export_job_bundle(job_id):
         for path in trace_paths:
             zf.write(path, f"traces/{path.name}")
     return bundle_path
+
+
+def _value(value):
+    if value is None:
+        return ""
+    if isinstance(value, float):
+        return round(value, 6)
+    return value
 
 
 def _h(value):
