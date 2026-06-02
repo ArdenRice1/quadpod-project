@@ -1,5 +1,6 @@
 from config import (
     ACTUATOR_INVERT,
+    ACTUATOR_PULL_DIRECTION,
     PWM_FREQUENCY_HZ,
     PWM_I2C_ADDRESS,
     PWM_I2C_BUSNUM,
@@ -22,6 +23,7 @@ class Actuator:
         address=PWM_I2C_ADDRESS,
         busnum=PWM_I2C_BUSNUM,
         invert=ACTUATOR_INVERT,
+        pull_direction=ACTUATOR_PULL_DIRECTION,
     ):
         self.use_mock = use_mock
         self.channel = int(channel)
@@ -29,6 +31,7 @@ class Actuator:
         self.address = int(address)
         self.busnum = int(busnum)
         self.invert = bool(invert)
+        self.pull_direction = pull_direction if pull_direction in {"up", "down"} else "down"
         self.pwm = None
         self.last_command = "neutral"
         self.last_pulse_us = VICTOR_NEUTRAL_US
@@ -56,6 +59,8 @@ class Actuator:
         return self._move("down", fast=fast)
 
     def pull(self):
+        if self.pull_direction == "up":
+            return self.move_up(fast=False)
         return self.move_down(fast=False)
 
     def stop(self):
@@ -106,6 +111,7 @@ class Actuator:
             "last_error": self.last_error,
             "channel": self.channel,
             "busnum": self.busnum,
+            "pull_direction": self.pull_direction,
             "last_command": self.last_command,
             "last_pulse_us": self.last_pulse_us,
         }
