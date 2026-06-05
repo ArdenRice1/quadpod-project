@@ -62,6 +62,15 @@
       <div class="field full"><label>Weather Notes</label><textarea name="weather_notes"></textarea></div>
     </div>
     <div class="checkline"><input id="weather" name="weather_checked" type="checkbox" required><label for="weather">Weather forecast and unsafe conditions checked.</label></div>
+    <div class="checkline"><input id="unsafeWind" name="unsafe_wind" type="checkbox"><label for="unsafeWind">Unsafe wind is present. Do not test until this is cleared.</label></div>
+    <div class="checkline"><input id="lightning" name="lightning_present" type="checkbox"><label for="lightning">Lightning is present. Do not test.</label></div>
+    <div class="checkline"><input id="rain" name="rain_or_moisture" type="checkbox"><label for="rain">Active rain, puddles, or excessive roof moisture are present. Do not test.</label></div>
+    <div class="checkline"><input id="tempHazard" name="heat_or_cold_hazard" type="checkbox"><label for="tempHazard">Heat or cold conditions are unsafe. Do not test until safer conditions return.</label></div>
+    <div class="checkline"><input id="ice" name="ice_present" type="checkbox"><label for="ice">Ice is present on the roof. Do not test.</label></div>
+    <div class="checkline"><input id="weatherBypass" name="weather_bypass_approved" type="checkbox"><label for="weatherBypass">Authorized weather deviation/bypass approved. Record reason below before testing.</label></div>
+    <div class="grid">
+      <div class="field full"><label>Weather Bypass Reason / Approval</label><textarea name="weather_bypass_reason" placeholder="Use only when APEC/engineer authorizes testing despite a checked weather blocker."></textarea></div>
+    </div>
     <div class="checkline"><input id="occupants" name="occupants_notified" type="checkbox"><label for="occupants">Property occupants notified if required.</label></div>
     <div class="checkline"><input id="safety" name="safety_acknowledged" type="checkbox" required><label for="safety">Roof work safety and PPE responsibilities acknowledged.</label></div>
   </section>

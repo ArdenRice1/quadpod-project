@@ -1,5 +1,6 @@
 import datetime as dt
 import os
+import secrets
 import sys
 from pathlib import Path
 
@@ -17,7 +18,17 @@ from werkzeug.utils import secure_filename
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from config import APP_VERSION, EMAIL_ENABLED, EMAIL_TO, HOTSPOT_IP, PHOTO_DIR, SECRET_KEY
+from config import (
+    APP_VERSION,
+    DATABASE_PATH,
+    EMAIL_ENABLED,
+    EMAIL_TO,
+    EXPORT_DIR,
+    HOTSPOT_IP,
+    OPERATOR_PIN,
+    PHOTO_DIR,
+    SECRET_KEY,
+)
 import storage
 
 storage.init_db()
@@ -40,6 +51,8 @@ def inject_globals():
         "app_version": APP_VERSION,
         "active_job": storage.get_job(session.get("job_id")) if session.get("job_id") else None,
         "hotspot_ip": HOTSPOT_IP,
+        "csrf_token": _csrf_token(),
+        "operator_armed": bool(session.get("operator_armed")),
     }
 
 
@@ -54,6 +67,39 @@ def home():
 
     today = dt.date.today().isoformat()
     return render_template("home.html", defaults={"date": today})
+
+
+@app.route("/setup-check")
+def setup_check():
+    status = quadpod_engine.snapshot()
+    checks = [
+        ("Open app", "good", "Phone URL is http://quadpod.local:5000 or fallback http://%s:5000" % HOTSPOT_IP),
+        ("Operator armed", "good" if session.get("operator_armed") else "warn", "Enter the operator PIN before moving hardware."),
+        ("Load cell", "good" if status["load_cell"]["ok"] else "bad", status["load_cell"]["last_error"] or "Ready"),
+        ("Actuator", "good" if status["actuator"]["ok"] else "bad", status["actuator"]["last_error"] or "Ready"),
+        ("Hardware mode", "warn" if status["mock_hardware"] else "good", "Mock mode" if status["mock_hardware"] else "Real Pi hardware mode"),
+    ]
+    paths = {
+        "database": DATABASE_PATH,
+        "exports": str(EXPORT_DIR),
+        "photos": str(PHOTO_DIR),
+    }
+    return render_template("setup_check.html", status=status, checks=checks, paths=paths)
+
+
+@app.route("/operator-arm", methods=["GET", "POST"])
+def operator_arm():
+    error = ""
+    if request.method == "POST":
+        if request.form.get("csrf_token") != _csrf_token():
+            error = "Session check failed. Reload and try again."
+        elif secrets.compare_digest(request.form.get("pin", ""), OPERATOR_PIN):
+            session["operator_armed"] = True
+            storage.add_event("Operator controls armed")
+            return redirect(request.args.get("next") or url_for("setup_check"))
+        else:
+            error = "Incorrect operator PIN."
+    return render_template("operator_arm.html", error=error)
 
 
 @app.route("/job/<int:job_id>/resume")
@@ -176,6 +222,9 @@ def api_status():
 
 @app.route("/api/jog", methods=["POST"])
 def api_jog():
+    guard = _require_operator_armed()
+    if guard:
+        return guard
     data = request.get_json(silent=True) or {}
     ok, message = quadpod_engine.jog(data.get("action", "stop"))
     return jsonify({"ok": ok, "message": message, "status": quadpod_engine.snapshot()})
@@ -183,17 +232,36 @@ def api_jog():
 
 @app.route("/api/tare", methods=["POST"])
 def api_tare():
+    guard = _require_operator_armed()
+    if guard:
+        return guard
     ok, message = quadpod_engine.tare()
     return jsonify({"ok": ok, "message": message, "status": quadpod_engine.snapshot()})
 
 
 @app.route("/api/start_pull", methods=["POST"])
 def api_start_pull():
+    guard = _require_operator_armed()
+    if guard:
+        return guard
     test_id = session.get("test_id")
     if not test_id:
         data = request.get_json(silent=True) or {}
         test_id = data.get("test_id")
-    ok, message = quadpod_engine.start_pull(int(test_id))
+    try:
+        test_id = int(test_id)
+    except (TypeError, ValueError):
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "message": "Valid test_id is required before starting a pull.",
+                    "status": quadpod_engine.snapshot(),
+                }
+            ),
+            400,
+        )
+    ok, message = quadpod_engine.start_pull(test_id)
     return jsonify({"ok": ok, "message": message, "status": quadpod_engine.snapshot()})
 
 
@@ -217,13 +285,46 @@ def _form_payload(fields):
     for checkbox in [
         "calibration_verified",
         "weather_checked",
+        "unsafe_wind",
+        "lightning_present",
+        "rain_or_moisture",
+        "heat_or_cold_hazard",
+        "ice_present",
+        "weather_bypass_approved",
         "occupants_notified",
         "safety_acknowledged",
         "deviation_from_standard",
+        "site_clear_of_hazards",
+        "site_representative",
+        "site_free_of_blemishes",
+        "test_board_visible",
+        "initial_reading_photo",
+        "final_reading_photo",
+        "repair_needed",
+        "repair_completed",
+        "sample_removed",
+        "maintenance_notified",
     ]:
         if checkbox in fields:
             payload[checkbox] = "yes" if checkbox in request.form else "no"
     return payload
+
+
+def _csrf_token():
+    token = session.get("csrf_token")
+    if not token:
+        token = secrets.token_urlsafe(32)
+        session["csrf_token"] = token
+    return token
+
+
+def _require_operator_armed():
+    token = request.headers.get("X-CSRF-Token", "")
+    if not secrets.compare_digest(token, _csrf_token()):
+        return jsonify({"ok": False, "message": "Session command token is invalid."}), 403
+    if not session.get("operator_armed"):
+        return jsonify({"ok": False, "message": "Enter the operator PIN before moving hardware."}), 403
+    return None
 
 
 def _save_photo(job_id, test_number, file_storage):

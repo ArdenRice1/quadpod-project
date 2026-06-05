@@ -24,6 +24,11 @@ http://localhost:5000
 ## Raspberry Pi OS Lite
 
 Production setup notes are in `docs/pi-os-lite-setup.md`.
+Maintenance, field use, and daily checklist docs are in:
+
+- `docs/engineering-guide.md`
+- `docs/field-operator-guide.md`
+- `docs/quick-start-checklist.md`
 
 The default field network mode is a Pi-hosted WPA2 hotspot. Operators connect their phone to the Quadpod Wi-Fi network and open:
 

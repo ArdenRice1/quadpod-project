@@ -13,6 +13,9 @@
     <div class="unit">lbs</div>
   </div>
   <div class="btnrow">
+    {% if not operator_armed %}
+      <a class="button success" href="{{ url_for('operator_arm', next=url_for('pretest')) }}">Arm Controls</a>
+    {% endif %}
     <button class="secondary" type="button" id="jogUp">Jog Up</button>
     <button class="secondary" type="button" id="jogDown">Jog Down</button>
     <button class="warn" type="button" id="tareBtn">Tare</button>
@@ -31,6 +34,9 @@
       <div class="field"><label>Roof Temp (F)</label><input name="roof_temperature_f" type="number" step="0.1" inputmode="decimal"></div>
       <div class="field full"><label>Wind Speed & Direction</label><input name="wind_speed_direction" placeholder="e.g. 8 mph N"></div>
     </div>
+    <div class="checkline"><input id="siteClear" name="site_clear_of_hazards" type="checkbox" required><label for="siteClear">Test point is clear of equipment, electrical lines, ducts, skylights, and other hazards.</label></div>
+    <div class="checkline"><input id="siteRep" name="site_representative" type="checkbox" required><label for="siteRep">Test point is representative of the roof condition being investigated.</label></div>
+    <div class="checkline"><input id="siteBlemish" name="site_free_of_blemishes" type="checkbox" required><label for="siteBlemish">Test point is free of seams and visible blemishes.</label></div>
   </section>
 
   <section class="section">
@@ -42,8 +48,10 @@
       <div class="field full"><label>Evidence of Wind Lift</label><textarea name="wind_lift_evidence"></textarea></div>
       <div class="field full"><label>Nail Size / Placement Notes</label><textarea name="nail_observations"></textarea></div>
       <div class="field full"><label>Photo</label><input name="photo" type="file" accept="image/*" capture="environment"></div>
-      <div class="field full"><label>Photo Reference</label><input name="photo_reference" placeholder="Optional filename, camera roll ref, or board ID"></div>
+      <div class="field full"><label>Photo Reference</label><input name="photo_reference" placeholder="Filename, camera roll ref, or board ID"></div>
     </div>
+    <div class="checkline"><input id="boardVisible" name="test_board_visible" type="checkbox" required><label for="boardVisible">Test point name/number board is visible in the photo.</label></div>
+    <div class="checkline"><input id="initialPhoto" name="initial_reading_photo" type="checkbox" required><label for="initialPhoto">Initial 10 lb load-cell reading has been photographed.</label></div>
   </section>
 
   <section class="section">
@@ -84,7 +92,7 @@
   function jog(action) {
     return fetch("{{ url_for('api_jog') }}", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: quadpodJsonHeaders(),
       body: JSON.stringify({ action })
     });
   }
@@ -101,7 +109,7 @@
   bindHoldButton("jogDown", "down");
 
   document.getElementById("tareBtn").addEventListener("click", () => {
-    fetch("{{ url_for('api_tare') }}", { method: "POST" });
+    fetch("{{ url_for('api_tare') }}", { method: "POST", headers: quadpodJsonHeaders() });
   });
 
   window.addEventListener("pagehide", () => jog("stop"));
@@ -113,10 +121,10 @@
         liveLoad.textContent = data.current_load.toFixed(2);
         if (data.preload_ready) {
           preloadStatus.className = "status good";
-          preloadStatus.textContent = "10 lb preload reached. Setup can be saved.";
+          preloadStatus.textContent = `Preload is within ${data.preload_target_lbs.toFixed(1)} +/- ${data.preload_tolerance_lbs.toFixed(1)} lb.`;
         } else {
           preloadStatus.className = "status warn";
-          preloadStatus.textContent = `Jog to ${data.preload_target_lbs.toFixed(1)} lb preload before pulling.`;
+          preloadStatus.textContent = `Jog to ${data.preload_target_lbs.toFixed(1)} +/- ${data.preload_tolerance_lbs.toFixed(1)} lb before pulling.`;
         }
       });
   }, 250);

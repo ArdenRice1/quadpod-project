@@ -1,3 +1,4 @@
+import datetime as dt
 import threading
 import time
 
@@ -60,6 +61,7 @@ class QuadpodEngine:
             status["actuator"] = self.actuator.health()
             status["mock_hardware"] = self.use_mock
             status["preload_target_lbs"] = PRELOAD_TARGET_LBS
+            status["preload_tolerance_lbs"] = PRELOAD_TOLERANCE_LBS
             status["app_version"] = APP_VERSION
             self.last_client_poll = time.monotonic()
             return status
@@ -95,6 +97,10 @@ class QuadpodEngine:
                 return False, "Test record not found."
 
             load = float(self.state["current_load"])
+            gate_errors = self._start_gate_errors_locked(test, load)
+            if gate_errors:
+                return False, "Cannot start pull: " + "; ".join(gate_errors)
+
             self.failure_drop_samples = 0
             self.state.update(
                 {
@@ -126,6 +132,74 @@ class QuadpodEngine:
                 return False, self.actuator.last_error
             return True, "Pull started."
 
+    def _start_gate_errors_locked(self, test, load):
+        errors = []
+        lower = PRELOAD_TARGET_LBS - PRELOAD_TOLERANCE_LBS
+        upper = PRELOAD_TARGET_LBS + PRELOAD_TOLERANCE_LBS
+        if load < lower or load > upper:
+            errors.append(
+                f"preload must be {PRELOAD_TARGET_LBS:.1f} lb +/- {PRELOAD_TOLERANCE_LBS:.1f} lb"
+            )
+
+        load_health = self.load_cell.health()
+        if not load_health.get("ok"):
+            errors.append(load_health.get("last_error") or "load cell is not ready")
+        actuator_health = self.actuator.health()
+        if not actuator_health.get("ok"):
+            errors.append(actuator_health.get("last_error") or "actuator is not ready")
+
+        job = storage.get_job(test["job_id"])
+        if not job:
+            errors.append("job record not found")
+            return errors
+
+        job_form = job["form"]
+        test_form = test["form"]
+        if job_form.get("calibration_verified") != "yes":
+            errors.append("equipment calibration must be acknowledged")
+        if job_form.get("weather_checked") != "yes":
+            errors.append("weather check must be acknowledged")
+        if job_form.get("safety_acknowledged") != "yes":
+            errors.append("roof safety/PPE must be acknowledged")
+
+        for field, label in [
+            ("load_cell_calibration_date", "load cell calibration date"),
+            ("ir_temp_gun_calibration_date", "IR temp gun calibration date"),
+        ]:
+            if not _date_is_current(job_form.get(field, "")):
+                errors.append(f"{label} is missing or expired")
+
+        blockers = [
+            ("unsafe_wind", "unsafe wind"),
+            ("lightning_present", "lightning"),
+            ("rain_or_moisture", "rain/roof moisture"),
+            ("heat_or_cold_hazard", "heat/cold hazard"),
+            ("ice_present", "ice"),
+        ]
+        active_blockers = [label for field, label in blockers if job_form.get(field) == "yes"]
+        if active_blockers and job_form.get("weather_bypass_approved") != "yes":
+            errors.append("unsafe weather condition present: " + ", ".join(active_blockers))
+        if active_blockers and job_form.get("weather_bypass_approved") == "yes":
+            if not job_form.get("weather_bypass_reason"):
+                errors.append("weather bypass reason is required")
+
+        required_test_checks = [
+            ("site_clear_of_hazards", "test point clear of roof hazards"),
+            ("site_representative", "test point representative of roof condition"),
+            ("site_free_of_blemishes", "test point free of visible blemishes"),
+            ("test_board_visible", "photo ID board visible"),
+            ("initial_reading_photo", "initial load-cell photo captured"),
+        ]
+        for field, label in required_test_checks:
+            if test_form.get(field) != "yes":
+                errors.append(label + " must be confirmed")
+        if not test_form.get("angle_degrees"):
+            errors.append("pull angle must be recorded")
+        if not test_form.get("photo_reference"):
+            errors.append("photo reference or upload is required")
+
+        return errors
+
     def stop(self, reason="operator stop"):
         with self.lock:
             self._stop_locked(reason)
@@ -156,7 +230,11 @@ class QuadpodEngine:
         with self.lock:
             self.state["current_load"] = load
             self.state["raw_load"] = raw_counts
-            self.state["preload_ready"] = load >= (PRELOAD_TARGET_LBS - PRELOAD_TOLERANCE_LBS)
+            self.state["preload_ready"] = (
+                PRELOAD_TARGET_LBS - PRELOAD_TOLERANCE_LBS
+                <= load
+                <= PRELOAD_TARGET_LBS + PRELOAD_TOLERANCE_LBS
+            )
 
             if not self.state["test_running"]:
                 return
@@ -254,3 +332,10 @@ def log_test_to_db(data_dict):
 
 
 quadpod_state = quadpod_engine.state
+
+
+def _date_is_current(value):
+    try:
+        return dt.date.fromisoformat(str(value)) >= dt.date.today()
+    except (TypeError, ValueError):
+        return False

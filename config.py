@@ -10,6 +10,7 @@ PHOTO_DIR = APP_DIR / "static" / "photos"
 
 APP_VERSION = "0.2.0-field"
 SECRET_KEY = os.getenv("QUADPOD_SECRET_KEY", "change-this-on-the-pi")
+OPERATOR_PIN = os.getenv("QUADPOD_OPERATOR_PIN", "1234")
 
 
 def env_bool(name, default=False):

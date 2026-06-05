@@ -3,7 +3,21 @@ import json
 import zipfile
 from pathlib import Path
 
-from config import APP_VERSION, EXPORT_DIR
+from config import (
+    ACTUATOR_PULL_DIRECTION,
+    APP_VERSION,
+    EXPORT_DIR,
+    FAILURE_CONFIRM_SAMPLES,
+    FAILURE_DROP_LBS,
+    FAILURE_DROP_PERCENT,
+    FAILURE_MIN_PEAK_LBS,
+    LOADCELL_REFERENCE_UNIT,
+    PHOTO_DIR,
+    PRELOAD_TARGET_LBS,
+    PRELOAD_TOLERANCE_LBS,
+    PULL_TARGET_IN_PER_MIN,
+    VICTOR_PULL_US,
+)
 import storage
 
 
@@ -51,6 +65,22 @@ def export_test_trace_csv(test_id):
         ("peak_load_lbs", _value(test.get("peak_load_lbs"))),
         ("stop_reason", test.get("stop_reason") or ""),
         ("sample_count", test.get("sample_count") or 0),
+        ("failure_type", test["form"].get("failure_type", "")),
+        ("operator_notes", test["form"].get("operator_notes", "")),
+        ("deviation_from_standard", test["form"].get("deviation_from_standard", "")),
+        ("deviation_description", test["form"].get("deviation_description", "")),
+        ("effect_on_uncertainty", test["form"].get("effect_on_uncertainty", "")),
+        ("approved_by", test["form"].get("approved_by", "")),
+        ("approved_date", test["form"].get("approved_date", "")),
+        ("photo_reference", test["form"].get("photo_reference", "")),
+        ("final_reading_photo", test["form"].get("final_reading_photo", "")),
+        ("repair_needed", test["form"].get("repair_needed", "")),
+        ("repair_completed", test["form"].get("repair_completed", "")),
+        ("sample_removed", test["form"].get("sample_removed", "")),
+        ("maintenance_notified", test["form"].get("maintenance_notified", "")),
+        ("pull_target_in_per_min", PULL_TARGET_IN_PER_MIN),
+        ("victor_pull_us", VICTOR_PULL_US),
+        ("pull_direction", ACTUATOR_PULL_DIRECTION),
     ]
 
     with path.open("w", newline="", encoding="utf-8") as handle:
@@ -87,6 +117,7 @@ def build_audit_payload(job_id):
             "strict_astm_certification": False,
             "all_form_points_exported_per_test": True,
         },
+        "machine_settings": machine_settings(),
     }
 
 
@@ -103,10 +134,23 @@ def render_report_html(job_id):
             f"<td>{_h(row['test_number'])}</td>"
             f"<td>{_h(row['angle_degrees'])}</td>"
             f"<td>{_h(row['max_load_lbs'])}</td>"
+            f"<td>{_h(row['failure_type'])}</td>"
             f"<td>{_h(row['test_completed_at'])}</td>"
             f"<td>{_h(row['roof_temperature_f'])}</td>"
             f"<td>{_h(row['wind_speed_direction'])}</td>"
+            f"<td>{_h(row['deviation_from_standard'])}</td>"
             f"<td>{_h(row['operator_notes'])}</td>"
+            "</tr>"
+            "<tr>"
+            f"<td colspan=\"9\">"
+            f"<strong>Deviation:</strong> {_h(row['deviation_description'])} "
+            f"<strong>Uncertainty:</strong> {_h(row['effect_on_uncertainty'])} "
+            f"<strong>Approved:</strong> {_h(row['approved_by'])} {_h(row['approved_date'])} "
+            f"<strong>Photo:</strong> {_h(row['photo_reference'])} "
+            f"<strong>Closeout:</strong> repair needed {_h(row['repair_needed'])}, "
+            f"repair completed {_h(row['repair_completed'])}, sample removed {_h(row['sample_removed'])}, "
+            f"maintenance notified {_h(row['maintenance_notified'])}. {_h(row['post_test_notes'])}"
+            "</td>"
             "</tr>"
         )
     html = f"""<!doctype html>
@@ -139,7 +183,7 @@ def render_report_html(job_id):
   <h2>Tests</h2>
   <table>
     <thead>
-      <tr><th>Test #</th><th>Angle</th><th>Max Load (lbs)</th><th>Time</th><th>Roof Temp</th><th>Wind</th><th>Notes</th></tr>
+      <tr><th>Test #</th><th>Angle</th><th>Max Load (lbs)</th><th>Failure</th><th>Time</th><th>Roof Temp</th><th>Wind</th><th>Deviation</th><th>Notes</th></tr>
     </thead>
     <tbody>{''.join(body_rows)}</tbody>
   </table>
@@ -172,7 +216,38 @@ def export_job_bundle(job_id):
         zf.write(audit_path, "audit.json")
         for path in trace_paths:
             zf.write(path, f"traces/{path.name}")
+        for photo_path in _job_photo_paths(job_id):
+            zf.write(photo_path, f"photos/{photo_path.name}")
     return bundle_path
+
+
+def machine_settings():
+    return {
+        "app_version": APP_VERSION,
+        "victor_pull_us": VICTOR_PULL_US,
+        "pull_direction": ACTUATOR_PULL_DIRECTION,
+        "pull_target_in_per_min": PULL_TARGET_IN_PER_MIN,
+        "preload_target_lbs": PRELOAD_TARGET_LBS,
+        "preload_tolerance_lbs": PRELOAD_TOLERANCE_LBS,
+        "loadcell_reference_unit": LOADCELL_REFERENCE_UNIT,
+        "failure_drop_lbs": FAILURE_DROP_LBS,
+        "failure_drop_percent": FAILURE_DROP_PERCENT,
+        "failure_confirm_samples": FAILURE_CONFIRM_SAMPLES,
+        "failure_min_peak_lbs": FAILURE_MIN_PEAK_LBS,
+    }
+
+
+def _job_photo_paths(job_id):
+    paths = []
+    photo_dir = Path(PHOTO_DIR)
+    for test in storage.list_tests(job_id):
+        reference = test["form"].get("photo_reference", "")
+        if not reference:
+            continue
+        candidate = photo_dir / Path(reference).name
+        if candidate.is_file():
+            paths.append(candidate)
+    return paths
 
 
 def _value(value):

@@ -40,6 +40,18 @@
       </div>
       <div class="field full"><label>Operator Notes</label><textarea name="operator_notes">{{ test.form.operator_notes }}</textarea></div>
     </div>
+    <div class="checkline"><input id="finalPhoto" name="final_reading_photo" type="checkbox" {% if test.form.final_reading_photo == "yes" %}checked{% endif %}><label for="finalPhoto">Final load-cell reading was photographed.</label></div>
+  </section>
+
+  <section class="section">
+    <h2>Post-Test Closeout</h2>
+    <div class="checkline"><input id="repairNeeded" name="repair_needed" type="checkbox" {% if test.form.repair_needed == "yes" %}checked{% endif %}><label for="repairNeeded">Repair was needed after this test.</label></div>
+    <div class="checkline"><input id="repairDone" name="repair_completed" type="checkbox" {% if test.form.repair_completed == "yes" %}checked{% endif %}><label for="repairDone">Minimal repair was completed.</label></div>
+    <div class="checkline"><input id="sampleRemoved" name="sample_removed" type="checkbox" {% if test.form.sample_removed == "yes" %}checked{% endif %}><label for="sampleRemoved">A shingle sample was removed.</label></div>
+    <div class="checkline"><input id="maintNotified" name="maintenance_notified" type="checkbox" {% if test.form.maintenance_notified == "yes" %}checked{% endif %}><label for="maintNotified">Building maintenance was notified when required.</label></div>
+    <div class="grid">
+      <div class="field full"><label>Post-Test Notes</label><textarea name="post_test_notes">{{ test.form.post_test_notes }}</textarea></div>
+    </div>
   </section>
 
   <section class="section">

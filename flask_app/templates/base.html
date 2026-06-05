@@ -19,6 +19,7 @@
         <a href="{{ url_for('home') }}">Job</a>
         <a href="{{ url_for('pretest') }}">Test</a>
         <a href="{{ url_for('exports') }}">Exports</a>
+        <a href="{{ url_for('setup_check') }}">Setup</a>
         <a href="{{ url_for('network') }}">Net</a>
       </nav>
     </div>
@@ -27,6 +28,13 @@
     {% block content %}{% endblock %}
   </main>
   <script>
+    window.QUADPOD_CSRF_TOKEN = "{{ csrf_token }}";
+    function quadpodJsonHeaders() {
+      return {
+        "Content-Type": "application/json",
+        "X-CSRF-Token": window.QUADPOD_CSRF_TOKEN
+      };
+    }
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("{{ url_for('static', filename='service-worker.js') }}");
     }

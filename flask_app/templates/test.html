@@ -24,6 +24,9 @@
 </section>
 
 <div class="btnrow">
+  {% if not operator_armed %}
+    <a class="button success" href="{{ url_for('operator_arm', next=url_for('test')) }}">Arm Controls</a>
+  {% endif %}
   <button class="success" id="startBtn" type="button">Start Pull Test</button>
   <button class="danger" id="stopBtn" type="button">Stop Test</button>
 </div>
@@ -53,7 +56,7 @@
   function postJson(url, payload = {}) {
     return fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: quadpodJsonHeaders(),
       body: JSON.stringify(payload)
     }).then((res) => res.json());
   }

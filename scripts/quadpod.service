@@ -8,6 +8,7 @@ Type=simple
 WorkingDirectory=/opt/quadpod/flask_app
 Environment=QUADPOD_MOCK_HARDWARE=0
 Environment=QUADPOD_DATABASE=/opt/quadpod/flask_app/data/quadpod.db
+Environment=QUADPOD_OPERATOR_PIN=1234
 Environment=QUADPOD_VICTOR_NEUTRAL_US=1650
 Environment=QUADPOD_VICTOR_PULL_US=1850
 Environment=QUADPOD_VICTOR_JOG_US=1850

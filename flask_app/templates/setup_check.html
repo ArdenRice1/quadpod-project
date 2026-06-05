@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Setup Check{% endblock %}
+
+{% block content %}
+<h1 class="page-title">Setup Check</h1>
+
+<section class="section">
+  <h2>Startup Status</h2>
+  <div class="list">
+    {% for label, kind, message in checks %}
+      <div class="status {{ kind }}"><strong>{{ label }}:</strong> {{ message }}</div>
+    {% endfor %}
+  </div>
+  {% if not operator_armed %}
+    <a class="button success full-width" href="{{ url_for('operator_arm', next=url_for('setup_check')) }}">Arm Controls</a>
+  {% endif %}
+</section>
+
+<section class="section">
+  <h2>Next Action</h2>
+  <div class="list">
+    <div class="item">1. Create or resume a job.</div>
+    <div class="item">2. Confirm calibration, weather, safety, and test point checklist.</div>
+    <div class="item">3. Tare the load cell, preload to 10 lb, then start the pull.</div>
+    <div class="item">4. Save result notes, export the job bundle, and shut down the Pi.</div>
+  </div>
+</section>
+
+<section class="section">
+  <h2>Local Paths</h2>
+  <div class="grid">
+    <div class="item"><strong>Database:</strong><br>{{ paths.database }}</div>
+    <div class="item"><strong>Exports:</strong><br>{{ paths.exports }}</div>
+    <div class="item"><strong>Photos:</strong><br>{{ paths.photos }}</div>
+    <div class="item"><strong>Phone URL:</strong><br>http://quadpod.local:5000<br>http://{{ hotspot_ip }}:5000</div>
+  </div>
+</section>
+{% endblock %}
