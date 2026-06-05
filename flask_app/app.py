@@ -41,6 +41,39 @@ import exporter  # noqa: E402
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
 
+CHECKBOX_FIELDS = [
+    "calibration_verified",
+    "weather_checked",
+    "unsafe_wind",
+    "lightning_present",
+    "rain_or_moisture",
+    "heat_or_cold_hazard",
+    "ice_present",
+    "weather_bypass_approved",
+    "occupants_notified",
+    "safety_acknowledged",
+    "deviation_from_standard",
+    "site_clear_of_hazards",
+    "site_representative",
+    "site_free_of_blemishes",
+    "test_board_visible",
+    "initial_reading_photo",
+    "final_reading_photo",
+    "repair_needed",
+    "repair_completed",
+    "sample_removed",
+    "maintenance_notified",
+]
+
+RESULT_CHECKBOX_FIELDS = [
+    "final_reading_photo",
+    "repair_needed",
+    "repair_completed",
+    "sample_removed",
+    "maintenance_notified",
+    "deviation_from_standard",
+]
+
 if EMAIL_ENABLED:
     email_queue.start_worker()
 
@@ -153,7 +186,7 @@ def result():
 
     test_record = storage.get_test(test_id)
     if request.method == "POST":
-        form = _form_payload(storage.TEST_FIELDS)
+        form = _form_payload(storage.TEST_FIELDS, checkbox_fields=RESULT_CHECKBOX_FIELDS)
         storage.update_test(test_id, form=form, status="complete")
         storage.add_event("Result reviewed", test_id=test_id)
         session.pop("test_id", None)
@@ -277,34 +310,14 @@ def api_process_email():
     return jsonify({"message": email_queue.process_once()})
 
 
-def _form_payload(fields):
+def _form_payload(fields, checkbox_fields=None):
     payload = {}
     for field in fields:
         if field in request.form:
             payload[field] = request.form.get(field, "")
-    for checkbox in [
-        "calibration_verified",
-        "weather_checked",
-        "unsafe_wind",
-        "lightning_present",
-        "rain_or_moisture",
-        "heat_or_cold_hazard",
-        "ice_present",
-        "weather_bypass_approved",
-        "occupants_notified",
-        "safety_acknowledged",
-        "deviation_from_standard",
-        "site_clear_of_hazards",
-        "site_representative",
-        "site_free_of_blemishes",
-        "test_board_visible",
-        "initial_reading_photo",
-        "final_reading_photo",
-        "repair_needed",
-        "repair_completed",
-        "sample_removed",
-        "maintenance_notified",
-    ]:
+    if checkbox_fields is None:
+        checkbox_fields = CHECKBOX_FIELDS
+    for checkbox in checkbox_fields:
         if checkbox in fields:
             payload[checkbox] = "yes" if checkbox in request.form else "no"
     return payload

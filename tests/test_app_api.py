@@ -53,6 +53,58 @@ class AppApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("test_id", response.get_json()["message"])
 
+    def test_result_save_preserves_pretest_checklist_fields(self):
+        job_id = storage.create_job(
+            {
+                "project_name": "Result Preserve Job",
+                "job_number": "RP-001",
+                "load_cell_id": "LC-1",
+                "load_cell_calibration_date": "2099-01-01",
+                "ir_temp_gun_id": "IR-1",
+                "ir_temp_gun_calibration_date": "2099-01-01",
+                "calibration_verified": "yes",
+                "weather_checked": "yes",
+                "safety_acknowledged": "yes",
+            }
+        )
+        test_id = storage.create_test(
+            job_id,
+            {
+                "test_number": "1",
+                "angle_degrees": "90",
+                "photo_reference": "field-photo.jpg",
+                "site_clear_of_hazards": "yes",
+                "site_representative": "yes",
+                "site_free_of_blemishes": "yes",
+                "test_board_visible": "yes",
+                "initial_reading_photo": "yes",
+            },
+        )
+        with self.client.session_transaction() as session:
+            session["test_id"] = test_id
+
+        response = self.client.post(
+            "/result",
+            data={
+                "failure_type": "Operator stop",
+                "operator_notes": "Saved result notes",
+                "final_reading_photo": "on",
+                "repair_completed": "on",
+            },
+            follow_redirects=False,
+        )
+
+        self.assertEqual(response.status_code, 302)
+        form = storage.get_test(test_id)["form"]
+        self.assertEqual(form["site_clear_of_hazards"], "yes")
+        self.assertEqual(form["site_representative"], "yes")
+        self.assertEqual(form["site_free_of_blemishes"], "yes")
+        self.assertEqual(form["test_board_visible"], "yes")
+        self.assertEqual(form["initial_reading_photo"], "yes")
+        self.assertEqual(form["final_reading_photo"], "yes")
+        self.assertEqual(form["repair_completed"], "yes")
+        self.assertEqual(form["repair_needed"], "no")
+
 
 if __name__ == "__main__":
     unittest.main()
