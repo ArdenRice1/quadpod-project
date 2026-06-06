@@ -8,7 +8,7 @@ This guide is for employees performing shingle uplift resistance testing with th
 - It is actively raining or the roof has puddles or excessive moisture.
 - Wind makes roof work unsafe or may move equipment.
 - Heat, cold, or ice makes roof work unsafe.
-- Required load cell or temperature gun calibration dates are expired.
+- Required load cell or temperature gun calibration dates have not been recorded.
 - The test point is near roof equipment, ducts, skylights, electrical lines, seams, or visible blemishes.
 - The Quadpod, shingle gripper, load cell, or actuator does not operate normally.
 
@@ -27,7 +27,7 @@ Testing may continue with a checked weather blocker only if APEC/engineering aut
 1. Open `Job`.
 2. Enter project, client, involved party, date, job number, building number, foreman, and technicians.
 3. Enter equipment IDs and calibration dates.
-4. Confirm equipment is within calibration date.
+4. Confirm equipment calibration records are checked and dates are recorded.
 5. Record humidity, barometric pressure, and weather notes.
 6. Confirm weather and safety checks.
 7. Mark any unsafe weather condition if present. If any unsafe weather box is checked, do not test unless an authorized weather deviation/bypass is recorded.
@@ -42,8 +42,8 @@ Testing may continue with a checked weather blocker only if APEC/engineering aut
 6. Record manufacturer/product information if visible.
 7. Record wind-lift evidence, nail size/placement notes, and shingle observations.
 8. Prepare a board showing test point name/number, building number, and identifiers.
-9. Photograph the test point with the board visible.
-10. Upload the photo or enter a photo reference.
+9. Photograph the test point with the board visible in the company photo system when required.
+10. In-app photo upload or photo reference is optional.
 
 ## Rig and Preload
 
@@ -55,8 +55,8 @@ Testing may continue with a checked weather blocker only if APEC/engineering aut
 6. Press `Tare` with the rig hanging freely.
 7. Take up cable slack.
 8. Jog to a 10 lb preload.
-9. Photograph the initial 10 lb load-cell reading.
-10. Confirm the photo board and initial reading boxes.
+9. Photograph the initial 10 lb load-cell reading in the company photo system when required.
+10. Mark the photo boxes only when those photos were captured.
 
 ## Run the Pull Test
 
@@ -70,7 +70,7 @@ Testing may continue with a checked weather blocker only if APEC/engineering aut
 ## Record Results
 
 1. Open `Review Result`.
-2. Photograph the final load-cell reading.
+2. Photograph the final load-cell reading in the company photo system when required.
 3. Select failure type: glue gave way, shingle tear, operator stop, no failure before limit, or other.
 4. Enter operator notes.
 5. Complete deviation records if the procedure was not followed exactly.
@@ -81,9 +81,10 @@ Testing may continue with a checked weather blocker only if APEC/engineering aut
 
 1. Repeat tests required by the investigation plan.
 2. Open `Exports`.
-3. Download `Bundle ZIP`.
-4. Queue email if required.
-5. Verify the bundle contains summary, report, audit, traces, and photos.
-6. Clean and pack equipment.
-7. Inspect the job site for stray objects and trash.
-8. Shut down the Pi normally.
+3. Download `CSV Bundle ZIP`.
+4. Use `Copy Job Folder to USB/Exports` when a flash drive or local job folder is needed.
+5. Queue email only when SMTP sending has been configured.
+6. Verify the export contains `job_and_tests.csv`, one `audit.json`, and per-test CSV files under `tests/`.
+7. Clean and pack equipment.
+8. Inspect the job site for stray objects and trash.
+9. Shut down the Pi normally.

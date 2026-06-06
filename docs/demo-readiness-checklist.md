@@ -51,7 +51,7 @@ git status --short --branch
    - jog controls
    - preload target: `10 lb +/- tolerance`
    - site suitability checklist
-   - shingle observations and photo reference
+   - shingle observations and optional photo reference
 
 4. `Live Pull` page:
    - armed controls
@@ -63,15 +63,15 @@ git status --short --branch
    - failure type
    - operator notes
    - deviation record
-   - final reading photo confirmation
+   - optional final reading photo confirmation
    - repair/sample/maintenance closeout
 
 6. `Exports` page:
-   - summary CSV
-   - trace CSV
-   - report HTML
+   - job composite CSV
+   - per-test CSV files
    - audit JSON
-   - uploaded photos inside bundle ZIP
+   - USB/export job folder
+   - uploaded photos inside bundle ZIP when in-app photos are used
 
 ## Safe Demo Flow
 
@@ -81,9 +81,9 @@ Suggested talk track:
 
 1. The operator powers on the Pi and opens one URL.
 2. The app prevents movement until controls are armed.
-3. The app prevents a pull until calibration, safety, weather, site, photo, and preload gates pass.
+3. The app prevents a pull until calibration dates are recorded, safety/weather/site checks pass, and preload is correct.
 4. Environmental blockers follow the APEC procedure by stopping normal testing, but can be documented as an authorized deviation if engineering approves.
-5. Exports carry the field record: form data, trace data, machine settings, report, audit payload, and photos.
+5. Exports carry the field record: form data, trace data, machine settings, one audit payload, and optional in-app photos.
 
 ## Last-Minute Recovery
 
@@ -91,5 +91,4 @@ Suggested talk track:
 - Phone cannot connect: use fallback `http://10.42.0.1:5000`
 - Load cell reads wrong: press `Tare`; if still wrong, do not run a real pull.
 - Actuator does not move: verify controls are armed, power is connected, and use `scripts/probe_pwm.py` only if qualified.
-- Pull will not start: read the red gate message, then check preload, calibration dates, safety/weather, site checklist, photo checklist, and operator arming.
-
+- Pull will not start: read the red gate message, then check preload, calibration dates, safety/weather, site checklist, and operator arming.

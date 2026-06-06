@@ -8,7 +8,7 @@ This guide is for maintaining, deploying, calibrating, and troubleshooting the A
 - `flask_app/app.py` is the Flask entrypoint. It defines job/test/result/export routes, JSON hardware APIs, operator arming, setup check, photo upload, and email queue actions.
 - `flask_app/engine.py` owns the live control loop. It reads the load cell, drives the actuator, enforces pull-start gates, logs samples, detects stop conditions, and writes test status.
 - `flask_app/storage.py` owns SQLite schema and all job/test/sample/event/email persistence. Form data is stored as JSON so new fields can be added without a table migration.
-- `flask_app/exporter.py` writes summary CSV, trace CSV, report HTML, audit JSON, and bundle ZIP files.
+- `flask_app/exporter.py` writes the job composite CSV, per-test trace CSV files, one audit JSON per job, bundle ZIP files, and USB/export job folders.
 - `hardware/loadcell.py` reads the HX711 load cell in mock or real GPIO mode and applies reference-unit calibration/filtering.
 - `hardware/actuator.py` drives the PCA9685 PWM board and Victor SPX in mock or real hardware mode.
 - `scripts/` contains Pi diagnostics and calibration helpers for HX711, GPIO, PCA9685, Victor SPX, hotspot setup, and systemd service.
@@ -148,11 +148,12 @@ sudo systemctl start quadpod.service
 
 Export bundle contents:
 
-- `summary.csv`
-- `report.html`
+- `job_and_tests.csv`
 - `audit.json`
-- `traces/test_<id>_trace.csv`
-- `photos/<uploaded-photo-files>`
+- `tests/test_<id>.csv`
+- `photos/<uploaded-photo-files>` when optional in-app photos were uploaded
+
+The `Copy Job Folder to USB/Exports` action writes the same layout into a named job folder. If `QUADPOD_USB_EXPORT_ROOT` is set, that folder is used first. Otherwise the app looks for writable mounted media under `/media` or `/mnt`; if none is available it writes to `flask_app/static/exports/usb_copy`.
 
 ## Troubleshooting
 
@@ -161,5 +162,5 @@ Export bundle contents:
 - Load cell not reading: press Tare in Pre-Test, run `scripts/check_hx711_dout.py`, then `scripts/read_hx711_raw.py`. Check DOUT/SCK pins and 5V/GND.
 - Load values wrong: rerun `scripts/calibrate_loadcell.py`, verify `QUADPOD_LOADCELL_REFERENCE_UNIT`, and restart service.
 - Actuator not moving: confirm controls are armed, check PCA9685 power/I2C, run `scripts/probe_pwm.py`, verify Victor neutral/calibration and actuator wiring.
-- Pull will not start: open `/setup-check`, arm controls, confirm calibration/weather/safety, clear weather blockers or record an authorized weather bypass with a reason, confirm site/photo checklists, tare, and preload to 10 lb +/- tolerance.
+- Pull will not start: open `/setup-check`, arm controls, confirm calibration dates are recorded, confirm weather/safety, clear weather blockers or record an authorized weather bypass with a reason, confirm site checklist, tare, and preload to 10 lb +/- tolerance.
 - Email not sending: download the ZIP manually or connect the Pi to internet and use Exports -> Try Sending Now.
