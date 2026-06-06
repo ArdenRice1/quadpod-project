@@ -26,9 +26,12 @@
         <div class="muted small">Job # {{ job.form.job_number }} - {{ job.status }} - created {{ job.created_at }}</div>
         <div class="btnrow">
           <a class="button secondary" href="{{ url_for('resume_job', job_id=job.id) }}">Resume</a>
-          <a class="button secondary" href="{{ url_for('download_summary', job_id=job.id) }}">Summary CSV</a>
-          <a class="button" href="{{ url_for('download_bundle', job_id=job.id) }}">Bundle ZIP</a>
+          <a class="button secondary" href="{{ url_for('download_job_report', job_id=job.id) }}">Job CSV</a>
+          <a class="button" href="{{ url_for('download_bundle', job_id=job.id) }}">CSV Bundle ZIP</a>
         </div>
+        <form method="POST" action="{{ url_for('copy_job_usb', job_id=job.id) }}">
+          <button class="full-width secondary" type="submit">Copy Job Folder to USB/Exports</button>
+        </form>
         <form method="POST" action="{{ url_for('email_job', job_id=job.id) }}">
           <div class="grid">
             <div class="field full"><label>Email Recipient</label><input name="recipient" value="{{ email_to }}" placeholder="recipient@example.com"></div>

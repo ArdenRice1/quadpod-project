@@ -93,13 +93,20 @@ def inject_globals():
 def home():
     if request.method == "POST":
         form = _form_payload(storage.JOB_FIELDS)
-        job_id = storage.create_job(form)
+        job_id = session.get("job_id")
+        if job_id and storage.get_job(job_id):
+            storage.update_job(job_id, form=form, status="active")
+        else:
+            job_id = storage.create_job(form)
         session["job_id"] = job_id
         session.pop("test_id", None)
         return redirect(url_for("pretest"))
 
     today = dt.date.today().isoformat()
-    return render_template("home.html", defaults={"date": today})
+    active = storage.get_job(session.get("job_id")) if session.get("job_id") else None
+    defaults = dict(active["form"]) if active else {"date": today}
+    defaults.setdefault("date", today)
+    return render_template("home.html", defaults=defaults)
 
 
 @app.route("/setup-check")
@@ -140,7 +147,11 @@ def resume_job(job_id):
     if not storage.get_job(job_id):
         return redirect(url_for("exports"))
     session["job_id"] = job_id
-    session.pop("test_id", None)
+    current_test = _current_editable_test(job_id)
+    if current_test:
+        session["test_id"] = current_test["id"]
+    else:
+        session.pop("test_id", None)
     return redirect(url_for("pretest"))
 
 
@@ -155,16 +166,26 @@ def pretest():
         photo = request.files.get("photo")
         if photo and photo.filename:
             form["photo_reference"] = _save_photo(job_id, form.get("test_number", ""), photo)
-        test_id = storage.create_test(job_id, form)
+        current_test = _current_editable_test(job_id)
+        if current_test:
+            test_id = current_test["id"]
+            storage.update_test(test_id, form=form, status=current_test["status"])
+        else:
+            test_id = storage.create_test(job_id, form)
         session["test_id"] = test_id
         return redirect(url_for("test"))
 
     tests = storage.list_tests(job_id)
-    defaults = {
-        "test_number": str(len(tests) + 1),
-        "air_temperature_f": "",
-        "roof_temperature_f": "",
-    }
+    current_test = _current_editable_test(job_id)
+    if current_test:
+        session["test_id"] = current_test["id"]
+        defaults = dict(current_test["form"])
+    else:
+        defaults = {
+            "test_number": str(len(tests) + 1),
+            "air_temperature_f": "",
+            "roof_temperature_f": "",
+        }
     return render_template("pretest.html", defaults=defaults, tests=tests)
 
 
@@ -221,6 +242,11 @@ def download_summary(job_id):
     return send_file(exporter.export_job_summary_csv(job_id), as_attachment=True)
 
 
+@app.route("/job/<int:job_id>/job-and-tests.csv")
+def download_job_report(job_id):
+    return send_file(exporter.export_job_report_csv(job_id), as_attachment=True)
+
+
 @app.route("/test/<int:test_id>/trace.csv")
 def download_trace(test_id):
     return send_file(exporter.export_test_trace_csv(test_id), as_attachment=True)
@@ -229,6 +255,16 @@ def download_trace(test_id):
 @app.route("/job/<int:job_id>/bundle.zip")
 def download_bundle(job_id):
     return send_file(exporter.export_job_bundle(job_id), as_attachment=True)
+
+
+@app.route("/job/<int:job_id>/copy-usb", methods=["POST"])
+def copy_job_usb(job_id):
+    try:
+        folder = exporter.copy_job_to_usb(job_id)
+        storage.add_event("Job copied to USB/export folder", job_id=job_id, data={"path": str(folder)})
+    except Exception as exc:
+        storage.add_event("USB/export copy failed", level="error", job_id=job_id, data={"error": str(exc)})
+    return redirect(url_for("exports"))
 
 
 @app.route("/job/<int:job_id>/email", methods=["POST"])
@@ -337,6 +373,18 @@ def _require_operator_armed():
         return jsonify({"ok": False, "message": "Session command token is invalid."}), 403
     if not session.get("operator_armed"):
         return jsonify({"ok": False, "message": "Enter the operator PIN before moving hardware."}), 403
+    return None
+
+
+def _current_editable_test(job_id):
+    test_id = session.get("test_id")
+    if test_id:
+        test = storage.get_test(test_id)
+        if test and test["job_id"] == job_id and test["status"] in {"created", "running"}:
+            return test
+    for test in reversed(storage.list_tests(job_id)):
+        if test["status"] in {"created", "running"}:
+            return test
     return None
 
 

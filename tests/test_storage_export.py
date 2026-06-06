@@ -71,7 +71,7 @@ class StorageExportTests(unittest.TestCase):
         self.assertEqual(row["operator_notes"], "Result notes")
         self.assertEqual(row["deviation_description"], "Minor angle shift")
 
-    def test_bundle_contains_summary_audit_report_and_trace(self):
+    def test_bundle_contains_job_csv_audit_test_csv_and_optional_photo(self):
         job_id = storage.create_job({"project_name": "Bundle Job"})
         photo_dir = Path(exporter.PHOTO_DIR)
         photo_dir.mkdir(parents=True, exist_ok=True)
@@ -97,17 +97,27 @@ class StorageExportTests(unittest.TestCase):
         self.assertGreater(Path(bundle).stat().st_size, 0)
         with zipfile.ZipFile(bundle) as zf:
             names = set(zf.namelist())
-            self.assertIn("summary.csv", names)
-            self.assertIn("report.html", names)
+            self.assertIn("job_and_tests.csv", names)
             self.assertIn("audit.json", names)
-            self.assertIn(f"traces/test_{test_id}_trace.csv", names)
+            self.assertIn(f"tests/test_{test_id}.csv", names)
             self.assertIn("photos/field-photo.jpg", names)
-            report = zf.read("report.html").decode("utf-8")
-            trace = zf.read(f"traces/test_{test_id}_trace.csv").decode("utf-8")
+            job_csv = zf.read("job_and_tests.csv").decode("utf-8")
+            trace = zf.read(f"tests/test_{test_id}.csv").decode("utf-8")
             audit = zf.read("audit.json").decode("utf-8")
-        self.assertIn("Shingle tear", report)
+        self.assertIn("Shingle tear", job_csv)
         self.assertIn("effect_on_uncertainty,Medium", trace)
         self.assertIn("machine_settings", audit)
+
+    def test_job_folder_export_uses_same_csv_layout(self):
+        job_id = storage.create_job({"project_name": "USB Job", "job_number": "USB-001"})
+        test_id = storage.create_test(job_id, {"test_number": "1"})
+        storage.add_sample(test_id, 0.0, 10.0)
+
+        folder = exporter.export_job_folder(job_id, self.root / "usb")
+
+        self.assertTrue((Path(folder) / "job_and_tests.csv").exists())
+        self.assertTrue((Path(folder) / "audit.json").exists())
+        self.assertTrue((Path(folder) / "tests" / f"test_{test_id}.csv").exists())
 
 
 if __name__ == "__main__":

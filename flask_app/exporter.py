@@ -1,5 +1,7 @@
 import csv
 import json
+import re
+import shutil
 import zipfile
 from pathlib import Path
 
@@ -16,6 +18,7 @@ from config import (
     PRELOAD_TARGET_LBS,
     PRELOAD_TOLERANCE_LBS,
     PULL_TARGET_IN_PER_MIN,
+    USB_EXPORT_ROOT,
     VICTOR_PULL_US,
 )
 import storage
@@ -28,6 +31,36 @@ def export_job_summary_csv(job_id):
     rows = [storage.build_export_row(job, test) for test in storage.list_tests(job_id)]
     path = Path(EXPORT_DIR) / f"job_{job_id}_summary.csv"
     return storage.write_csv(path, rows, storage.EXPORT_FIELDS)
+
+
+def export_job_report_csv(job_id):
+    job = storage.get_job(job_id)
+    if not job:
+        raise ValueError("Job not found")
+    tests = storage.list_tests(job_id)
+    path = Path(EXPORT_DIR) / f"job_{job_id}_job_and_tests.csv"
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(["Quadpod Job Composite", ""])
+        writer.writerow(["software_version", APP_VERSION])
+        writer.writerow(["job_id", job["id"]])
+        writer.writerow(["status", job["status"]])
+        writer.writerow([])
+        writer.writerow(["Job Fields"])
+        writer.writerow(["field", "value"])
+        for field in storage.JOB_FIELDS:
+            writer.writerow([field, job["form"].get(field, "")])
+        writer.writerow([])
+        writer.writerow(["Tests"])
+        writer.writerow(storage.EXPORT_FIELDS)
+        for test in tests:
+            row = storage.build_export_row(job, test)
+            writer.writerow([row.get(field, "") for field in storage.EXPORT_FIELDS])
+        writer.writerow([])
+        writer.writerow(["End Job Composite", ""])
+    return path
 
 
 def export_test_trace_csv(test_id):
@@ -202,8 +235,7 @@ def export_job_bundle(job_id):
     export_dir = Path(EXPORT_DIR)
     export_dir.mkdir(parents=True, exist_ok=True)
 
-    summary_path = Path(export_job_summary_csv(job_id))
-    report_path = Path(render_report_html(job_id))
+    composite_path = Path(export_job_report_csv(job_id))
     audit_path = export_dir / f"job_{job_id}_audit.json"
     audit_path.write_text(json.dumps(build_audit_payload(job_id), indent=2), encoding="utf-8")
 
@@ -211,14 +243,41 @@ def export_job_bundle(job_id):
 
     bundle_path = export_dir / f"quadpod_job_{job_id}_bundle.zip"
     with zipfile.ZipFile(bundle_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-        zf.write(summary_path, "summary.csv")
-        zf.write(report_path, "report.html")
+        zf.write(composite_path, "job_and_tests.csv")
         zf.write(audit_path, "audit.json")
         for path in trace_paths:
-            zf.write(path, f"traces/{path.name}")
+            zf.write(path, f"tests/{_test_csv_name(path.name)}")
         for photo_path in _job_photo_paths(job_id):
             zf.write(photo_path, f"photos/{photo_path.name}")
     return bundle_path
+
+
+def export_job_folder(job_id, root_dir):
+    job = storage.get_job(job_id)
+    if not job:
+        raise ValueError("Job not found")
+    root = Path(root_dir)
+    folder = root / _job_folder_name(job)
+    tests_dir = folder / "tests"
+    photos_dir = folder / "photos"
+    tests_dir.mkdir(parents=True, exist_ok=True)
+    photos_dir.mkdir(parents=True, exist_ok=True)
+
+    composite_path = Path(export_job_report_csv(job_id))
+    audit_path = Path(EXPORT_DIR) / f"job_{job_id}_audit.json"
+    audit_path.write_text(json.dumps(build_audit_payload(job_id), indent=2), encoding="utf-8")
+    shutil.copy2(composite_path, folder / "job_and_tests.csv")
+    shutil.copy2(audit_path, folder / "audit.json")
+    for test in storage.list_tests(job_id):
+        trace_path = Path(export_test_trace_csv(test["id"]))
+        shutil.copy2(trace_path, tests_dir / _test_csv_name(trace_path.name))
+    for photo_path in _job_photo_paths(job_id):
+        shutil.copy2(photo_path, photos_dir / photo_path.name)
+    return folder
+
+
+def copy_job_to_usb(job_id):
+    return export_job_folder(job_id, _usb_root())
 
 
 def machine_settings():
@@ -248,6 +307,45 @@ def _job_photo_paths(job_id):
         if candidate.is_file():
             paths.append(candidate)
     return paths
+
+
+def _job_folder_name(job):
+    label = job["form"].get("job_number") or job["form"].get("project_name") or f"job_{job['id']}"
+    return _slug(f"{label}_job_{job['id']}")
+
+
+def _test_csv_name(filename):
+    return filename.replace("_trace.csv", ".csv")
+
+
+def _usb_root():
+    if USB_EXPORT_ROOT:
+        return Path(USB_EXPORT_ROOT)
+    candidates = []
+    for base in [Path("/media"), Path("/mnt")]:
+        if not base.exists():
+            continue
+        candidates.extend(path for path in base.glob("*/*") if path.is_dir())
+        candidates.extend(path for path in base.glob("*") if path.is_dir())
+    writable = [path for path in candidates if _is_writable_dir(path)]
+    if writable:
+        return writable[0]
+    return Path(EXPORT_DIR) / "usb_copy"
+
+
+def _is_writable_dir(path):
+    try:
+        probe = path / ".quadpod_write_test"
+        probe.write_text("ok", encoding="utf-8")
+        probe.unlink()
+        return True
+    except OSError:
+        return False
+
+
+def _slug(value):
+    text = re.sub(r"[^A-Za-z0-9._-]+", "_", str(value).strip())
+    return text.strip("_") or "quadpod_job"
 
 
 def _value(value):

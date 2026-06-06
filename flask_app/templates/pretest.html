@@ -26,42 +26,42 @@
   <section class="section">
     <h2>Test Point</h2>
     <div class="grid">
-      <div class="field"><label>Test #</label><input name="test_number" value="{{ defaults.test_number }}" required></div>
-      <div class="field"><label>Test Area</label><input name="test_area" placeholder="Roof area / slope / grid"></div>
-      <div class="field"><label>Roof Area</label><input name="roof_area" placeholder="e.g. 50-100 squares"></div>
-      <div class="field"><label>Angle (85-95 degrees)</label><input name="angle_degrees" type="number" min="85" max="95" step="0.1" required></div>
-      <div class="field"><label>Air Temp (F)</label><input name="air_temperature_f" type="number" step="0.1" inputmode="decimal"></div>
-      <div class="field"><label>Roof Temp (F)</label><input name="roof_temperature_f" type="number" step="0.1" inputmode="decimal"></div>
-      <div class="field full"><label>Wind Speed & Direction</label><input name="wind_speed_direction" placeholder="e.g. 8 mph N"></div>
+      <div class="field"><label>Test #</label><input name="test_number" value="{{ defaults.get('test_number', '') }}" required></div>
+      <div class="field"><label>Test Area</label><input name="test_area" value="{{ defaults.get('test_area', '') }}" placeholder="Roof area / slope / grid"></div>
+      <div class="field"><label>Roof Area</label><input name="roof_area" value="{{ defaults.get('roof_area', '') }}" placeholder="e.g. 50-100 squares"></div>
+      <div class="field"><label>Angle (85-95 degrees)</label><input name="angle_degrees" type="number" min="85" max="95" step="0.1" value="{{ defaults.get('angle_degrees', '') }}" required></div>
+      <div class="field"><label>Air Temp (F)</label><input name="air_temperature_f" type="number" step="0.1" value="{{ defaults.get('air_temperature_f', '') }}" inputmode="decimal"></div>
+      <div class="field"><label>Roof Temp (F)</label><input name="roof_temperature_f" type="number" step="0.1" value="{{ defaults.get('roof_temperature_f', '') }}" inputmode="decimal"></div>
+      <div class="field full"><label>Wind Speed & Direction</label><input name="wind_speed_direction" value="{{ defaults.get('wind_speed_direction', '') }}" placeholder="e.g. 8 mph N"></div>
     </div>
-    <div class="checkline"><input id="siteClear" name="site_clear_of_hazards" type="checkbox" required><label for="siteClear">Test point is clear of equipment, electrical lines, ducts, skylights, and other hazards.</label></div>
-    <div class="checkline"><input id="siteRep" name="site_representative" type="checkbox" required><label for="siteRep">Test point is representative of the roof condition being investigated.</label></div>
-    <div class="checkline"><input id="siteBlemish" name="site_free_of_blemishes" type="checkbox" required><label for="siteBlemish">Test point is free of seams and visible blemishes.</label></div>
+    <div class="checkline"><input id="siteClear" name="site_clear_of_hazards" type="checkbox" {% if defaults.get('site_clear_of_hazards') == 'yes' %}checked{% endif %} required><label for="siteClear">Test point is clear of equipment, electrical lines, ducts, skylights, and other hazards.</label></div>
+    <div class="checkline"><input id="siteRep" name="site_representative" type="checkbox" {% if defaults.get('site_representative') == 'yes' %}checked{% endif %} required><label for="siteRep">Test point is representative of the roof condition being investigated.</label></div>
+    <div class="checkline"><input id="siteBlemish" name="site_free_of_blemishes" type="checkbox" {% if defaults.get('site_free_of_blemishes') == 'yes' %}checked{% endif %} required><label for="siteBlemish">Test point is free of seams and visible blemishes.</label></div>
   </section>
 
   <section class="section">
     <h2>Shingle & Photo Record</h2>
     <div class="grid">
-      <div class="field"><label>Manufacturer</label><input name="shingle_manufacturer"></div>
-      <div class="field"><label>Product / Rating</label><input name="shingle_product"></div>
-      <div class="field full"><label>Shingle Observations</label><textarea name="shingle_observations"></textarea></div>
-      <div class="field full"><label>Evidence of Wind Lift</label><textarea name="wind_lift_evidence"></textarea></div>
-      <div class="field full"><label>Nail Size / Placement Notes</label><textarea name="nail_observations"></textarea></div>
-      <div class="field full"><label>Photo</label><input name="photo" type="file" accept="image/*" capture="environment"></div>
-      <div class="field full"><label>Photo Reference</label><input name="photo_reference" placeholder="Filename, camera roll ref, or board ID"></div>
+      <div class="field"><label>Manufacturer</label><input name="shingle_manufacturer" value="{{ defaults.get('shingle_manufacturer', '') }}"></div>
+      <div class="field"><label>Product / Rating</label><input name="shingle_product" value="{{ defaults.get('shingle_product', '') }}"></div>
+      <div class="field full"><label>Shingle Observations</label><textarea name="shingle_observations">{{ defaults.get('shingle_observations', '') }}</textarea></div>
+      <div class="field full"><label>Evidence of Wind Lift</label><textarea name="wind_lift_evidence">{{ defaults.get('wind_lift_evidence', '') }}</textarea></div>
+      <div class="field full"><label>Nail Size / Placement Notes</label><textarea name="nail_observations">{{ defaults.get('nail_observations', '') }}</textarea></div>
+      <div class="field full"><label>Optional In-App Photo</label><input name="photo" type="file" accept="image/*" capture="environment"></div>
+      <div class="field full"><label>Optional Photo Reference</label><input name="photo_reference" value="{{ defaults.get('photo_reference', '') }}" placeholder="External photo system ref, camera roll ref, or board ID"></div>
     </div>
-    <div class="checkline"><input id="boardVisible" name="test_board_visible" type="checkbox" required><label for="boardVisible">Test point name/number board is visible in the photo.</label></div>
-    <div class="checkline"><input id="initialPhoto" name="initial_reading_photo" type="checkbox" required><label for="initialPhoto">Initial 10 lb load-cell reading has been photographed.</label></div>
+    <div class="checkline"><input id="boardVisible" name="test_board_visible" type="checkbox" {% if defaults.get('test_board_visible') == 'yes' %}checked{% endif %}><label for="boardVisible">Test point name/number board is visible in the external or in-app photo.</label></div>
+    <div class="checkline"><input id="initialPhoto" name="initial_reading_photo" type="checkbox" {% if defaults.get('initial_reading_photo') == 'yes' %}checked{% endif %}><label for="initialPhoto">Initial 10 lb load-cell reading has been photographed externally or in app.</label></div>
   </section>
 
   <section class="section">
     <h2>Deviation Record</h2>
-    <div class="checkline"><input id="dev" name="deviation_from_standard" type="checkbox"><label for="dev">Deviation from standard method occurred.</label></div>
+    <div class="checkline"><input id="dev" name="deviation_from_standard" type="checkbox" {% if defaults.get('deviation_from_standard') == 'yes' %}checked{% endif %}><label for="dev">Deviation from standard method occurred.</label></div>
     <div class="grid">
-      <div class="field full"><label>Description of Deviation</label><textarea name="deviation_description"></textarea></div>
-      <div class="field full"><label>Effect on Uncertainty</label><textarea name="effect_on_uncertainty"></textarea></div>
-      <div class="field"><label>Approved By</label><input name="approved_by"></div>
-      <div class="field"><label>Approved Date</label><input name="approved_date" type="date"></div>
+      <div class="field full"><label>Description of Deviation</label><textarea name="deviation_description">{{ defaults.get('deviation_description', '') }}</textarea></div>
+      <div class="field full"><label>Effect on Uncertainty</label><textarea name="effect_on_uncertainty">{{ defaults.get('effect_on_uncertainty', '') }}</textarea></div>
+      <div class="field"><label>Approved By</label><input name="approved_by" value="{{ defaults.get('approved_by', '') }}"></div>
+      <div class="field"><label>Approved Date</label><input name="approved_date" type="date" value="{{ defaults.get('approved_date', '') }}"></div>
     </div>
   </section>
 

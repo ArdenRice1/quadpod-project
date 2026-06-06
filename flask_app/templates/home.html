@@ -7,72 +7,72 @@
   <section class="section">
     <h2>Project</h2>
     <div class="grid">
-      <div class="field full"><label>Project Name</label><input name="project_name" required></div>
-      <div class="field full"><label>Project Address</label><input name="project_address" required></div>
-      <div class="field"><label>City, State, Zip</label><input name="project_city_state_zip"></div>
-      <div class="field"><label>Contact Phone</label><input name="contact_phone" inputmode="tel"></div>
+      <div class="field full"><label>Project Name</label><input name="project_name" value="{{ defaults.get('project_name', '') }}" required></div>
+      <div class="field full"><label>Project Address</label><input name="project_address" value="{{ defaults.get('project_address', '') }}" required></div>
+      <div class="field"><label>City, State, Zip</label><input name="project_city_state_zip" value="{{ defaults.get('project_city_state_zip', '') }}"></div>
+      <div class="field"><label>Contact Phone</label><input name="contact_phone" value="{{ defaults.get('contact_phone', '') }}" inputmode="tel"></div>
       <div class="field"><label>Date</label><input name="date" type="date" value="{{ defaults.date }}" required></div>
-      <div class="field"><label>Date of Suspected Loss</label><input name="suspected_loss_date" type="date"></div>
-      <div class="field"><label>Job #</label><input name="job_number" required></div>
-      <div class="field"><label>Building #</label><input name="building_number"></div>
-      <div class="field"><label>Start Time</label><input name="start_time" type="time"></div>
-      <div class="field"><label>End Time</label><input name="end_time" type="time"></div>
+      <div class="field"><label>Date of Suspected Loss</label><input name="suspected_loss_date" type="date" value="{{ defaults.get('suspected_loss_date', '') }}"></div>
+      <div class="field"><label>Job #</label><input name="job_number" value="{{ defaults.get('job_number', '') }}" required></div>
+      <div class="field"><label>Building #</label><input name="building_number" value="{{ defaults.get('building_number', '') }}"></div>
+      <div class="field"><label>Start Time</label><input name="start_time" type="time" value="{{ defaults.get('start_time', '') }}"></div>
+      <div class="field"><label>End Time</label><input name="end_time" type="time" value="{{ defaults.get('end_time', '') }}"></div>
     </div>
   </section>
 
   <section class="section">
     <h2>People</h2>
     <div class="grid">
-      <div class="field"><label>Foreman</label><input name="foreman" required></div>
-      <div class="field"><label>Tech 1</label><input name="tech_1"></div>
-      <div class="field"><label>Tech 2</label><input name="tech_2"></div>
-      <div class="field"><label>Client</label><input name="client_name"></div>
-      <div class="field full"><label>Client Address</label><input name="client_address"></div>
-      <div class="field"><label>Client City, State, Zip</label><input name="client_city_state_zip"></div>
-      <div class="field"><label>Client Phone</label><input name="client_phone" inputmode="tel"></div>
-      <div class="field"><label>Involved Party 1</label><input name="involved_party_1_name"></div>
-      <div class="field"><label>Involved Party 1 Phone</label><input name="involved_party_1_phone" inputmode="tel"></div>
-      <div class="field full"><label>Involved Party 1 Address</label><input name="involved_party_1_address"></div>
-      <div class="field"><label>Involved Party 1 City, State, Zip</label><input name="involved_party_1_city_state_zip"></div>
-      <div class="field"><label>Involved Party 2</label><input name="involved_party_2_name"></div>
-      <div class="field"><label>Involved Party 2 Phone</label><input name="involved_party_2_phone" inputmode="tel"></div>
-      <div class="field full"><label>Involved Party 2 Address</label><input name="involved_party_2_address"></div>
-      <div class="field"><label>Involved Party 2 City, State, Zip</label><input name="involved_party_2_city_state_zip"></div>
+      <div class="field"><label>Foreman</label><input name="foreman" value="{{ defaults.get('foreman', '') }}" required></div>
+      <div class="field"><label>Tech 1</label><input name="tech_1" value="{{ defaults.get('tech_1', '') }}"></div>
+      <div class="field"><label>Tech 2</label><input name="tech_2" value="{{ defaults.get('tech_2', '') }}"></div>
+      <div class="field"><label>Client</label><input name="client_name" value="{{ defaults.get('client_name', '') }}"></div>
+      <div class="field full"><label>Client Address</label><input name="client_address" value="{{ defaults.get('client_address', '') }}"></div>
+      <div class="field"><label>Client City, State, Zip</label><input name="client_city_state_zip" value="{{ defaults.get('client_city_state_zip', '') }}"></div>
+      <div class="field"><label>Client Phone</label><input name="client_phone" value="{{ defaults.get('client_phone', '') }}" inputmode="tel"></div>
+      <div class="field"><label>Involved Party 1</label><input name="involved_party_1_name" value="{{ defaults.get('involved_party_1_name', '') }}"></div>
+      <div class="field"><label>Involved Party 1 Phone</label><input name="involved_party_1_phone" value="{{ defaults.get('involved_party_1_phone', '') }}" inputmode="tel"></div>
+      <div class="field full"><label>Involved Party 1 Address</label><input name="involved_party_1_address" value="{{ defaults.get('involved_party_1_address', '') }}"></div>
+      <div class="field"><label>Involved Party 1 City, State, Zip</label><input name="involved_party_1_city_state_zip" value="{{ defaults.get('involved_party_1_city_state_zip', '') }}"></div>
+      <div class="field"><label>Involved Party 2</label><input name="involved_party_2_name" value="{{ defaults.get('involved_party_2_name', '') }}"></div>
+      <div class="field"><label>Involved Party 2 Phone</label><input name="involved_party_2_phone" value="{{ defaults.get('involved_party_2_phone', '') }}" inputmode="tel"></div>
+      <div class="field full"><label>Involved Party 2 Address</label><input name="involved_party_2_address" value="{{ defaults.get('involved_party_2_address', '') }}"></div>
+      <div class="field"><label>Involved Party 2 City, State, Zip</label><input name="involved_party_2_city_state_zip" value="{{ defaults.get('involved_party_2_city_state_zip', '') }}"></div>
     </div>
   </section>
 
   <section class="section">
     <h2>Equipment & Calibration</h2>
     <div class="grid">
-      <div class="field"><label>Air Flow Meter #</label><input name="air_flow_meter_id"></div>
-      <div class="field"><label>Air Flow Meter Calibration Date</label><input name="air_flow_meter_calibration_date" type="date"></div>
-      <div class="field"><label>Load Cell #</label><input name="load_cell_id" required></div>
-      <div class="field"><label>Load Cell Calibration Date</label><input name="load_cell_calibration_date" type="date" required></div>
-      <div class="field"><label>IR Temp Gun #</label><input name="ir_temp_gun_id" required></div>
-      <div class="field"><label>IR Temp Gun Calibration Date</label><input name="ir_temp_gun_calibration_date" type="date" required></div>
+      <div class="field"><label>Air Flow Meter #</label><input name="air_flow_meter_id" value="{{ defaults.get('air_flow_meter_id', '') }}"></div>
+      <div class="field"><label>Air Flow Meter Calibration Date</label><input name="air_flow_meter_calibration_date" type="date" value="{{ defaults.get('air_flow_meter_calibration_date', '') }}"></div>
+      <div class="field"><label>Load Cell #</label><input name="load_cell_id" value="{{ defaults.get('load_cell_id', '') }}" required></div>
+      <div class="field"><label>Load Cell Calibration Date</label><input name="load_cell_calibration_date" type="date" value="{{ defaults.get('load_cell_calibration_date', '') }}" required></div>
+      <div class="field"><label>IR Temp Gun #</label><input name="ir_temp_gun_id" value="{{ defaults.get('ir_temp_gun_id', '') }}" required></div>
+      <div class="field"><label>IR Temp Gun Calibration Date</label><input name="ir_temp_gun_calibration_date" type="date" value="{{ defaults.get('ir_temp_gun_calibration_date', '') }}" required></div>
     </div>
-    <div class="checkline"><input id="cal" name="calibration_verified" type="checkbox" required><label for="cal">All equipment is within calibration date.</label></div>
+    <div class="checkline"><input id="cal" name="calibration_verified" type="checkbox" {% if defaults.get('calibration_verified') == 'yes' %}checked{% endif %} required><label for="cal">Equipment calibration records have been checked and dates are recorded.</label></div>
   </section>
 
   <section class="section">
     <h2>Weather & Safety</h2>
     <div class="grid">
-      <div class="field"><label>Humidity (%)</label><input name="humidity_percent" type="number" step="0.1" inputmode="decimal"></div>
-      <div class="field"><label>Barometric Pressure (inHg)</label><input name="barometric_pressure_inhg" type="number" step="0.01" inputmode="decimal"></div>
-      <div class="field full"><label>Weather Notes</label><textarea name="weather_notes"></textarea></div>
+      <div class="field"><label>Humidity (%)</label><input name="humidity_percent" type="number" step="0.1" value="{{ defaults.get('humidity_percent', '') }}" inputmode="decimal"></div>
+      <div class="field"><label>Barometric Pressure (inHg)</label><input name="barometric_pressure_inhg" type="number" step="0.01" value="{{ defaults.get('barometric_pressure_inhg', '') }}" inputmode="decimal"></div>
+      <div class="field full"><label>Weather Notes</label><textarea name="weather_notes">{{ defaults.get('weather_notes', '') }}</textarea></div>
     </div>
-    <div class="checkline"><input id="weather" name="weather_checked" type="checkbox" required><label for="weather">Weather forecast and unsafe conditions checked.</label></div>
-    <div class="checkline"><input id="unsafeWind" name="unsafe_wind" type="checkbox"><label for="unsafeWind">Unsafe wind is present. Do not test until this is cleared.</label></div>
-    <div class="checkline"><input id="lightning" name="lightning_present" type="checkbox"><label for="lightning">Lightning is present. Do not test.</label></div>
-    <div class="checkline"><input id="rain" name="rain_or_moisture" type="checkbox"><label for="rain">Active rain, puddles, or excessive roof moisture are present. Do not test.</label></div>
-    <div class="checkline"><input id="tempHazard" name="heat_or_cold_hazard" type="checkbox"><label for="tempHazard">Heat or cold conditions are unsafe. Do not test until safer conditions return.</label></div>
-    <div class="checkline"><input id="ice" name="ice_present" type="checkbox"><label for="ice">Ice is present on the roof. Do not test.</label></div>
-    <div class="checkline"><input id="weatherBypass" name="weather_bypass_approved" type="checkbox"><label for="weatherBypass">Authorized weather deviation/bypass approved. Record reason below before testing.</label></div>
+    <div class="checkline"><input id="weather" name="weather_checked" type="checkbox" {% if defaults.get('weather_checked') == 'yes' %}checked{% endif %} required><label for="weather">Weather forecast and unsafe conditions checked.</label></div>
+    <div class="checkline"><input id="unsafeWind" name="unsafe_wind" type="checkbox" {% if defaults.get('unsafe_wind') == 'yes' %}checked{% endif %}><label for="unsafeWind">Unsafe wind is present. Do not test until this is cleared.</label></div>
+    <div class="checkline"><input id="lightning" name="lightning_present" type="checkbox" {% if defaults.get('lightning_present') == 'yes' %}checked{% endif %}><label for="lightning">Lightning is present. Do not test.</label></div>
+    <div class="checkline"><input id="rain" name="rain_or_moisture" type="checkbox" {% if defaults.get('rain_or_moisture') == 'yes' %}checked{% endif %}><label for="rain">Active rain, puddles, or excessive roof moisture are present. Do not test.</label></div>
+    <div class="checkline"><input id="tempHazard" name="heat_or_cold_hazard" type="checkbox" {% if defaults.get('heat_or_cold_hazard') == 'yes' %}checked{% endif %}><label for="tempHazard">Heat or cold conditions are unsafe. Do not test until safer conditions return.</label></div>
+    <div class="checkline"><input id="ice" name="ice_present" type="checkbox" {% if defaults.get('ice_present') == 'yes' %}checked{% endif %}><label for="ice">Ice is present on the roof. Do not test.</label></div>
+    <div class="checkline"><input id="weatherBypass" name="weather_bypass_approved" type="checkbox" {% if defaults.get('weather_bypass_approved') == 'yes' %}checked{% endif %}><label for="weatherBypass">Authorized weather deviation/bypass approved. Record reason below before testing.</label></div>
     <div class="grid">
-      <div class="field full"><label>Weather Bypass Reason / Approval</label><textarea name="weather_bypass_reason" placeholder="Use only when APEC/engineer authorizes testing despite a checked weather blocker."></textarea></div>
+      <div class="field full"><label>Weather Bypass Reason / Approval</label><textarea name="weather_bypass_reason" placeholder="Use only when APEC/engineer authorizes testing despite a checked weather blocker.">{{ defaults.get('weather_bypass_reason', '') }}</textarea></div>
     </div>
-    <div class="checkline"><input id="occupants" name="occupants_notified" type="checkbox"><label for="occupants">Property occupants notified if required.</label></div>
-    <div class="checkline"><input id="safety" name="safety_acknowledged" type="checkbox" required><label for="safety">Roof work safety and PPE responsibilities acknowledged.</label></div>
+    <div class="checkline"><input id="occupants" name="occupants_notified" type="checkbox" {% if defaults.get('occupants_notified') == 'yes' %}checked{% endif %}><label for="occupants">Property occupants notified if required.</label></div>
+    <div class="checkline"><input id="safety" name="safety_acknowledged" type="checkbox" {% if defaults.get('safety_acknowledged') == 'yes' %}checked{% endif %} required><label for="safety">Roof work safety and PPE responsibilities acknowledged.</label></div>
   </section>
 
   <button class="full-width success" type="submit">Proceed to Test Setup</button>

@@ -7,6 +7,7 @@ APP_DIR = BASE_DIR / "flask_app"
 DATA_DIR = APP_DIR / "data"
 EXPORT_DIR = APP_DIR / "static" / "exports"
 PHOTO_DIR = APP_DIR / "static" / "photos"
+USB_EXPORT_ROOT = os.getenv("QUADPOD_USB_EXPORT_ROOT", "")
 
 APP_VERSION = "0.2.0-field"
 SECRET_KEY = os.getenv("QUADPOD_SECRET_KEY", "change-this-on-the-pi")

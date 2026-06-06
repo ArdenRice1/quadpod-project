@@ -166,8 +166,8 @@ class QuadpodEngine:
             ("load_cell_calibration_date", "load cell calibration date"),
             ("ir_temp_gun_calibration_date", "IR temp gun calibration date"),
         ]:
-            if not _date_is_current(job_form.get(field, "")):
-                errors.append(f"{label} is missing or expired")
+            if not _date_is_recorded(job_form.get(field, "")):
+                errors.append(f"{label} must be recorded")
 
         blockers = [
             ("unsafe_wind", "unsafe wind"),
@@ -187,16 +187,12 @@ class QuadpodEngine:
             ("site_clear_of_hazards", "test point clear of roof hazards"),
             ("site_representative", "test point representative of roof condition"),
             ("site_free_of_blemishes", "test point free of visible blemishes"),
-            ("test_board_visible", "photo ID board visible"),
-            ("initial_reading_photo", "initial load-cell photo captured"),
         ]
         for field, label in required_test_checks:
             if test_form.get(field) != "yes":
                 errors.append(label + " must be confirmed")
         if not test_form.get("angle_degrees"):
             errors.append("pull angle must be recorded")
-        if not test_form.get("photo_reference"):
-            errors.append("photo reference or upload is required")
 
         return errors
 
@@ -334,8 +330,9 @@ def log_test_to_db(data_dict):
 quadpod_state = quadpod_engine.state
 
 
-def _date_is_current(value):
+def _date_is_recorded(value):
     try:
-        return dt.date.fromisoformat(str(value)) >= dt.date.today()
+        dt.date.fromisoformat(str(value))
+        return True
     except (TypeError, ValueError):
         return False

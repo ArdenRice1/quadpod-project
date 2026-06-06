@@ -105,6 +105,66 @@ class AppApiTests(unittest.TestCase):
         self.assertEqual(form["repair_completed"], "yes")
         self.assertEqual(form["repair_needed"], "no")
 
+    def test_home_post_updates_active_job_instead_of_creating_new_one(self):
+        first = {
+            "project_name": "Original Project",
+            "project_address": "1 Main",
+            "date": "2026-06-06",
+            "job_number": "J-1",
+            "foreman": "Foreman",
+            "load_cell_id": "LC-1",
+            "load_cell_calibration_date": "2024-01-01",
+            "ir_temp_gun_id": "IR-1",
+            "ir_temp_gun_calibration_date": "2024-01-01",
+            "calibration_verified": "on",
+            "weather_checked": "on",
+            "safety_acknowledged": "on",
+        }
+        second = dict(first, project_name="Updated Project")
+
+        self.client.post("/", data=first)
+        self.client.post("/", data=second)
+
+        jobs = storage.list_jobs()
+        self.assertEqual(len(jobs), 1)
+        self.assertEqual(jobs[0]["form"]["project_name"], "Updated Project")
+
+    def test_pretest_post_updates_current_unstarted_test(self):
+        job_id = storage.create_job(
+            {
+                "project_name": "Setup Preserve Job",
+                "project_address": "1 Main",
+                "date": "2026-06-06",
+                "job_number": "SP-1",
+                "foreman": "Foreman",
+                "load_cell_id": "LC-1",
+                "load_cell_calibration_date": "2024-01-01",
+                "ir_temp_gun_id": "IR-1",
+                "ir_temp_gun_calibration_date": "2024-01-01",
+                "calibration_verified": "yes",
+                "weather_checked": "yes",
+                "safety_acknowledged": "yes",
+            }
+        )
+        with self.client.session_transaction() as session:
+            session["job_id"] = job_id
+
+        base_form = {
+            "test_number": "1",
+            "test_area": "Area A",
+            "angle_degrees": "90",
+            "site_clear_of_hazards": "on",
+            "site_representative": "on",
+            "site_free_of_blemishes": "on",
+        }
+        self.client.post("/pretest", data=base_form)
+        edited = dict(base_form, test_area="Area B")
+        self.client.post("/pretest", data=edited)
+
+        tests = storage.list_tests(job_id)
+        self.assertEqual(len(tests), 1)
+        self.assertEqual(tests[0]["form"]["test_area"], "Area B")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -120,6 +120,24 @@ class ControlGateTests(unittest.TestCase):
         self.assertTrue(ok, message)
         self.assertTrue(self.engine.state["test_running"])
 
+    def test_start_accepts_recorded_past_calibration_dates(self):
+        storage.update_job(
+            self.job_id,
+            form={
+                "load_cell_calibration_date": "2024-01-01",
+                "ir_temp_gun_calibration_date": "2024-01-01",
+            },
+        )
+        self._set_load(10.0)
+        ok, message = self.engine.start_pull(self.test_id)
+        self.assertTrue(ok, message)
+
+    def test_start_does_not_require_photo_reference(self):
+        storage.update_test(self.test_id, form={"photo_reference": ""})
+        self._set_load(10.0)
+        ok, message = self.engine.start_pull(self.test_id)
+        self.assertTrue(ok, message)
+
 
 if __name__ == "__main__":
     unittest.main()
