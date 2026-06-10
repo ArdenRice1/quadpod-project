@@ -24,7 +24,6 @@ The current calibrated Quadpod field values are:
 ```bash
 export QUADPOD_MOCK_HARDWARE=0
 export QUADPOD_SECRET_KEY="replace-with-random-text"
-export QUADPOD_OPERATOR_PIN="replace-with-field-pin"
 export QUADPOD_LOADCELL_REFERENCE_UNIT=10433.64
 export QUADPOD_VICTOR_NEUTRAL_US=1650
 export QUADPOD_VICTOR_PULL_US=1850

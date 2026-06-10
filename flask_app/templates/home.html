@@ -51,28 +51,15 @@
       <div class="field"><label>IR Temp Gun #</label><input name="ir_temp_gun_id" value="{{ defaults.get('ir_temp_gun_id', '') }}" required></div>
       <div class="field"><label>IR Temp Gun Calibration Date</label><input name="ir_temp_gun_calibration_date" type="date" value="{{ defaults.get('ir_temp_gun_calibration_date', '') }}" required></div>
     </div>
-    <div class="checkline"><input id="cal" name="calibration_verified" type="checkbox" {% if defaults.get('calibration_verified') == 'yes' %}checked{% endif %} required><label for="cal">Equipment calibration records have been checked and dates are recorded.</label></div>
   </section>
 
   <section class="section">
-    <h2>Weather & Safety</h2>
+    <h2>Conditions</h2>
     <div class="grid">
       <div class="field"><label>Humidity (%)</label><input name="humidity_percent" type="number" step="0.1" value="{{ defaults.get('humidity_percent', '') }}" inputmode="decimal"></div>
       <div class="field"><label>Barometric Pressure (inHg)</label><input name="barometric_pressure_inhg" type="number" step="0.01" value="{{ defaults.get('barometric_pressure_inhg', '') }}" inputmode="decimal"></div>
       <div class="field full"><label>Weather Notes</label><textarea name="weather_notes">{{ defaults.get('weather_notes', '') }}</textarea></div>
     </div>
-    <div class="checkline"><input id="weather" name="weather_checked" type="checkbox" {% if defaults.get('weather_checked') == 'yes' %}checked{% endif %} required><label for="weather">Weather forecast and unsafe conditions checked.</label></div>
-    <div class="checkline"><input id="unsafeWind" name="unsafe_wind" type="checkbox" {% if defaults.get('unsafe_wind') == 'yes' %}checked{% endif %}><label for="unsafeWind">Unsafe wind is present. Do not test until this is cleared.</label></div>
-    <div class="checkline"><input id="lightning" name="lightning_present" type="checkbox" {% if defaults.get('lightning_present') == 'yes' %}checked{% endif %}><label for="lightning">Lightning is present. Do not test.</label></div>
-    <div class="checkline"><input id="rain" name="rain_or_moisture" type="checkbox" {% if defaults.get('rain_or_moisture') == 'yes' %}checked{% endif %}><label for="rain">Active rain, puddles, or excessive roof moisture are present. Do not test.</label></div>
-    <div class="checkline"><input id="tempHazard" name="heat_or_cold_hazard" type="checkbox" {% if defaults.get('heat_or_cold_hazard') == 'yes' %}checked{% endif %}><label for="tempHazard">Heat or cold conditions are unsafe. Do not test until safer conditions return.</label></div>
-    <div class="checkline"><input id="ice" name="ice_present" type="checkbox" {% if defaults.get('ice_present') == 'yes' %}checked{% endif %}><label for="ice">Ice is present on the roof. Do not test.</label></div>
-    <div class="checkline"><input id="weatherBypass" name="weather_bypass_approved" type="checkbox" {% if defaults.get('weather_bypass_approved') == 'yes' %}checked{% endif %}><label for="weatherBypass">Authorized weather deviation/bypass approved. Record reason below before testing.</label></div>
-    <div class="grid">
-      <div class="field full"><label>Weather Bypass Reason / Approval</label><textarea name="weather_bypass_reason" placeholder="Use only when APEC/engineer authorizes testing despite a checked weather blocker.">{{ defaults.get('weather_bypass_reason', '') }}</textarea></div>
-    </div>
-    <div class="checkline"><input id="occupants" name="occupants_notified" type="checkbox" {% if defaults.get('occupants_notified') == 'yes' %}checked{% endif %}><label for="occupants">Property occupants notified if required.</label></div>
-    <div class="checkline"><input id="safety" name="safety_acknowledged" type="checkbox" {% if defaults.get('safety_acknowledged') == 'yes' %}checked{% endif %} required><label for="safety">Roof work safety and PPE responsibilities acknowledged.</label></div>
   </section>
 
   <button class="full-width success" type="submit">Proceed to Test Setup</button>

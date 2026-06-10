@@ -1,6 +1,7 @@
 import datetime as dt
 import os
 import secrets
+import subprocess
 import sys
 from pathlib import Path
 
@@ -25,7 +26,6 @@ from config import (
     EMAIL_TO,
     EXPORT_DIR,
     HOTSPOT_IP,
-    OPERATOR_PIN,
     PHOTO_DIR,
     SECRET_KEY,
 )
@@ -42,35 +42,10 @@ app = Flask(__name__)
 app.secret_key = SECRET_KEY
 
 CHECKBOX_FIELDS = [
-    "calibration_verified",
-    "weather_checked",
-    "unsafe_wind",
-    "lightning_present",
-    "rain_or_moisture",
-    "heat_or_cold_hazard",
-    "ice_present",
-    "weather_bypass_approved",
-    "occupants_notified",
-    "safety_acknowledged",
     "deviation_from_standard",
-    "site_clear_of_hazards",
-    "site_representative",
-    "site_free_of_blemishes",
-    "test_board_visible",
-    "initial_reading_photo",
-    "final_reading_photo",
-    "repair_needed",
-    "repair_completed",
-    "sample_removed",
-    "maintenance_notified",
 ]
 
 RESULT_CHECKBOX_FIELDS = [
-    "final_reading_photo",
-    "repair_needed",
-    "repair_completed",
-    "sample_removed",
-    "maintenance_notified",
     "deviation_from_standard",
 ]
 
@@ -85,7 +60,6 @@ def inject_globals():
         "active_job": storage.get_job(session.get("job_id")) if session.get("job_id") else None,
         "hotspot_ip": HOTSPOT_IP,
         "csrf_token": _csrf_token(),
-        "operator_armed": bool(session.get("operator_armed")),
     }
 
 
@@ -114,32 +88,20 @@ def setup_check():
     status = quadpod_engine.snapshot()
     checks = [
         ("Open app", "good", "Phone URL is http://quadpod.local:5000 or fallback http://%s:5000" % HOTSPOT_IP),
-        ("Operator armed", "good" if session.get("operator_armed") else "warn", "Enter the operator PIN before moving hardware."),
         ("Load cell", "good" if status["load_cell"]["ok"] else "bad", status["load_cell"]["last_error"] or "Ready"),
         ("Actuator", "good" if status["actuator"]["ok"] else "bad", status["actuator"]["last_error"] or "Ready"),
-        ("Hardware mode", "warn" if status["mock_hardware"] else "good", "Mock mode" if status["mock_hardware"] else "Real Pi hardware mode"),
     ]
     paths = {
         "database": DATABASE_PATH,
         "exports": str(EXPORT_DIR),
-        "photos": str(PHOTO_DIR),
     }
-    return render_template("setup_check.html", status=status, checks=checks, paths=paths)
-
-
-@app.route("/operator-arm", methods=["GET", "POST"])
-def operator_arm():
-    error = ""
-    if request.method == "POST":
-        if request.form.get("csrf_token") != _csrf_token():
-            error = "Session check failed. Reload and try again."
-        elif secrets.compare_digest(request.form.get("pin", ""), OPERATOR_PIN):
-            session["operator_armed"] = True
-            storage.add_event("Operator controls armed")
-            return redirect(request.args.get("next") or url_for("setup_check"))
-        else:
-            error = "Incorrect operator PIN."
-    return render_template("operator_arm.html", error=error)
+    return render_template(
+        "setup_check.html",
+        status=status,
+        checks=checks,
+        paths=paths,
+        network=_network_status(),
+    )
 
 
 @app.route("/job/<int:job_id>/resume")
@@ -218,14 +180,48 @@ def result():
 
 @app.route("/exports")
 def exports():
-    jobs = storage.list_jobs()
+    return redirect(url_for("archive"))
+
+
+@app.route("/archive")
+def archive():
+    query = request.args.get("q", "")
+    jobs = storage.search_jobs(query)
     queue = storage.list_email_queue()
-    return render_template("exports.html", jobs=jobs, queue=queue, email_to=EMAIL_TO)
+    return render_template("archive.html", jobs=jobs, queue=queue, email_to=EMAIL_TO, query=query)
 
 
 @app.route("/network")
 def network():
     return render_template("network.html", status=quadpod_engine.snapshot())
+
+
+@app.route("/setup/network", methods=["POST"])
+def setup_network():
+    ssid = request.form.get("ssid", "").strip()
+    password = request.form.get("password", "")
+    if ssid:
+        ok, message = _connect_wifi(ssid, password)
+        storage.add_event("Wi-Fi connect requested", data={"ssid": ssid, "ok": ok, "message": message})
+    return redirect(url_for("setup_check"))
+
+
+@app.route("/api/calibrate", methods=["POST"])
+def api_calibrate():
+    guard = _require_command_token()
+    if guard:
+        return guard
+    data = request.get_json(silent=True) or {}
+    try:
+        known_lbs = float(data.get("known_lbs", 0))
+    except (TypeError, ValueError):
+        known_lbs = 0
+    if known_lbs <= 0:
+        return jsonify({"ok": False, "message": "Known weight must be greater than zero."}), 400
+    ok, message = quadpod_engine.calibrate_load_cell(known_lbs)
+    if ok:
+        storage.add_event("Runtime load-cell calibration updated", data={"known_lbs": known_lbs, "message": message})
+    return jsonify({"ok": ok, "message": message, "status": quadpod_engine.snapshot()})
 
 
 @app.route("/job/<int:job_id>/complete", methods=["POST"])
@@ -291,7 +287,7 @@ def api_status():
 
 @app.route("/api/jog", methods=["POST"])
 def api_jog():
-    guard = _require_operator_armed()
+    guard = _require_command_token()
     if guard:
         return guard
     data = request.get_json(silent=True) or {}
@@ -301,7 +297,7 @@ def api_jog():
 
 @app.route("/api/tare", methods=["POST"])
 def api_tare():
-    guard = _require_operator_armed()
+    guard = _require_command_token()
     if guard:
         return guard
     ok, message = quadpod_engine.tare()
@@ -310,7 +306,7 @@ def api_tare():
 
 @app.route("/api/start_pull", methods=["POST"])
 def api_start_pull():
-    guard = _require_operator_armed()
+    guard = _require_command_token()
     if guard:
         return guard
     test_id = session.get("test_id")
@@ -367,12 +363,10 @@ def _csrf_token():
     return token
 
 
-def _require_operator_armed():
+def _require_command_token():
     token = request.headers.get("X-CSRF-Token", "")
     if not secrets.compare_digest(token, _csrf_token()):
         return jsonify({"ok": False, "message": "Session command token is invalid."}), 403
-    if not session.get("operator_armed"):
-        return jsonify({"ok": False, "message": "Enter the operator PIN before moving hardware."}), 403
     return None
 
 
@@ -386,6 +380,76 @@ def _current_editable_test(job_id):
         if test["status"] in {"created", "running"}:
             return test
     return None
+
+
+def _network_status():
+    status = {
+        "active": "Unavailable",
+        "internet": "Unknown",
+        "wifi": [],
+        "message": "",
+    }
+    try:
+        active = subprocess.run(
+            ["nmcli", "-t", "-f", "NAME,TYPE,DEVICE", "con", "show", "--active"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if active.returncode == 0:
+            status["active"] = active.stdout.strip() or "No active connection"
+        else:
+            status["message"] = active.stderr.strip() or "NetworkManager status unavailable"
+
+        wifi = subprocess.run(
+            ["nmcli", "-t", "-f", "SSID,SIGNAL,SECURITY", "dev", "wifi", "list"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=8,
+        )
+        if wifi.returncode == 0:
+            seen = set()
+            for line in wifi.stdout.splitlines():
+                parts = line.split(":")
+                ssid = parts[0].strip()
+                if not ssid or ssid in seen:
+                    continue
+                seen.add(ssid)
+                signal = parts[1].strip() if len(parts) > 1 else ""
+                security = parts[2].strip() if len(parts) > 2 else ""
+                status["wifi"].append({"ssid": ssid, "signal": signal, "security": security})
+    except (OSError, subprocess.SubprocessError) as exc:
+        status["message"] = f"Network tools unavailable: {exc}"
+
+    internet = subprocess.run(
+        [sys.executable, "-c", "import socket; socket.create_connection(('1.1.1.1', 53), 2).close()"],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=4,
+    )
+    status["internet"] = "Online" if internet.returncode == 0 else "Offline"
+    return status
+
+
+def _connect_wifi(ssid, password):
+    command = ["nmcli", "dev", "wifi", "connect", ssid]
+    if password:
+        command.extend(["password", password])
+    try:
+        result = subprocess.run(
+            command,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=25,
+        )
+        message = (result.stdout or result.stderr).strip()
+        return result.returncode == 0, message
+    except (OSError, subprocess.SubprocessError) as exc:
+        return False, str(exc)
 
 
 def _save_photo(job_id, test_number, file_storage):

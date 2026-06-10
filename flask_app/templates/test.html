@@ -24,9 +24,6 @@
 </section>
 
 <div class="btnrow">
-  {% if not operator_armed %}
-    <a class="button success" href="{{ url_for('operator_arm', next=url_for('test')) }}">Arm Controls</a>
-  {% endif %}
   <button class="success" id="startBtn" type="button">Start Pull Test</button>
   <button class="danger" id="stopBtn" type="button">Stop Test</button>
 </div>

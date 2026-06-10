@@ -6,24 +6,51 @@
 
 <section class="section">
   <h2>Startup Status</h2>
-  <div class="list">
+  <div class="status-grid">
     {% for label, kind, message in checks %}
       <div class="status {{ kind }}"><strong>{{ label }}:</strong> {{ message }}</div>
     {% endfor %}
   </div>
-  {% if not operator_armed %}
-    <a class="button success full-width" href="{{ url_for('operator_arm', next=url_for('setup_check')) }}">Arm Controls</a>
-  {% endif %}
 </section>
 
 <section class="section">
-  <h2>Next Action</h2>
-  <div class="list">
-    <div class="item">1. Create or resume a job.</div>
-    <div class="item">2. Confirm calibration, weather, safety, and test point checklist.</div>
-    <div class="item">3. Tare the load cell, preload to 10 lb, then start the pull.</div>
-    <div class="item">4. Save result notes, export the job bundle, and shut down the Pi.</div>
+  <h2>Network</h2>
+  <div class="grid">
+    <div class="item"><strong>Phone URL:</strong><br>http://quadpod.local:5000<br>http://{{ hotspot_ip }}:5000</div>
+    <div class="item"><strong>Internet:</strong><br>{{ network.internet }}</div>
+    <div class="item full"><strong>Active Connection:</strong><br>{{ network.active }}</div>
   </div>
+  <form method="POST" action="{{ url_for('setup_network') }}">
+    <div class="grid">
+      <div class="field"><label>Wi-Fi SSID</label><input name="ssid" list="wifiNetworks" placeholder="Network name"></div>
+      <div class="field"><label>Password</label><input name="password" type="password" placeholder="Wi-Fi password"></div>
+    </div>
+    <datalist id="wifiNetworks">
+      {% for wifi in network.wifi %}
+        <option value="{{ wifi.ssid }}">{{ wifi.ssid }} {{ wifi.signal }}%</option>
+      {% endfor %}
+    </datalist>
+    <button class="full-width secondary" type="submit">Connect Wi-Fi</button>
+  </form>
+  {% if network.message %}<div class="status warn">{{ network.message }}</div>{% endif %}
+</section>
+
+<section class="section">
+  <h2>Load Cell Calibration</h2>
+  <div class="metric compact">
+    <div class="label">Live Load</div>
+    <div class="value"><span id="liveLoad">0.00</span></div>
+    <div class="unit">lbs</div>
+  </div>
+  <div id="calibrationStatus" class="status">Tare with no load, place a known weight, then apply runtime calibration.</div>
+  <div class="btnrow">
+    <button class="warn" type="button" id="tareBtn">Tare</button>
+  </div>
+  <div class="grid">
+    <div class="field"><label>Known Weight (lbs)</label><input id="knownWeight" type="number" step="0.001" min="0" inputmode="decimal"></div>
+    <div class="field"><label>Current Reference Unit</label><input value="{{ status.load_cell.reference_unit }}" readonly></div>
+  </div>
+  <button class="full-width secondary" type="button" id="calibrateBtn">Apply Runtime Calibration</button>
 </section>
 
 <section class="section">
@@ -31,8 +58,43 @@
   <div class="grid">
     <div class="item"><strong>Database:</strong><br>{{ paths.database }}</div>
     <div class="item"><strong>Exports:</strong><br>{{ paths.exports }}</div>
-    <div class="item"><strong>Photos:</strong><br>{{ paths.photos }}</div>
-    <div class="item"><strong>Phone URL:</strong><br>http://quadpod.local:5000<br>http://{{ hotspot_ip }}:5000</div>
   </div>
 </section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const liveLoad = document.getElementById("liveLoad");
+  const calibrationStatus = document.getElementById("calibrationStatus");
+
+  function setCalibrationStatus(kind, message) {
+    calibrationStatus.className = `status ${kind || ""}`;
+    calibrationStatus.textContent = message;
+  }
+
+  document.getElementById("tareBtn").addEventListener("click", () => {
+    fetch("{{ url_for('api_tare') }}", { method: "POST", headers: quadpodJsonHeaders() })
+      .then((res) => res.json())
+      .then((data) => setCalibrationStatus(data.ok ? "good" : "bad", data.message || "Tare complete."));
+  });
+
+  document.getElementById("calibrateBtn").addEventListener("click", () => {
+    const known = document.getElementById("knownWeight").value;
+    fetch("{{ url_for('api_calibrate') }}", {
+      method: "POST",
+      headers: quadpodJsonHeaders(),
+      body: JSON.stringify({ known_lbs: known })
+    })
+      .then((res) => res.json())
+      .then((data) => setCalibrationStatus(data.ok ? "good" : "bad", data.message || "Calibration command finished."));
+  });
+
+  setInterval(() => {
+    fetch("{{ url_for('api_status') }}")
+      .then((res) => res.json())
+      .then((data) => {
+        liveLoad.textContent = data.current_load.toFixed(2);
+      });
+  }, 500);
+</script>
 {% endblock %}

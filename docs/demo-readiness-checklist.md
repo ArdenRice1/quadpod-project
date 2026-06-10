@@ -34,27 +34,24 @@ git status --short --branch
 ## What To Show
 
 1. `Setup` page:
-   - hardware mode
    - load-cell status
    - actuator status
-   - database/export/photo paths
-   - operator arming
+   - database/export paths
+   - Wi-Fi/internet helper
+   - load-cell calibration helper
 
 2. `Job` page:
    - project/client/equipment fields
    - calibration dates
-   - weather and safety checks
-   - environmental blockers and documented bypass/deviation
+   - weather notes
 
 3. `Test` page:
    - tare
    - jog controls
    - preload target: `10 lb +/- tolerance`
-   - site suitability checklist
-   - shingle observations and optional photo reference
+   - shingle observations
 
 4. `Live Pull` page:
-   - armed controls
    - live force, peak, elapsed time, samples
    - start/stop behavior
    - server-side gate errors if prerequisites are missing
@@ -63,15 +60,12 @@ git status --short --branch
    - failure type
    - operator notes
    - deviation record
-   - optional final reading photo confirmation
-   - repair/sample/maintenance closeout
 
-6. `Exports` page:
+6. `Archive` page:
    - job composite CSV
    - per-test CSV files
    - audit JSON
    - USB/export job folder
-   - uploaded photos inside bundle ZIP when in-app photos are used
 
 ## Safe Demo Flow
 
@@ -80,10 +74,10 @@ For a no-risk software walkthrough, keep the machine unloaded and use mock hardw
 Suggested talk track:
 
 1. The operator powers on the Pi and opens one URL.
-2. The app prevents movement until controls are armed.
-3. The app prevents a pull until calibration dates are recorded, safety/weather/site checks pass, and preload is correct.
-4. Environmental blockers follow the APEC procedure by stopping normal testing, but can be documented as an authorized deviation if engineering approves.
-5. Exports carry the field record: form data, trace data, machine settings, one audit payload, and optional in-app photos.
+2. The app keeps normal commands behind same-session browser validation.
+3. The app prevents a pull until calibration dates are recorded, angle is recorded, hardware is healthy, and preload is correct.
+4. Archive search can find past projects by project, address, job number, client, or date.
+5. Exports carry the field record: form data, trace data, machine settings, and one audit payload.
 
 ## Last-Minute Recovery
 
@@ -91,4 +85,4 @@ Suggested talk track:
 - Phone cannot connect: use fallback `http://10.42.0.1:5000`
 - Load cell reads wrong: press `Tare`; if still wrong, do not run a real pull.
 - Actuator does not move: verify controls are armed, power is connected, and use `scripts/probe_pwm.py` only if qualified.
-- Pull will not start: read the red gate message, then check preload, calibration dates, safety/weather, site checklist, and operator arming.
+- Pull will not start: read the red gate message, then check preload, calibration dates, angle, load cell, and actuator status.

@@ -29,14 +29,13 @@ class AppApiTests(unittest.TestCase):
     def tearDown(self):
         self.tempdir.cleanup()
 
-    def test_start_pull_rejects_unarmed_session(self):
+    def test_start_pull_rejects_missing_session_token(self):
         with self.client.session_transaction() as session:
             session["csrf_token"] = "test-token"
             session["test_id"] = 1
         response = self.client.post(
             "/api/start_pull",
             json={"test_id": 1},
-            headers={"X-CSRF-Token": "test-token"},
         )
         self.assertEqual(response.status_code, 403)
         self.assertFalse(response.get_json()["ok"])
@@ -44,7 +43,6 @@ class AppApiTests(unittest.TestCase):
     def test_start_pull_rejects_bad_test_id(self):
         with self.client.session_transaction() as session:
             session["csrf_token"] = "test-token"
-            session["operator_armed"] = True
         response = self.client.post(
             "/api/start_pull",
             json={"test_id": "bad"},
@@ -62,9 +60,6 @@ class AppApiTests(unittest.TestCase):
                 "load_cell_calibration_date": "2099-01-01",
                 "ir_temp_gun_id": "IR-1",
                 "ir_temp_gun_calibration_date": "2099-01-01",
-                "calibration_verified": "yes",
-                "weather_checked": "yes",
-                "safety_acknowledged": "yes",
             }
         )
         test_id = storage.create_test(
@@ -72,12 +67,6 @@ class AppApiTests(unittest.TestCase):
             {
                 "test_number": "1",
                 "angle_degrees": "90",
-                "photo_reference": "field-photo.jpg",
-                "site_clear_of_hazards": "yes",
-                "site_representative": "yes",
-                "site_free_of_blemishes": "yes",
-                "test_board_visible": "yes",
-                "initial_reading_photo": "yes",
             },
         )
         with self.client.session_transaction() as session:
@@ -88,22 +77,14 @@ class AppApiTests(unittest.TestCase):
             data={
                 "failure_type": "Operator stop",
                 "operator_notes": "Saved result notes",
-                "final_reading_photo": "on",
-                "repair_completed": "on",
             },
             follow_redirects=False,
         )
 
         self.assertEqual(response.status_code, 302)
         form = storage.get_test(test_id)["form"]
-        self.assertEqual(form["site_clear_of_hazards"], "yes")
-        self.assertEqual(form["site_representative"], "yes")
-        self.assertEqual(form["site_free_of_blemishes"], "yes")
-        self.assertEqual(form["test_board_visible"], "yes")
-        self.assertEqual(form["initial_reading_photo"], "yes")
-        self.assertEqual(form["final_reading_photo"], "yes")
-        self.assertEqual(form["repair_completed"], "yes")
-        self.assertEqual(form["repair_needed"], "no")
+        self.assertEqual(form["failure_type"], "Operator stop")
+        self.assertEqual(form["operator_notes"], "Saved result notes")
 
     def test_home_post_updates_active_job_instead_of_creating_new_one(self):
         first = {
@@ -116,9 +97,6 @@ class AppApiTests(unittest.TestCase):
             "load_cell_calibration_date": "2024-01-01",
             "ir_temp_gun_id": "IR-1",
             "ir_temp_gun_calibration_date": "2024-01-01",
-            "calibration_verified": "on",
-            "weather_checked": "on",
-            "safety_acknowledged": "on",
         }
         second = dict(first, project_name="Updated Project")
 
@@ -141,9 +119,6 @@ class AppApiTests(unittest.TestCase):
                 "load_cell_calibration_date": "2024-01-01",
                 "ir_temp_gun_id": "IR-1",
                 "ir_temp_gun_calibration_date": "2024-01-01",
-                "calibration_verified": "yes",
-                "weather_checked": "yes",
-                "safety_acknowledged": "yes",
             }
         )
         with self.client.session_transaction() as session:
@@ -153,9 +128,6 @@ class AppApiTests(unittest.TestCase):
             "test_number": "1",
             "test_area": "Area A",
             "angle_degrees": "90",
-            "site_clear_of_hazards": "on",
-            "site_representative": "on",
-            "site_free_of_blemishes": "on",
         }
         self.client.post("/pretest", data=base_form)
         edited = dict(base_form, test_area="Area B")
@@ -164,6 +136,17 @@ class AppApiTests(unittest.TestCase):
         tests = storage.list_tests(job_id)
         self.assertEqual(len(tests), 1)
         self.assertEqual(tests[0]["form"]["test_area"], "Area B")
+
+    def test_archive_search_filters_jobs(self):
+        storage.create_job({"project_name": "Alpha Roof", "job_number": "A-1"})
+        storage.create_job({"project_name": "Beta Roof", "job_number": "B-1"})
+
+        response = self.client.get("/archive?q=Alpha")
+
+        self.assertEqual(response.status_code, 200)
+        text = response.get_data(as_text=True)
+        self.assertIn("Alpha Roof", text)
+        self.assertNotIn("Beta Roof", text)
 
 
 if __name__ == "__main__":

@@ -254,6 +254,32 @@ def list_jobs():
     return [_job_from_row(row) for row in rows]
 
 
+def search_jobs(query=""):
+    jobs = list_jobs()
+    term = str(query or "").strip().lower()
+    if not term:
+        return jobs
+    matches = []
+    for job in jobs:
+        form = job["form"]
+        haystack = " ".join(
+            str(form.get(field, ""))
+            for field in [
+                "project_name",
+                "project_address",
+                "project_city_state_zip",
+                "client_name",
+                "job_number",
+                "building_number",
+                "date",
+                "suspected_loss_date",
+            ]
+        ).lower()
+        if term in haystack:
+            matches.append(job)
+    return matches
+
+
 def _job_from_row(row):
     return {
         "id": row["id"],

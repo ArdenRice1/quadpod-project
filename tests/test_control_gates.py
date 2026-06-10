@@ -34,9 +34,6 @@ class ControlGateTests(unittest.TestCase):
             "load_cell_calibration_date": "2099-01-01",
             "ir_temp_gun_id": "IR-1",
             "ir_temp_gun_calibration_date": "2099-01-01",
-            "calibration_verified": "yes",
-            "weather_checked": "yes",
-            "safety_acknowledged": "yes",
         }
         form.update(updates)
         return form
@@ -45,12 +42,6 @@ class ControlGateTests(unittest.TestCase):
         form = {
             "test_number": "1",
             "angle_degrees": "90",
-            "photo_reference": "field-photo.jpg",
-            "site_clear_of_hazards": "yes",
-            "site_representative": "yes",
-            "site_free_of_blemishes": "yes",
-            "test_board_visible": "yes",
-            "initial_reading_photo": "yes",
         }
         form.update(updates)
         return form
@@ -84,36 +75,6 @@ class ControlGateTests(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIn("actuator test fault", message)
 
-    def test_start_rejects_weather_blocker(self):
-        storage.update_job(self.job_id, form={"lightning_present": "yes"})
-        self._set_load(10.0)
-        ok, message = self.engine.start_pull(self.test_id)
-        self.assertFalse(ok)
-        self.assertIn("lightning", message)
-
-    def test_start_allows_weather_blocker_with_documented_bypass(self):
-        storage.update_job(
-            self.job_id,
-            form={
-                "lightning_present": "yes",
-                "weather_bypass_approved": "yes",
-                "weather_bypass_reason": "Engineer approved documented deviation.",
-            },
-        )
-        self._set_load(10.0)
-        ok, message = self.engine.start_pull(self.test_id)
-        self.assertTrue(ok, message)
-
-    def test_start_rejects_weather_bypass_without_reason(self):
-        storage.update_job(
-            self.job_id,
-            form={"lightning_present": "yes", "weather_bypass_approved": "yes"},
-        )
-        self._set_load(10.0)
-        ok, message = self.engine.start_pull(self.test_id)
-        self.assertFalse(ok)
-        self.assertIn("bypass reason", message)
-
     def test_start_succeeds_when_all_gates_pass(self):
         self._set_load(10.0)
         ok, message = self.engine.start_pull(self.test_id)
@@ -134,6 +95,19 @@ class ControlGateTests(unittest.TestCase):
 
     def test_start_does_not_require_photo_reference(self):
         storage.update_test(self.test_id, form={"photo_reference": ""})
+        self._set_load(10.0)
+        ok, message = self.engine.start_pull(self.test_id)
+        self.assertTrue(ok, message)
+
+    def test_start_does_not_require_removed_site_checkboxes(self):
+        storage.update_test(
+            self.test_id,
+            form={
+                "site_clear_of_hazards": "",
+                "site_representative": "",
+                "site_free_of_blemishes": "",
+            },
+        )
         self._set_load(10.0)
         ok, message = self.engine.start_pull(self.test_id)
         self.assertTrue(ok, message)

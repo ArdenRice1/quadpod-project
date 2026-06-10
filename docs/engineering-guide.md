@@ -4,8 +4,8 @@ This guide is for maintaining, deploying, calibrating, and troubleshooting the A
 
 ## Project Layout
 
-- `config.py` holds environment-driven settings: app version, data/export/photo paths, hardware pins, PCA9685/Victor pulse widths, load-cell calibration, pull target, preload, failure detection, hotspot, email, and operator PIN.
-- `flask_app/app.py` is the Flask entrypoint. It defines job/test/result/export routes, JSON hardware APIs, operator arming, setup check, photo upload, and email queue actions.
+- `config.py` holds environment-driven settings: app version, data/export/photo paths, hardware pins, PCA9685/Victor pulse widths, load-cell calibration, pull target, preload, failure detection, hotspot, and email.
+- `flask_app/app.py` is the Flask entrypoint. It defines job/test/result/archive routes, JSON hardware APIs, setup check, calibration utility, Wi-Fi helper, USB export copy, and email queue actions.
 - `flask_app/engine.py` owns the live control loop. It reads the load cell, drives the actuator, enforces pull-start gates, logs samples, detects stop conditions, and writes test status.
 - `flask_app/storage.py` owns SQLite schema and all job/test/sample/event/email persistence. Form data is stored as JSON so new fields can be added without a table migration.
 - `flask_app/exporter.py` writes the job composite CSV, per-test trace CSV files, one audit JSON per job, bundle ZIP files, and USB/export job folders.
@@ -24,7 +24,6 @@ python -m venv flask_app\.venv
 .\flask_app\.venv\Scripts\Activate.ps1
 pip install -r flask_app\requirements.txt
 $env:QUADPOD_MOCK_HARDWARE="1"
-$env:QUADPOD_OPERATOR_PIN="1234"
 python flask_app\app.py
 ```
 
@@ -59,7 +58,6 @@ Production environment values:
 ```bash
 export QUADPOD_MOCK_HARDWARE=0
 export QUADPOD_SECRET_KEY="replace-with-random-long-value"
-export QUADPOD_OPERATOR_PIN="replace-with-field-pin"
 export QUADPOD_DATABASE=/opt/quadpod/flask_app/data/quadpod.db
 export QUADPOD_LOADCELL_REFERENCE_UNIT=10433.64
 export QUADPOD_VICTOR_NEUTRAL_US=1650
@@ -148,9 +146,9 @@ sudo systemctl start quadpod.service
 
 Export bundle contents:
 
-- `job_and_tests.csv`
+- `Project_Job#_ALL.csv`
 - `audit.json`
-- `tests/test_<id>.csv`
+- `tests/Project_Job#_Test-#.csv`
 - `photos/<uploaded-photo-files>` when optional in-app photos were uploaded
 
 The `Copy Job Folder to USB/Exports` action writes the same layout into a named job folder. If `QUADPOD_USB_EXPORT_ROOT` is set, that folder is used first. Otherwise the app looks for writable mounted media under `/media` or `/mnt`; if none is available it writes to `flask_app/static/exports/usb_copy`.
@@ -161,6 +159,6 @@ The `Copy Job Folder to USB/Exports` action writes the same layout into a named 
 - App not opening: run `sudo systemctl status quadpod.service` and `journalctl -u quadpod.service -n 100`.
 - Load cell not reading: press Tare in Pre-Test, run `scripts/check_hx711_dout.py`, then `scripts/read_hx711_raw.py`. Check DOUT/SCK pins and 5V/GND.
 - Load values wrong: rerun `scripts/calibrate_loadcell.py`, verify `QUADPOD_LOADCELL_REFERENCE_UNIT`, and restart service.
-- Actuator not moving: confirm controls are armed, check PCA9685 power/I2C, run `scripts/probe_pwm.py`, verify Victor neutral/calibration and actuator wiring.
-- Pull will not start: open `/setup-check`, arm controls, confirm calibration dates are recorded, confirm weather/safety, clear weather blockers or record an authorized weather bypass with a reason, confirm site checklist, tare, and preload to 10 lb +/- tolerance.
-- Email not sending: download the ZIP manually or connect the Pi to internet and use Exports -> Try Sending Now.
+- Actuator not moving: check PCA9685 power/I2C, run `scripts/probe_pwm.py`, verify Victor neutral/calibration and actuator wiring.
+- Pull will not start: open `/setup-check`, confirm load cell/actuator OK, confirm calibration dates are recorded, confirm angle is recorded, tare, and preload to 10 lb +/- tolerance.
+- Email not sending: download the ZIP manually or connect the Pi to internet and use Archive -> Try Sending Now.

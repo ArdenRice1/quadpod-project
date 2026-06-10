@@ -13,9 +13,6 @@
     <div class="unit">lbs</div>
   </div>
   <div class="btnrow">
-    {% if not operator_armed %}
-      <a class="button success" href="{{ url_for('operator_arm', next=url_for('pretest')) }}">Arm Controls</a>
-    {% endif %}
     <button class="secondary" type="button" id="jogUp">Jog Up</button>
     <button class="secondary" type="button" id="jogDown">Jog Down</button>
     <button class="warn" type="button" id="tareBtn">Tare</button>
@@ -34,24 +31,17 @@
       <div class="field"><label>Roof Temp (F)</label><input name="roof_temperature_f" type="number" step="0.1" value="{{ defaults.get('roof_temperature_f', '') }}" inputmode="decimal"></div>
       <div class="field full"><label>Wind Speed & Direction</label><input name="wind_speed_direction" value="{{ defaults.get('wind_speed_direction', '') }}" placeholder="e.g. 8 mph N"></div>
     </div>
-    <div class="checkline"><input id="siteClear" name="site_clear_of_hazards" type="checkbox" {% if defaults.get('site_clear_of_hazards') == 'yes' %}checked{% endif %} required><label for="siteClear">Test point is clear of equipment, electrical lines, ducts, skylights, and other hazards.</label></div>
-    <div class="checkline"><input id="siteRep" name="site_representative" type="checkbox" {% if defaults.get('site_representative') == 'yes' %}checked{% endif %} required><label for="siteRep">Test point is representative of the roof condition being investigated.</label></div>
-    <div class="checkline"><input id="siteBlemish" name="site_free_of_blemishes" type="checkbox" {% if defaults.get('site_free_of_blemishes') == 'yes' %}checked{% endif %} required><label for="siteBlemish">Test point is free of seams and visible blemishes.</label></div>
   </section>
 
   <section class="section">
-    <h2>Shingle & Photo Record</h2>
+    <h2>Shingle Record</h2>
     <div class="grid">
       <div class="field"><label>Manufacturer</label><input name="shingle_manufacturer" value="{{ defaults.get('shingle_manufacturer', '') }}"></div>
       <div class="field"><label>Product / Rating</label><input name="shingle_product" value="{{ defaults.get('shingle_product', '') }}"></div>
       <div class="field full"><label>Shingle Observations</label><textarea name="shingle_observations">{{ defaults.get('shingle_observations', '') }}</textarea></div>
       <div class="field full"><label>Evidence of Wind Lift</label><textarea name="wind_lift_evidence">{{ defaults.get('wind_lift_evidence', '') }}</textarea></div>
       <div class="field full"><label>Nail Size / Placement Notes</label><textarea name="nail_observations">{{ defaults.get('nail_observations', '') }}</textarea></div>
-      <div class="field full"><label>Optional In-App Photo</label><input name="photo" type="file" accept="image/*" capture="environment"></div>
-      <div class="field full"><label>Optional Photo Reference</label><input name="photo_reference" value="{{ defaults.get('photo_reference', '') }}" placeholder="External photo system ref, camera roll ref, or board ID"></div>
     </div>
-    <div class="checkline"><input id="boardVisible" name="test_board_visible" type="checkbox" {% if defaults.get('test_board_visible') == 'yes' %}checked{% endif %}><label for="boardVisible">Test point name/number board is visible in the external or in-app photo.</label></div>
-    <div class="checkline"><input id="initialPhoto" name="initial_reading_photo" type="checkbox" {% if defaults.get('initial_reading_photo') == 'yes' %}checked{% endif %}><label for="initialPhoto">Initial 10 lb load-cell reading has been photographed externally or in app.</label></div>
   </section>
 
   <section class="section">

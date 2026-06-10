@@ -124,6 +124,22 @@ a {
   grid-column: 1 / -1;
 }
 
+.item.full {
+  grid-column: 1 / -1;
+}
+
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.searchbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+}
+
 label {
   font-size: 12px;
   font-weight: 700;
@@ -248,6 +264,14 @@ button.warn {
   color: #cad2d9;
 }
 
+.metric.compact {
+  padding: 14px;
+}
+
+.metric.compact .value {
+  font-size: 44px;
+}
+
 .status {
   border-radius: var(--radius);
   border: 1px solid var(--line);
@@ -301,6 +325,11 @@ button.warn {
   }
 
   .grid {
+    grid-template-columns: 1fr;
+  }
+
+  .status-grid,
+  .searchbar {
     grid-template-columns: 1fr;
   }
 

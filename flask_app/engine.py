@@ -88,6 +88,22 @@ class QuadpodEngine:
             ok = self.load_cell.tare()
             return ok, self.load_cell.last_error
 
+    def calibrate_load_cell(self, known_lbs):
+        with self.lock:
+            if self.state["test_running"]:
+                return False, "Cannot calibrate while a pull test is running."
+            if known_lbs <= 0:
+                return False, "Known weight must be greater than zero."
+            self.load_cell.get_force()
+            raw_counts = float(getattr(self.load_cell, "last_raw_counts", 0.0) or 0.0)
+            zero_counts = float(self.load_cell.health().get("zero_counts") or 0.0)
+            raw_delta = raw_counts - zero_counts
+            if abs(raw_delta) < 1.0:
+                return False, "Known weight did not create enough raw load-cell change after tare."
+            reference_unit = self.load_cell.calibrate_from_known_weight(raw_delta, known_lbs)
+            self.load_cell.samples.clear()
+            return True, f"Runtime reference unit set to {reference_unit:.6f}. Update QUADPOD_LOADCELL_REFERENCE_UNIT to make it permanent."
+
     def start_pull(self, test_id):
         with self.lock:
             if self.state["test_running"]:
@@ -155,42 +171,12 @@ class QuadpodEngine:
 
         job_form = job["form"]
         test_form = test["form"]
-        if job_form.get("calibration_verified") != "yes":
-            errors.append("equipment calibration must be acknowledged")
-        if job_form.get("weather_checked") != "yes":
-            errors.append("weather check must be acknowledged")
-        if job_form.get("safety_acknowledged") != "yes":
-            errors.append("roof safety/PPE must be acknowledged")
-
         for field, label in [
             ("load_cell_calibration_date", "load cell calibration date"),
             ("ir_temp_gun_calibration_date", "IR temp gun calibration date"),
         ]:
             if not _date_is_recorded(job_form.get(field, "")):
                 errors.append(f"{label} must be recorded")
-
-        blockers = [
-            ("unsafe_wind", "unsafe wind"),
-            ("lightning_present", "lightning"),
-            ("rain_or_moisture", "rain/roof moisture"),
-            ("heat_or_cold_hazard", "heat/cold hazard"),
-            ("ice_present", "ice"),
-        ]
-        active_blockers = [label for field, label in blockers if job_form.get(field) == "yes"]
-        if active_blockers and job_form.get("weather_bypass_approved") != "yes":
-            errors.append("unsafe weather condition present: " + ", ".join(active_blockers))
-        if active_blockers and job_form.get("weather_bypass_approved") == "yes":
-            if not job_form.get("weather_bypass_reason"):
-                errors.append("weather bypass reason is required")
-
-        required_test_checks = [
-            ("site_clear_of_hazards", "test point clear of roof hazards"),
-            ("site_representative", "test point representative of roof condition"),
-            ("site_free_of_blemishes", "test point free of visible blemishes"),
-        ]
-        for field, label in required_test_checks:
-            if test_form.get(field) != "yes":
-                errors.append(label + " must be confirmed")
         if not test_form.get("angle_degrees"):
             errors.append("pull angle must be recorded")
 

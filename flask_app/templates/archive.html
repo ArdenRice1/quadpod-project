@@ -1,8 +1,8 @@
 {% extends "base.html" %}
-{% block title %}Exports{% endblock %}
+{% block title %}Archive{% endblock %}
 
 {% block content %}
-<h1 class="page-title">Jobs & Exports</h1>
+<h1 class="page-title">Job Archive</h1>
 
 {% if active_job %}
 <section class="section">
@@ -18,16 +18,27 @@
 {% endif %}
 
 <section class="section">
+  <h2>Search</h2>
+  <form method="GET" action="{{ url_for('archive') }}">
+    <div class="searchbar">
+      <input name="q" value="{{ query }}" placeholder="Project, job #, address, client, date">
+      <button class="secondary" type="submit">Search</button>
+    </div>
+  </form>
+</section>
+
+<section class="section">
   <h2>Saved Jobs</h2>
   <div class="list">
     {% for job in jobs %}
       <div class="item">
         <strong>{{ job.form.project_name or "Untitled Job" }}</strong>
         <div class="muted small">Job # {{ job.form.job_number }} - {{ job.status }} - created {{ job.created_at }}</div>
+        <div class="muted small">{{ job.form.project_address }}</div>
         <div class="btnrow">
           <a class="button secondary" href="{{ url_for('resume_job', job_id=job.id) }}">Resume</a>
-          <a class="button secondary" href="{{ url_for('download_job_report', job_id=job.id) }}">Job CSV</a>
-          <a class="button" href="{{ url_for('download_bundle', job_id=job.id) }}">CSV Bundle ZIP</a>
+          <a class="button secondary" href="{{ url_for('download_job_report', job_id=job.id) }}">ALL CSV</a>
+          <a class="button" href="{{ url_for('download_bundle', job_id=job.id) }}">ZIP</a>
         </div>
         <form method="POST" action="{{ url_for('copy_job_usb', job_id=job.id) }}">
           <button class="full-width secondary" type="submit">Copy Job Folder to USB/Exports</button>
@@ -40,7 +51,7 @@
         </form>
       </div>
     {% else %}
-      <div class="status warn">No jobs have been created yet.</div>
+      <div class="status warn">No jobs found.</div>
     {% endfor %}
   </div>
 </section>
@@ -50,7 +61,7 @@
   <div class="btnrow">
     <button class="secondary" id="processEmail" type="button">Try Sending Now</button>
   </div>
-  <div id="emailStatus" class="status warn">Queued email waits here until internet and SMTP settings are available.</div>
+  <div id="emailStatus" class="status warn">Email sending requires internet and SMTP settings. Downloads and USB export always work.</div>
   <div class="list">
     {% for item in queue %}
       <div class="item">

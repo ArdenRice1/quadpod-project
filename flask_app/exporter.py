@@ -1,4 +1,4 @@
-import csv
+﻿import csv
 import json
 import re
 import shutil
@@ -24,13 +24,162 @@ from config import (
 import storage
 
 
+FIELD_LABELS = {
+    "project_name": "Project Name",
+    "project_address": "Address",
+    "project_city_state_zip": "City, State, Zip",
+    "contact_phone": "Contact Phone",
+    "client_name": "Client",
+    "client_address": "Client Address",
+    "client_city_state_zip": "Client City, State, Zip",
+    "client_phone": "Client Phone",
+    "involved_party_1_name": "Involved Party",
+    "involved_party_1_address": "Involved Party Address",
+    "involved_party_1_city_state_zip": "Involved Party City, State, Zip",
+    "involved_party_1_phone": "Involved Party Phone",
+    "involved_party_2_name": "Involved Party 2",
+    "involved_party_2_address": "Involved Party 2 Address",
+    "involved_party_2_city_state_zip": "Involved Party 2 City, State, Zip",
+    "involved_party_2_phone": "Involved Party 2 Phone",
+    "date": "Date",
+    "suspected_loss_date": "Date of Suspected Loss",
+    "job_number": "Job #",
+    "building_number": "Building #",
+    "foreman": "Foreman",
+    "tech_1": "Tech. 1",
+    "tech_2": "Tech. 2",
+    "start_time": "Start Time",
+    "end_time": "End Time",
+    "air_flow_meter_id": "Air Flow Meter #",
+    "air_flow_meter_calibration_date": "Air Flow Meter Calibration Date",
+    "load_cell_id": "Load Cell #",
+    "load_cell_calibration_date": "Load Cell Calibration Date",
+    "ir_temp_gun_id": "IR Temp. Gun #",
+    "ir_temp_gun_calibration_date": "IR Temp. Gun Calibration Date",
+    "humidity_percent": "Humidity (%)",
+    "barometric_pressure_inhg": "Barometric Pressure (inHg)",
+    "weather_notes": "Weather Notes",
+    "test_number": "Test #",
+    "test_area": "Test Area",
+    "roof_area": "Roof Area",
+    "angle_degrees": "Angle",
+    "air_temperature_f": "Air Temp. (F)",
+    "roof_temperature_f": "Roof Temp. (F)",
+    "wind_speed_direction": "Wind Speed & Direction",
+    "shingle_manufacturer": "Shingle Manufacturer",
+    "shingle_product": "Shingle Product / Rating",
+    "shingle_observations": "Shingle Observations",
+    "wind_lift_evidence": "Evidence of Wind Lift",
+    "nail_observations": "Nail Size / Placement Notes",
+    "started_at": "Started At",
+    "completed_at": "Completed At",
+    "initial_preload_lbs": "Initial Preload (lbs)",
+    "peak_load_lbs": "Max Load Value (lbs)",
+    "stop_reason": "Stop Reason",
+    "sample_count": "Sample Count",
+    "failure_type": "Failure Type",
+    "operator_notes": "Notes",
+    "deviation_from_standard": "Any deviations from standard method?",
+    "deviation_description": "Description of Deviation",
+    "effect_on_uncertainty": "Effect on Uncertainty",
+    "approved_by": "Approved By",
+    "approved_date": "Approved Date",
+}
+
+JOB_HEADER_FIELDS = [
+    "project_name",
+    "project_address",
+    "project_city_state_zip",
+    "contact_phone",
+    "client_name",
+    "client_address",
+    "client_city_state_zip",
+    "client_phone",
+    "involved_party_1_name",
+    "involved_party_1_address",
+    "involved_party_1_city_state_zip",
+    "involved_party_1_phone",
+    "involved_party_2_name",
+    "involved_party_2_address",
+    "involved_party_2_city_state_zip",
+    "involved_party_2_phone",
+    "date",
+    "suspected_loss_date",
+    "job_number",
+    "building_number",
+    "foreman",
+    "tech_1",
+    "tech_2",
+    "start_time",
+    "end_time",
+]
+
+EQUIPMENT_FIELDS = [
+    "air_flow_meter_id",
+    "air_flow_meter_calibration_date",
+    "load_cell_id",
+    "load_cell_calibration_date",
+    "ir_temp_gun_id",
+    "ir_temp_gun_calibration_date",
+]
+
+CONDITION_FIELDS = [
+    "humidity_percent",
+    "barometric_pressure_inhg",
+    "weather_notes",
+]
+
+TEST_DETAIL_FIELDS = [
+    "test_number",
+    "test_area",
+    "roof_area",
+    "angle_degrees",
+    "shingle_manufacturer",
+    "shingle_product",
+    "air_temperature_f",
+    "roof_temperature_f",
+    "wind_speed_direction",
+    "shingle_observations",
+    "wind_lift_evidence",
+    "nail_observations",
+]
+
+RESULT_DETAIL_FIELDS = [
+    "started_at",
+    "completed_at",
+    "initial_preload_lbs",
+    "peak_load_lbs",
+    "stop_reason",
+    "sample_count",
+    "failure_type",
+    "operator_notes",
+]
+
+DEVIATION_FIELDS = [
+    "deviation_from_standard",
+    "deviation_description",
+    "effect_on_uncertainty",
+    "approved_by",
+    "approved_date",
+]
+
+JOB_TEST_TABLE = [
+    ("test_number", "Test #"),
+    ("angle_degrees", "Angle"),
+    ("peak_load_lbs", "Max Load Value (lbs)"),
+    ("completed_at", "Time"),
+    ("roof_temperature_f", "Temp."),
+    ("wind_speed_direction", "Wind Speed & Direction"),
+    ("failure_type", "Failure Type"),
+    ("operator_notes", "Notes"),
+]
+
+
 def export_job_summary_csv(job_id):
     job = storage.get_job(job_id)
     if not job:
         raise ValueError("Job not found")
-    rows = [storage.build_export_row(job, test) for test in storage.list_tests(job_id)]
-    path = Path(EXPORT_DIR) / f"job_{job_id}_summary.csv"
-    return storage.write_csv(path, rows, storage.EXPORT_FIELDS)
+    return export_job_report_csv(job_id)
 
 
 def export_job_report_csv(job_id):
@@ -38,28 +187,42 @@ def export_job_report_csv(job_id):
     if not job:
         raise ValueError("Job not found")
     tests = storage.list_tests(job_id)
-    path = Path(EXPORT_DIR) / f"job_{job_id}_job_and_tests.csv"
+    path = Path(EXPORT_DIR) / f"{_job_all_csv_name(job)}"
     path.parent.mkdir(parents=True, exist_ok=True)
 
     with path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle)
-        writer.writerow(["Quadpod Job Composite", ""])
-        writer.writerow(["software_version", APP_VERSION])
-        writer.writerow(["job_id", job["id"]])
-        writer.writerow(["status", job["status"]])
+        writer.writerow(["APEC Quadpod Job Record", ""])
+        writer.writerow(["Software Version", APP_VERSION])
+        writer.writerow(["Job ID", job["id"]])
+        writer.writerow(["Status", job["status"]])
         writer.writerow([])
-        writer.writerow(["Job Fields"])
-        writer.writerow(["field", "value"])
-        for field in storage.JOB_FIELDS:
-            writer.writerow([field, job["form"].get(field, "")])
+        _write_field_section(writer, "Job Information", job["form"], JOB_HEADER_FIELDS)
+        _write_field_section(writer, "Equipment", job["form"], EQUIPMENT_FIELDS)
+        _write_field_section(writer, "Conditions", job["form"], CONDITION_FIELDS)
         writer.writerow([])
-        writer.writerow(["Tests"])
-        writer.writerow(storage.EXPORT_FIELDS)
+        writer.writerow(["Test Summary"])
+        writer.writerow([label for _, label in JOB_TEST_TABLE])
         for test in tests:
-            row = storage.build_export_row(job, test)
-            writer.writerow([row.get(field, "") for field in storage.EXPORT_FIELDS])
+            row = _combined_row(job, test)
+            writer.writerow([_format_value(row.get(field, "")) for field, _ in JOB_TEST_TABLE])
         writer.writerow([])
-        writer.writerow(["End Job Composite", ""])
+        writer.writerow(["Deviation Records"])
+        writer.writerow(["Test #", "Any Deviations?", "Description of Deviation", "Effect on Uncertainty", "Approved By", "Approved Date"])
+        for test in tests:
+            row = _combined_row(job, test)
+            writer.writerow(
+                [
+                    row.get("test_number", ""),
+                    _yes_no(row.get("deviation_from_standard", "")),
+                    row.get("deviation_description", ""),
+                    row.get("effect_on_uncertainty", ""),
+                    row.get("approved_by", ""),
+                    row.get("approved_date", ""),
+                ]
+            )
+        writer.writerow([])
+        writer.writerow(["End Job Record", ""])
     return path
 
 
@@ -71,67 +234,40 @@ def export_test_trace_csv(test_id):
     if not job:
         raise ValueError("Job not found")
 
-    path = Path(EXPORT_DIR) / f"test_{test_id}_trace.csv"
+    path = Path(EXPORT_DIR) / _test_csv_name(job, test)
     path.parent.mkdir(parents=True, exist_ok=True)
     samples = storage.list_samples(test_id)
-
-    metadata = [
-        ("Quadpod Test Trace", ""),
-        ("software_version", test.get("software_version") or APP_VERSION),
-        ("job_id", job["id"]),
-        ("project_name", job["form"].get("project_name", "")),
-        ("project_address", job["form"].get("project_address", "")),
-        ("job_number", job["form"].get("job_number", "")),
-        ("test_id", test["id"]),
-        ("test_number", test["form"].get("test_number", "")),
-        ("test_area", test["form"].get("test_area", "")),
-        ("roof_area", test["form"].get("roof_area", "")),
-        ("angle_degrees", test["form"].get("angle_degrees", "")),
-        ("shingle_manufacturer", test["form"].get("shingle_manufacturer", "")),
-        ("shingle_product", test["form"].get("shingle_product", "")),
-        ("air_temperature_f", test["form"].get("air_temperature_f", "")),
-        ("roof_temperature_f", test["form"].get("roof_temperature_f", "")),
-        ("wind_speed_direction", test["form"].get("wind_speed_direction", "")),
-        ("started_at", test.get("started_at") or ""),
-        ("completed_at", test.get("completed_at") or ""),
-        ("initial_preload_lbs", _value(test.get("initial_preload_lbs"))),
-        ("peak_load_lbs", _value(test.get("peak_load_lbs"))),
-        ("stop_reason", test.get("stop_reason") or ""),
-        ("sample_count", test.get("sample_count") or 0),
-        ("failure_type", test["form"].get("failure_type", "")),
-        ("operator_notes", test["form"].get("operator_notes", "")),
-        ("deviation_from_standard", test["form"].get("deviation_from_standard", "")),
-        ("deviation_description", test["form"].get("deviation_description", "")),
-        ("effect_on_uncertainty", test["form"].get("effect_on_uncertainty", "")),
-        ("approved_by", test["form"].get("approved_by", "")),
-        ("approved_date", test["form"].get("approved_date", "")),
-        ("photo_reference", test["form"].get("photo_reference", "")),
-        ("final_reading_photo", test["form"].get("final_reading_photo", "")),
-        ("repair_needed", test["form"].get("repair_needed", "")),
-        ("repair_completed", test["form"].get("repair_completed", "")),
-        ("sample_removed", test["form"].get("sample_removed", "")),
-        ("maintenance_notified", test["form"].get("maintenance_notified", "")),
-        ("pull_target_in_per_min", PULL_TARGET_IN_PER_MIN),
-        ("victor_pull_us", VICTOR_PULL_US),
-        ("pull_direction", ACTUATOR_PULL_DIRECTION),
-    ]
+    row = _combined_row(job, test)
 
     with path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle)
-        for key, value in metadata:
-            writer.writerow([key, value])
+        writer.writerow(["APEC Quadpod Test Record", ""])
+        writer.writerow(["Software Version", test.get("software_version") or APP_VERSION])
+        writer.writerow(["Job ID", job["id"]])
+        writer.writerow(["Test ID", test["id"]])
         writer.writerow([])
+        _write_field_section(writer, "Job Information", job["form"], ["project_name", "job_number", "project_address", "date", "building_number", "foreman"])
+        _write_field_section(writer, "Equipment", job["form"], EQUIPMENT_FIELDS)
+        writer.writerow([])
+        _write_field_section(writer, "Test Information", row, TEST_DETAIL_FIELDS)
+        _write_field_section(writer, "Results", row, RESULT_DETAIL_FIELDS)
         writer.writerow(["Samples"])
-        writer.writerow(["timestamp", "elapsed_s", "force_lbs", "raw_counts"])
-        for sample in samples:
+        writer.writerow(["Timestamp", "Elapsed Seconds", "Sample #", "Force (lbs)"])
+        for index, sample in enumerate(samples, start=1):
             writer.writerow(
                 [
                     sample.get("timestamp", ""),
                     _value(sample.get("elapsed_s")),
+                    index,
                     _value(sample.get("force_lbs")),
-                    _value(sample.get("raw_lbs")),
                 ]
             )
+        writer.writerow([])
+        _write_field_section(writer, "Deviation Record", row, DEVIATION_FIELDS)
+        writer.writerow([])
+        writer.writerow(["Machine Settings"])
+        for key, value in machine_settings().items():
+            writer.writerow([_labelize(key), value])
     return path
 
 
@@ -154,80 +290,6 @@ def build_audit_payload(job_id):
     }
 
 
-def render_report_html(job_id):
-    job = storage.get_job(job_id)
-    if not job:
-        raise ValueError("Job not found")
-    tests = storage.list_tests(job_id)
-    rows = [storage.build_export_row(job, test) for test in tests]
-    body_rows = []
-    for row in rows:
-        body_rows.append(
-            "<tr>"
-            f"<td>{_h(row['test_number'])}</td>"
-            f"<td>{_h(row['angle_degrees'])}</td>"
-            f"<td>{_h(row['max_load_lbs'])}</td>"
-            f"<td>{_h(row['failure_type'])}</td>"
-            f"<td>{_h(row['test_completed_at'])}</td>"
-            f"<td>{_h(row['roof_temperature_f'])}</td>"
-            f"<td>{_h(row['wind_speed_direction'])}</td>"
-            f"<td>{_h(row['deviation_from_standard'])}</td>"
-            f"<td>{_h(row['operator_notes'])}</td>"
-            "</tr>"
-            "<tr>"
-            f"<td colspan=\"9\">"
-            f"<strong>Deviation:</strong> {_h(row['deviation_description'])} "
-            f"<strong>Uncertainty:</strong> {_h(row['effect_on_uncertainty'])} "
-            f"<strong>Approved:</strong> {_h(row['approved_by'])} {_h(row['approved_date'])} "
-            f"<strong>Photo:</strong> {_h(row['photo_reference'])} "
-            f"<strong>Closeout:</strong> repair needed {_h(row['repair_needed'])}, "
-            f"repair completed {_h(row['repair_completed'])}, sample removed {_h(row['sample_removed'])}, "
-            f"maintenance notified {_h(row['maintenance_notified'])}. {_h(row['post_test_notes'])}"
-            "</td>"
-            "</tr>"
-        )
-    html = f"""<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>Quadpod Job {job_id} Report</title>
-  <style>
-    body {{ font-family: Arial, sans-serif; margin: 32px; color: #111; }}
-    h1, h2 {{ margin: 0 0 12px; }}
-    table {{ border-collapse: collapse; width: 100%; margin: 16px 0; }}
-    th, td {{ border: 1px solid #555; padding: 6px 8px; text-align: left; }}
-    th {{ background: #eee; }}
-    .grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 8px 24px; }}
-    .label {{ font-weight: bold; }}
-  </style>
-</head>
-<body>
-  <h1>APEC Quadpod Field Report</h1>
-  <p>Field ASTM-aligned shingle uplift resistance record. Strict ASTM certification requires APEC review of the licensed standard and apparatus validation.</p>
-  <h2>Job</h2>
-  <div class="grid">
-    <div><span class="label">Project:</span> {_h(job['form'].get('project_name'))}</div>
-    <div><span class="label">Job #:</span> {_h(job['form'].get('job_number'))}</div>
-    <div><span class="label">Address:</span> {_h(job['form'].get('project_address'))}</div>
-    <div><span class="label">Date:</span> {_h(job['form'].get('date'))}</div>
-    <div><span class="label">Foreman:</span> {_h(job['form'].get('foreman'))}</div>
-    <div><span class="label">Building #:</span> {_h(job['form'].get('building_number'))}</div>
-  </div>
-  <h2>Tests</h2>
-  <table>
-    <thead>
-      <tr><th>Test #</th><th>Angle</th><th>Max Load (lbs)</th><th>Failure</th><th>Time</th><th>Roof Temp</th><th>Wind</th><th>Deviation</th><th>Notes</th></tr>
-    </thead>
-    <tbody>{''.join(body_rows)}</tbody>
-  </table>
-</body>
-</html>"""
-    path = Path(EXPORT_DIR) / f"job_{job_id}_report.html"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(html, encoding="utf-8")
-    return path
-
-
 def export_job_bundle(job_id):
     job = storage.get_job(job_id)
     if not job:
@@ -239,14 +301,15 @@ def export_job_bundle(job_id):
     audit_path = export_dir / f"job_{job_id}_audit.json"
     audit_path.write_text(json.dumps(build_audit_payload(job_id), indent=2), encoding="utf-8")
 
-    trace_paths = [Path(export_test_trace_csv(test["id"])) for test in storage.list_tests(job_id)]
+    tests = storage.list_tests(job_id)
+    trace_paths = [Path(export_test_trace_csv(test["id"])) for test in tests]
 
-    bundle_path = export_dir / f"quadpod_job_{job_id}_bundle.zip"
+    bundle_path = export_dir / f"{_job_export_zip_name(job)}"
     with zipfile.ZipFile(bundle_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-        zf.write(composite_path, "job_and_tests.csv")
+        zf.write(composite_path, composite_path.name)
         zf.write(audit_path, "audit.json")
         for path in trace_paths:
-            zf.write(path, f"tests/{_test_csv_name(path.name)}")
+            zf.write(path, f"tests/{path.name}")
         for photo_path in _job_photo_paths(job_id):
             zf.write(photo_path, f"photos/{photo_path.name}")
     return bundle_path
@@ -266,11 +329,11 @@ def export_job_folder(job_id, root_dir):
     composite_path = Path(export_job_report_csv(job_id))
     audit_path = Path(EXPORT_DIR) / f"job_{job_id}_audit.json"
     audit_path.write_text(json.dumps(build_audit_payload(job_id), indent=2), encoding="utf-8")
-    shutil.copy2(composite_path, folder / "job_and_tests.csv")
+    shutil.copy2(composite_path, folder / composite_path.name)
     shutil.copy2(audit_path, folder / "audit.json")
     for test in storage.list_tests(job_id):
         trace_path = Path(export_test_trace_csv(test["id"]))
-        shutil.copy2(trace_path, tests_dir / _test_csv_name(trace_path.name))
+        shutil.copy2(trace_path, tests_dir / trace_path.name)
     for photo_path in _job_photo_paths(job_id):
         shutil.copy2(photo_path, photos_dir / photo_path.name)
     return folder
@@ -310,12 +373,26 @@ def _job_photo_paths(job_id):
 
 
 def _job_folder_name(job):
-    label = job["form"].get("job_number") or job["form"].get("project_name") or f"job_{job['id']}"
-    return _slug(f"{label}_job_{job['id']}")
+    return _slug(_job_base_name(job) or f"job_{job['id']}")
 
 
-def _test_csv_name(filename):
-    return filename.replace("_trace.csv", ".csv")
+def _job_all_csv_name(job):
+    return f"{_job_base_name(job)}_ALL.csv"
+
+
+def _job_export_zip_name(job):
+    return f"{_job_base_name(job)}_EXPORT.zip"
+
+
+def _test_csv_name(job, test):
+    test_number = test["form"].get("test_number") or test["id"]
+    return f"{_job_base_name(job)}_Test-{_slug(test_number)}.csv"
+
+
+def _job_base_name(job):
+    project = job["form"].get("project_name") or "Project"
+    job_number = job["form"].get("job_number") or f"Job-{job['id']}"
+    return _slug(f"{project}_{job_number}")
 
 
 def _usb_root():
@@ -348,7 +425,34 @@ def _slug(value):
     return text.strip("_") or "quadpod_job"
 
 
-def _value(value):
+def _combined_row(job, test):
+    row = {}
+    row.update(job["form"])
+    row.update(test["form"])
+    row.update(
+        {
+            "started_at": test.get("started_at") or "",
+            "completed_at": test.get("completed_at") or "",
+            "initial_preload_lbs": _value(test.get("initial_preload_lbs")),
+            "peak_load_lbs": _value(test.get("peak_load_lbs")),
+            "stop_reason": test.get("stop_reason") or "",
+            "sample_count": test.get("sample_count") or 0,
+        }
+    )
+    return row
+
+
+def _write_field_section(writer, title, data, fields):
+    writer.writerow([title, ""])
+    writer.writerow(["Field", "Value"])
+    for field in fields:
+        value = _format_value(data.get(field, ""))
+        if value != "":
+            writer.writerow([FIELD_LABELS.get(field, _labelize(field)), value])
+    writer.writerow([])
+
+
+def _format_value(value):
     if value is None:
         return ""
     if isinstance(value, float):
@@ -356,11 +460,17 @@ def _value(value):
     return value
 
 
-def _h(value):
-    text = "" if value is None else str(value)
-    return (
-        text.replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-        .replace('"', "&quot;")
-    )
+def _yes_no(value):
+    return "Yes" if str(value).strip().lower() == "yes" else "No"
+
+
+def _labelize(value):
+    return str(value).replace("_", " ").strip().title()
+
+
+def _value(value):
+    if value is None:
+        return ""
+    if isinstance(value, float):
+        return round(value, 6)
+    return value
