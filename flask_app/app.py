@@ -516,14 +516,14 @@ def _power_status():
             timeout=2,
         )
     except (OSError, subprocess.SubprocessError):
-        return {"kind": "", "message": ""}
+        return {"kind": "", "message": "", "flags": 0}
     match = result.stdout.strip().split("=")
     if len(match) != 2:
-        return {"kind": "", "message": ""}
+        return {"kind": "", "message": "", "flags": 0}
     try:
         flags = int(match[1], 16)
     except ValueError:
-        return {"kind": "", "message": ""}
+        return {"kind": "", "message": "", "flags": 0}
 
     current = []
     history = []
@@ -539,10 +539,54 @@ def _power_status():
         if flags & (1 << (bit + 16)):
             history.append(label)
     if current:
-        return {"kind": "bad", "message": "Current power warning: " + ", ".join(current)}
+        return {"kind": "bad", "message": "Current power warning: " + ", ".join(current), "flags": flags}
     if history:
-        return {"kind": "warn", "message": "Power warning occurred since boot: " + ", ".join(history)}
-    return {"kind": "good", "message": "No Pi throttling or undervoltage flags"}
+        return {
+            "kind": "warn",
+            "message": "Power warning occurred since boot: " + ", ".join(history),
+            "flags": flags,
+        }
+    return {"kind": "good", "message": "No Pi throttling or undervoltage flags", "flags": flags}
+
+
+def _startup_power_alert():
+    time.sleep(8)
+    email_status = email_queue.configuration_status()
+    if not email_status["configured"] or not EMAIL_TO:
+        return
+    power = _power_status()
+    if power["kind"] not in {"warn", "bad"}:
+        return
+
+    try:
+        boot_id = Path("/proc/sys/kernel/random/boot_id").read_text(encoding="ascii").strip()
+    except OSError:
+        boot_id = "unknown-boot"
+    marker = Path(DATABASE_PATH).parent / f".power-alert-{boot_id}-{power['flags']:x}"
+    if marker.exists():
+        return
+
+    try:
+        email_queue.send_alert(
+            EMAIL_TO,
+            f"Quadpod 003 power alert: {power['message']}",
+            (
+                "Quadpod 003 reported a Raspberry Pi power fault.\n\n"
+                f"{power['message']}\n"
+                f"Raw flags: 0x{power['flags']:x}\n\n"
+                "Replace or reseat the Pi power supply and cable, reboot, and confirm "
+                "`vcgencmd get_throttled` returns `throttled=0x0` before relying on "
+                "network, USB, storage, or sensor behavior."
+            ),
+        )
+        marker.touch()
+        storage.add_event("Automatic Pi power alert emailed", data={"flags": power["flags"]})
+    except Exception as exc:
+        storage.add_event(
+            "Automatic Pi power alert failed",
+            level="error",
+            data={"flags": power["flags"], "error": str(exc)},
+        )
 
 
 def _schedule_network_command(command, label, event_data):
@@ -592,6 +636,10 @@ def _save_photo(job_id, test_number, file_storage):
     path = photo_dir / filename
     file_storage.save(path)
     return filename
+
+
+if EMAIL_ENABLED:
+    threading.Thread(target=_startup_power_alert, daemon=True).start()
 
 
 if __name__ == "__main__":

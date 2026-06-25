@@ -92,6 +92,23 @@ def _send(item):
         filename=attachment_path.name,
     )
 
+    _send_message(msg)
+
+
+def send_alert(recipient, subject, body):
+    if not recipient:
+        raise RuntimeError("Alert recipient is not configured")
+    msg = EmailMessage()
+    msg["From"] = EMAIL_FROM
+    msg["To"] = recipient
+    msg["Subject"] = subject
+    msg.set_content(body)
+    _send_message(msg)
+
+
+def _send_message(msg):
+    if not SMTP_HOST or not EMAIL_FROM:
+        raise RuntimeError("SMTP settings are incomplete")
     with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=20) as smtp:
         if SMTP_USE_TLS:
             smtp.starttls()

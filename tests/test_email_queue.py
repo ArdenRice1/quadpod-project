@@ -53,6 +53,30 @@ class EmailQueueTests(unittest.TestCase):
         self.assertEqual(message["Subject"], "Quadpod email verification")
         self.assertEqual(message.get_payload()[1].get_filename(), "Project_Job_EXPORT.zip")
 
+    def test_alert_email_does_not_require_attachment(self):
+        smtp = MagicMock()
+        smtp.__enter__.return_value = smtp
+
+        with (
+            patch.object(email_queue, "SMTP_HOST", "smtp.example.com"),
+            patch.object(email_queue, "SMTP_PORT", 587),
+            patch.object(email_queue, "SMTP_USE_TLS", True),
+            patch.object(email_queue, "SMTP_USERNAME", "quadpod@example.com"),
+            patch.object(email_queue, "SMTP_PASSWORD", "app-password"),
+            patch.object(email_queue, "EMAIL_FROM", "quadpod@example.com"),
+            patch.object(email_queue.smtplib, "SMTP", return_value=smtp),
+        ):
+            email_queue.send_alert(
+                "aydenreese1430@gmail.com",
+                "Quadpod 003 power alert",
+                "Undervoltage detected.",
+            )
+
+        message = smtp.send_message.call_args.args[0]
+        self.assertEqual(message["To"], "aydenreese1430@gmail.com")
+        self.assertEqual(message["Subject"], "Quadpod 003 power alert")
+        self.assertFalse(message.is_multipart())
+
 
 if __name__ == "__main__":
     unittest.main()

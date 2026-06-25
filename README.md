@@ -45,6 +45,8 @@ http://10.42.0.1
 
 Port `5000` remains available for legacy bookmarks. Network switching returns a handoff page before NetworkManager changes interfaces, then redirects to the stable hostname or hotspot address.
 
+On a new Pi image, run `sudo bash scripts/setup-mdns.sh quadpod` once so Avahi advertises the clean `quadpod.local` address.
+
 ## Important Field Notes
 
 - v1 is field ASTM-aligned, not a formal strict ASTM apparatus certification.

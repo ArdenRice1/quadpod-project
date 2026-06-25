@@ -17,6 +17,7 @@ Environment=QUADPOD_FAILURE_DROP_LBS=12
 Environment=QUADPOD_FAILURE_DROP_PERCENT=0.35
 Environment=QUADPOD_FAILURE_CONFIRM_SAMPLES=8
 Environment=QUADPOD_FAILURE_MIN_PEAK_LBS=20
+EnvironmentFile=-/etc/quadpod.env
 ExecStart=/opt/quadpod/venv/bin/gunicorn --workers 1 --threads 4 --bind 0.0.0.0:80 --bind 0.0.0.0:5000 app:app
 Restart=always
 RestartSec=3

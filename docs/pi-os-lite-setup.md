@@ -39,6 +39,7 @@ The v1 field default is a Pi-hosted WPA2 hotspot. Run the setup script on the Pi
 
 ```bash
 sudo bash /opt/quadpod/scripts/setup-hotspot.sh Quadpod-0001 "change-this-password"
+sudo bash /opt/quadpod/scripts/setup-mdns.sh quadpod
 ```
 
 Operators connect their phone to the `Quadpod-0001` Wi-Fi network, then open:
@@ -56,6 +57,8 @@ http://10.42.0.1
 Port `5000` remains available for compatibility. The service listens on ports 80 and 5000.
 
 The app uses `scripts/switch_network.py` for both directions. It sends the browser a handoff page first, waits briefly, then changes NetworkManager profiles. `quadpod-hotspot` is the canonical hotspot profile; duplicate legacy hotspot profiles are disabled to prevent autoconnect conflicts.
+
+`setup-mdns.sh` configures Avahi to advertise `quadpod.local` without changing the Pi's administrative Linux hostname.
 
 The built-in Wi-Fi radio cannot host the hotspot and join normal Wi-Fi simultaneously. The operator device must follow the Pi onto the selected network.
 

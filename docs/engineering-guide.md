@@ -96,6 +96,8 @@ Field URLs:
 
 The service binds ports 80 and 5000. The app returns `network_transition.html` before changing interfaces. A background thread launches `scripts/switch_network.py`, which manages one selected hotspot profile, disables duplicate hotspot autoconnect, and restores hotspot mode when a Wi-Fi connection fails.
 
+Run `sudo bash /opt/quadpod/scripts/setup-mdns.sh quadpod` once per Pi image to advertise `quadpod.local`. This does not require changing the administrative hostname.
+
 Do not run synchronous `nmcli` interface changes inside a Flask request. The request will lose its own transport and appear to crash.
 
 The built-in Wi-Fi radio cannot remain an access point while also joining normal Wi-Fi. The phone/computer must follow the Pi onto the target network.
@@ -116,6 +118,8 @@ export QUADPOD_SMTP_USE_TLS=1
 ```
 
 Google requires an app password or another supported SMTP credential. The recipient address alone is not enough to send mail. Keep credentials in the systemd environment, never in Git.
+
+Store deployed credentials in root-owned `/etc/quadpod.env`; `quadpod.service` reads it through `EnvironmentFile`. When email is configured, the app sends one automatic undervoltage/throttling alert per unique fault state per Pi boot. The local Setup warning remains available because email cannot be trusted while the Pi is offline.
 
 ## Calibration
 
