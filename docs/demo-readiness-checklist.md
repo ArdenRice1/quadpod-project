@@ -28,8 +28,8 @@ git status --short --branch
 ```
 
 5. Open the app from a phone on Quadpod Wi-Fi:
-   - `http://quadpod.local:5000`
-   - fallback: `http://10.42.0.1:5000`
+   - `http://quadpod.local`
+   - fallback: `http://10.42.0.1`
 
 ## What To Show
 
@@ -39,6 +39,8 @@ git status --short --branch
    - database/export paths
    - Wi-Fi/internet helper
    - load-cell calibration helper
+   - collapsed network/calibration panels
+   - Pi power warning status
 
 2. `Job` page:
    - project/client/equipment fields
@@ -82,7 +84,9 @@ Suggested talk track:
 ## Last-Minute Recovery
 
 - App will not load: `sudo systemctl restart quadpod.service`
-- Phone cannot connect: use fallback `http://10.42.0.1:5000`
+- Phone cannot connect: join the network currently used by the Pi, then use `http://quadpod.local`; hotspot fallback is `http://10.42.0.1`
+- Network switch looks frozen: wait for the handoff page, join the selected network, then reopen Quadpod. Avoid repeated switch submissions.
+- Pi shows undervoltage: replace the supply/cable and reboot before the demonstration.
 - Load cell reads wrong: press `Tare`; if still wrong, do not run a real pull.
 - Actuator does not move: verify controls are armed, power is connected, and use `scripts/probe_pwm.py` only if qualified.
 - Pull will not start: read the red gate message, then check preload, calibration dates, angle, load cell, and actuator status.

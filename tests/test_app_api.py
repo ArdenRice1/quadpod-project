@@ -2,7 +2,9 @@ import sys
 import tempfile
 import unittest
 import importlib.util
+from types import SimpleNamespace
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -13,6 +15,7 @@ import storage
 if importlib.util.find_spec("flask") is None:
     app = None
 else:
+    import app as app_module
     from app import app
 
 @unittest.skipIf(app is None, "Flask is not installed in this Python environment")
@@ -147,6 +150,71 @@ class AppApiTests(unittest.TestCase):
         text = response.get_data(as_text=True)
         self.assertIn("Alpha Roof", text)
         self.assertNotIn("Beta Roof", text)
+
+    def test_setup_tools_are_collapsed_by_default(self):
+        response = self.client.get("/setup-check")
+
+        self.assertEqual(response.status_code, 200)
+        text = response.get_data(as_text=True)
+        self.assertIn('<details class="tool-panel" id="networkPanel">', text)
+        self.assertIn('<details class="tool-panel" id="calibrationPanel">', text)
+        self.assertNotIn('id="networkPanel" open', text)
+        self.assertNotIn('id="calibrationPanel" open', text)
+
+    def test_wifi_switch_returns_transition_before_scheduling_command(self):
+        with self.client.session_transaction() as session:
+            session["csrf_token"] = "network-test-token"
+        with patch.object(app_module, "_schedule_network_command") as schedule:
+            response = self.client.post(
+                "/setup/network",
+                data={
+                    "ssid": "Office WiFi",
+                    "password": "secret-password",
+                    "csrf_token": "network-test-token",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Switching to Wi-Fi", response.get_data(as_text=True))
+        schedule.assert_called_once()
+        command = schedule.call_args.args[0]
+        self.assertIn("switch_network.py", command[1])
+        self.assertEqual(command[-5:], ["wifi", "--ssid", "Office WiFi", "--password", "secret-password"])
+
+    def test_hotspot_switch_returns_transition_before_scheduling_command(self):
+        with self.client.session_transaction() as session:
+            session["csrf_token"] = "network-test-token"
+        with patch.object(app_module, "_schedule_network_command") as schedule:
+            response = self.client.post(
+                "/setup/hotspot",
+                data={"csrf_token": "network-test-token"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Starting Quadpod Hotspot", response.get_data(as_text=True))
+        schedule.assert_called_once()
+        command, label, event_data = schedule.call_args.args
+        self.assertIn("switch_network.py", command[1])
+        self.assertEqual(command[-1], "hotspot")
+        self.assertEqual(label, "Hotspot connection")
+        self.assertEqual(event_data, {})
+
+    def test_network_switch_rejects_missing_session_token(self):
+        with patch.object(app_module, "_schedule_network_command") as schedule:
+            response = self.client.post("/setup/hotspot")
+
+        self.assertEqual(response.status_code, 403)
+        self.assertIn("Network Change Not Started", response.get_data(as_text=True))
+        schedule.assert_not_called()
+
+    def test_power_status_decodes_undervoltage_history(self):
+        completed = SimpleNamespace(stdout="throttled=0x50000\n", returncode=0)
+        with patch.object(app_module.subprocess, "run", return_value=completed):
+            status = app_module._power_status()
+
+        self.assertEqual(status["kind"], "warn")
+        self.assertIn("undervoltage", status["message"])
+        self.assertIn("throttling", status["message"])
 
 
 if __name__ == "__main__":

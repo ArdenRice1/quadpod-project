@@ -13,45 +13,56 @@
   </div>
 </section>
 
-<section class="section">
-  <h2>Network</h2>
-  <div class="grid">
-    <div class="item"><strong>Phone URL:</strong><br>http://quadpod.local:5000<br>http://{{ hotspot_ip }}:5000</div>
-    <div class="item"><strong>Internet:</strong><br>{{ network.internet }}</div>
-    <div class="item full"><strong>Active Connection:</strong><br>{{ network.active }}</div>
-  </div>
-  <form method="POST" action="{{ url_for('setup_network') }}">
+<details class="tool-panel" id="networkPanel">
+  <summary>
+    <span>Network & Internet</span>
+    <span class="muted small">Wi-Fi and hotspot controls</span>
+  </summary>
+  <div class="tool-panel-body">
     <div class="grid">
-      <div class="field"><label>Wi-Fi SSID</label><input name="ssid" list="wifiNetworks" placeholder="Network name"></div>
-      <div class="field"><label>Password</label><input name="password" type="password" placeholder="Wi-Fi password"></div>
+      <div class="item"><strong>App URL:</strong><br>{{ public_url }}<br><span class="muted small">Fallback http://{{ hotspot_ip }}</span></div>
+      <div class="item"><strong>Internet:</strong><br><span id="internetStatus">Open panel to check</span></div>
+      <div class="item full"><strong>Active Connection:</strong><br><span id="activeConnection">Open panel to check</span></div>
     </div>
-    <datalist id="wifiNetworks">
-      {% for wifi in network.wifi %}
-        <option value="{{ wifi.ssid }}">{{ wifi.ssid }} {{ wifi.signal }}%</option>
-      {% endfor %}
-    </datalist>
-    <button class="full-width secondary" type="submit">Connect Wi-Fi</button>
-  </form>
-  {% if network.message %}<div class="status warn">{{ network.message }}</div>{% endif %}
-</section>
+    <form method="POST" action="{{ url_for('setup_network') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="grid">
+        <div class="field"><label>Wi-Fi SSID</label><input name="ssid" list="wifiNetworks" placeholder="Network name" required></div>
+        <div class="field"><label>Password</label><input name="password" type="password" placeholder="Wi-Fi password"></div>
+      </div>
+      <datalist id="wifiNetworks"></datalist>
+      <button class="full-width secondary" type="submit">Switch to Wi-Fi</button>
+    </form>
+    <form method="POST" action="{{ url_for('setup_hotspot') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="full-width secondary" type="submit">Switch to Quadpod Hotspot</button>
+    </form>
+    <div id="networkMessage" class="status" hidden></div>
+  </div>
+</details>
 
-<section class="section">
-  <h2>Load Cell Calibration</h2>
-  <div class="metric compact">
-    <div class="label">Live Load</div>
-    <div class="value"><span id="liveLoad">0.00</span></div>
-    <div class="unit">lbs</div>
+<details class="tool-panel" id="calibrationPanel">
+  <summary>
+    <span>Load Cell Calibration</span>
+    <span class="muted small">Tare and known-weight calibration</span>
+  </summary>
+  <div class="tool-panel-body">
+    <div class="metric compact">
+      <div class="label">Live Load</div>
+      <div class="value"><span id="liveLoad">0.00</span></div>
+      <div class="unit">lbs</div>
+    </div>
+    <div id="calibrationStatus" class="status">Tare with no load, place a known weight, then apply runtime calibration.</div>
+    <div class="btnrow">
+      <button class="warn" type="button" id="tareBtn">Tare</button>
+    </div>
+    <div class="grid">
+      <div class="field"><label>Known Weight (lbs)</label><input id="knownWeight" type="number" step="0.001" min="0" inputmode="decimal"></div>
+      <div class="field"><label>Current Reference Unit</label><input value="{{ status.load_cell.reference_unit }}" readonly></div>
+    </div>
+    <button class="full-width secondary" type="button" id="calibrateBtn">Apply Runtime Calibration</button>
   </div>
-  <div id="calibrationStatus" class="status">Tare with no load, place a known weight, then apply runtime calibration.</div>
-  <div class="btnrow">
-    <button class="warn" type="button" id="tareBtn">Tare</button>
-  </div>
-  <div class="grid">
-    <div class="field"><label>Known Weight (lbs)</label><input id="knownWeight" type="number" step="0.001" min="0" inputmode="decimal"></div>
-    <div class="field"><label>Current Reference Unit</label><input value="{{ status.load_cell.reference_unit }}" readonly></div>
-  </div>
-  <button class="full-width secondary" type="button" id="calibrateBtn">Apply Runtime Calibration</button>
-</section>
+</details>
 
 <section class="section">
   <h2>Local Paths</h2>
@@ -66,6 +77,10 @@
 <script>
   const liveLoad = document.getElementById("liveLoad");
   const calibrationStatus = document.getElementById("calibrationStatus");
+  const calibrationPanel = document.getElementById("calibrationPanel");
+  const networkPanel = document.getElementById("networkPanel");
+  let loadPoll = null;
+  let networkLoaded = false;
 
   function setCalibrationStatus(kind, message) {
     calibrationStatus.className = `status ${kind || ""}`;
@@ -89,12 +104,53 @@
       .then((data) => setCalibrationStatus(data.ok ? "good" : "bad", data.message || "Calibration command finished."));
   });
 
-  setInterval(() => {
+  function pollLoad() {
     fetch("{{ url_for('api_status') }}")
       .then((res) => res.json())
       .then((data) => {
         liveLoad.textContent = data.current_load.toFixed(2);
       });
-  }, 500);
+  }
+
+  calibrationPanel.addEventListener("toggle", () => {
+    if (calibrationPanel.open) {
+      pollLoad();
+      loadPoll = setInterval(pollLoad, 750);
+    } else if (loadPoll) {
+      clearInterval(loadPoll);
+      loadPoll = null;
+    }
+  });
+
+  networkPanel.addEventListener("toggle", () => {
+    if (!networkPanel.open || networkLoaded) return;
+    networkLoaded = true;
+    fetch("{{ url_for('api_network_status') }}")
+      .then((res) => res.json())
+      .then((data) => {
+        document.getElementById("internetStatus").textContent = data.internet;
+        document.getElementById("activeConnection").textContent = data.active;
+        const list = document.getElementById("wifiNetworks");
+        data.wifi.forEach((wifi) => {
+          const option = document.createElement("option");
+          option.value = wifi.ssid;
+          option.label = `${wifi.ssid} ${wifi.signal}% ${wifi.security}`;
+          list.appendChild(option);
+        });
+        if (data.message) {
+          const message = document.getElementById("networkMessage");
+          message.hidden = false;
+          message.className = "status warn";
+          message.textContent = data.message;
+        }
+      })
+      .catch((error) => {
+        networkLoaded = false;
+        const message = document.getElementById("networkMessage");
+        message.hidden = false;
+        message.className = "status bad";
+        message.textContent = `Network status failed: ${error}`;
+      });
+  });
 </script>
 {% endblock %}

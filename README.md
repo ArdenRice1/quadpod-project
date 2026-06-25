@@ -34,14 +34,16 @@ Maintenance, field use, and daily checklist docs are in:
 The default field network mode is a Pi-hosted WPA2 hotspot. Operators connect their phone to the Quadpod Wi-Fi network and open:
 
 ```text
-http://quadpod.local:5000
+http://quadpod.local
 ```
 
 Fallback:
 
 ```text
-http://10.42.0.1:5000
+http://10.42.0.1
 ```
+
+Port `5000` remains available for legacy bookmarks. Network switching returns a handoff page before NetworkManager changes interfaces, then redirects to the stable hostname or hotspot address.
 
 ## Important Field Notes
 

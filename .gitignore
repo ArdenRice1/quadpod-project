@@ -14,5 +14,8 @@ instance/
 # Environment variables and secrets
 .env
 
+# Local UI/performance test output
+artifacts/
+
 # OS generated files
 .DS_Store

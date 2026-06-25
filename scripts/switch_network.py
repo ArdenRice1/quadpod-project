@@ -1,0 +1,108 @@
+#!/usr/bin/env python3
+import argparse
+import subprocess
+import sys
+import time
+
+
+HOTSPOT_PROFILES = ["quadpod-hotspot", "QUADPOD_WAP"]
+
+
+def run(command, check=True):
+    return subprocess.run(
+        command,
+        check=check,
+        capture_output=True,
+        text=True,
+        timeout=35,
+    )
+
+
+def connection_names():
+    result = run(["nmcli", "-t", "-f", "NAME", "connection", "show"], check=False)
+    return {line.strip() for line in result.stdout.splitlines() if line.strip()}
+
+
+def hotspot_profile():
+    names = connection_names()
+    for name in HOTSPOT_PROFILES:
+        if name in names:
+            return name
+    raise RuntimeError("No Quadpod hotspot profile exists")
+
+
+def disable_duplicate_hotspots(selected):
+    names = connection_names()
+    for name in HOTSPOT_PROFILES:
+        if name in names and name != selected:
+            run(["nmcli", "connection", "modify", name, "connection.autoconnect", "no"], check=False)
+            run(["nmcli", "connection", "down", name], check=False)
+
+
+def restart_discovery():
+    run(["systemctl", "restart", "avahi-daemon"], check=False)
+
+
+def switch_to_wifi(ssid, password):
+    hotspot = hotspot_profile()
+    disable_duplicate_hotspots(hotspot)
+    run(["nmcli", "connection", "modify", hotspot, "connection.autoconnect", "no"], check=False)
+    run(["nmcli", "connection", "down", hotspot], check=False)
+    time.sleep(1.0)
+
+    try:
+        if ssid in connection_names():
+            if password:
+                run(["nmcli", "connection", "modify", ssid, "wifi-sec.key-mgmt", "wpa-psk"])
+                run(["nmcli", "connection", "modify", ssid, "wifi-sec.psk", password])
+            run(["nmcli", "connection", "up", ssid, "ifname", "wlan0"])
+        else:
+            command = ["nmcli", "device", "wifi", "connect", ssid, "ifname", "wlan0", "name", ssid]
+            if password:
+                command.extend(["password", password])
+            run(command)
+        run(["nmcli", "connection", "modify", ssid, "connection.autoconnect", "yes"])
+        run(["nmcli", "connection", "modify", ssid, "connection.autoconnect-priority", "100"])
+        restart_discovery()
+        print(f"Connected to Wi-Fi profile: {ssid}")
+        return 0
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+        run(["nmcli", "connection", "modify", hotspot, "connection.autoconnect", "yes"], check=False)
+        run(["nmcli", "connection", "up", hotspot], check=False)
+        print(f"Wi-Fi connection failed; restored hotspot: {exc}", file=sys.stderr)
+        return 1
+
+
+def switch_to_hotspot():
+    hotspot = hotspot_profile()
+    disable_duplicate_hotspots(hotspot)
+    run(["nmcli", "connection", "modify", hotspot, "connection.autoconnect", "yes"])
+    run(["nmcli", "connection", "modify", hotspot, "connection.autoconnect-priority", "200"])
+    try:
+        run(["nmcli", "connection", "up", hotspot])
+        restart_discovery()
+        print(f"Started hotspot profile: {hotspot}")
+        return 0
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+        print(f"Hotspot start failed: {exc}", file=sys.stderr)
+        return 1
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Switch Quadpod between Wi-Fi and hotspot modes.")
+    parser.add_argument("--delay", type=float, default=2.0)
+    subparsers = parser.add_subparsers(dest="mode", required=True)
+    wifi = subparsers.add_parser("wifi")
+    wifi.add_argument("--ssid", required=True)
+    wifi.add_argument("--password", default="")
+    subparsers.add_parser("hotspot")
+    args = parser.parse_args()
+
+    time.sleep(max(0.0, args.delay))
+    if args.mode == "wifi":
+        return switch_to_wifi(args.ssid, args.password)
+    return switch_to_hotspot()
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -43,12 +43,14 @@
         <form method="POST" action="{{ url_for('copy_job_usb', job_id=job.id) }}">
           <button class="full-width secondary" type="submit">Copy Job Folder to USB/Exports</button>
         </form>
-        <form method="POST" action="{{ url_for('email_job', job_id=job.id) }}">
-          <div class="grid">
-            <div class="field full"><label>Email Recipient</label><input name="recipient" value="{{ email_to }}" placeholder="recipient@example.com"></div>
-          </div>
-          <button class="full-width" type="submit">Queue Email</button>
-        </form>
+        {% if email_status.configured %}
+          <form method="POST" action="{{ url_for('email_job', job_id=job.id) }}">
+            <div class="grid">
+              <div class="field full"><label>Email Recipient</label><input name="recipient" value="{{ email_to }}" placeholder="recipient@example.com"></div>
+            </div>
+            <button class="full-width" type="submit">Queue Email</button>
+          </form>
+        {% endif %}
       </div>
     {% else %}
       <div class="status warn">No jobs found.</div>
@@ -58,10 +60,12 @@
 
 <section class="section">
   <h2>Email Queue</h2>
-  <div class="btnrow">
-    <button class="secondary" id="processEmail" type="button">Try Sending Now</button>
-  </div>
-  <div id="emailStatus" class="status warn">Email sending requires internet and SMTP settings. Downloads and USB export always work.</div>
+  {% if email_status.configured %}
+    <div class="btnrow">
+      <button class="secondary" id="processEmail" type="button">Try Sending Now</button>
+    </div>
+  {% endif %}
+  <div id="emailStatus" class="status {{ 'good' if email_status.configured else 'warn' }}">{{ email_status.message }} Downloads and USB export always work.</div>
   <div class="list">
     {% for item in queue %}
       <div class="item">
@@ -78,14 +82,17 @@
 
 {% block scripts %}
 <script>
-  document.getElementById("processEmail").addEventListener("click", () => {
-    fetch("{{ url_for('api_process_email') }}", { method: "POST" })
-      .then((res) => res.json())
-      .then((data) => {
-        const el = document.getElementById("emailStatus");
-        el.className = "status";
-        el.textContent = data.message;
-      });
-  });
+  const processEmail = document.getElementById("processEmail");
+  if (processEmail) {
+    processEmail.addEventListener("click", () => {
+      fetch("{{ url_for('api_process_email') }}", { method: "POST" })
+        .then((res) => res.json())
+        .then((data) => {
+          const el = document.getElementById("emailStatus");
+          el.className = "status";
+          el.textContent = data.message;
+        });
+    });
+  }
 </script>
 {% endblock %}

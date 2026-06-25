@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Network Handoff{% endblock %}
+
+{% block content %}
+<h1 class="page-title">{{ heading }}</h1>
+
+<section class="section network-handoff">
+  <div class="status warn">{{ message }}</div>
+  <div class="handoff-count">
+    Reopening in <strong><span id="countdown">{{ delay_seconds }}</span> seconds</strong>
+  </div>
+  <div class="btnrow">
+    <a class="button" href="{{ target_url }}">Open Quadpod</a>
+    <a class="button secondary" href="{{ fallback_url }}">Fallback Address</a>
+  </div>
+  <div class="muted small">Stable app address: {{ public_url }}</div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  let remaining = {{ delay_seconds }};
+  const countdown = document.getElementById("countdown");
+  const timer = setInterval(() => {
+    remaining -= 1;
+    countdown.textContent = Math.max(remaining, 0);
+    if (remaining <= 0) {
+      clearInterval(timer);
+      window.location.replace("{{ target_url }}");
+    }
+  }, 1000);
+</script>
+{% endblock %}

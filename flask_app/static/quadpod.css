@@ -108,6 +108,47 @@ a {
   text-transform: uppercase;
 }
 
+.tool-panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  margin: 12px 0;
+}
+
+.tool-panel summary {
+  min-height: 54px;
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 800;
+  list-style-position: inside;
+}
+
+.tool-panel summary::marker {
+  color: var(--accent);
+}
+
+.tool-panel[open] summary {
+  border-bottom: 1px solid var(--line);
+}
+
+.tool-panel-body {
+  padding: 12px;
+}
+
+.network-handoff {
+  text-align: center;
+}
+
+.handoff-count {
+  padding: 18px 0 8px;
+  font-size: 18px;
+}
+
 .grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

@@ -17,13 +17,33 @@ from config import (
 import storage
 
 
+def configuration_status():
+    if not EMAIL_ENABLED:
+        return {
+            "configured": False,
+            "message": "Email sending is disabled. Configure SMTP environment values to enable it.",
+        }
+    missing = []
+    if not SMTP_HOST:
+        missing.append("SMTP host")
+    if not EMAIL_FROM:
+        missing.append("from address")
+    if missing:
+        return {
+            "configured": False,
+            "message": "Email settings are incomplete: " + ", ".join(missing),
+        }
+    return {"configured": True, "message": "Email sending is configured."}
+
+
 def queue_job_email(job_id, recipient, subject, body, attachment_path):
     return storage.queue_email(job_id, recipient, subject, body, str(attachment_path))
 
 
 def process_once():
-    if not EMAIL_ENABLED:
-        return "Email disabled"
+    status = configuration_status()
+    if not status["configured"]:
+        return status["message"]
     item = storage.next_queued_email()
     if not item:
         return "No queued email"

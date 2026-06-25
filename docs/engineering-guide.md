@@ -11,7 +11,7 @@ This guide is for maintaining, deploying, calibrating, and troubleshooting the A
 - `flask_app/exporter.py` writes the job composite CSV, per-test trace CSV files, one audit JSON per job, bundle ZIP files, and USB/export job folders.
 - `hardware/loadcell.py` reads the HX711 load cell in mock or real GPIO mode and applies reference-unit calibration/filtering.
 - `hardware/actuator.py` drives the PCA9685 PWM board and Victor SPX in mock or real hardware mode.
-- `scripts/` contains Pi diagnostics and calibration helpers for HX711, GPIO, PCA9685, Victor SPX, hotspot setup, and systemd service.
+- `scripts/` contains Pi diagnostics, calibration helpers, `switch_network.py`, hotspot setup, Playwright UI/performance checks, and the systemd service.
 - `tests/` contains unit tests for storage/export, actuator conversion, HX711 compatibility, control gates, and Flask API behavior when Flask is installed.
 
 ## Local Development
@@ -90,10 +90,32 @@ sudo bash /opt/quadpod/scripts/setup-hotspot.sh Quadpod-0001 "change-this-passwo
 
 Field URLs:
 
-- `http://quadpod.local:5000`
-- `http://10.42.0.1:5000`
+- `http://quadpod.local`
+- `http://10.42.0.1`
+- legacy compatibility: port `5000`
 
-Email will normally queue until the Pi has internet via Ethernet, USB Wi-Fi, phone tethering, or router mode.
+The service binds ports 80 and 5000. The app returns `network_transition.html` before changing interfaces. A background thread launches `scripts/switch_network.py`, which manages one selected hotspot profile, disables duplicate hotspot autoconnect, and restores hotspot mode when a Wi-Fi connection fails.
+
+Do not run synchronous `nmcli` interface changes inside a Flask request. The request will lose its own transport and appear to crash.
+
+The built-in Wi-Fi radio cannot remain an access point while also joining normal Wi-Fi. The phone/computer must follow the Pi onto the target network.
+
+## Email Configuration
+
+Email queueing is shown only when email is fully configured. Example Gmail SMTP environment values:
+
+```bash
+export QUADPOD_EMAIL_ENABLED=1
+export QUADPOD_EMAIL_TO="aydenreese1430@gmail.com"
+export QUADPOD_EMAIL_FROM="sender@gmail.com"
+export QUADPOD_SMTP_HOST="smtp.gmail.com"
+export QUADPOD_SMTP_PORT=587
+export QUADPOD_SMTP_USERNAME="sender@gmail.com"
+export QUADPOD_SMTP_PASSWORD="Google app password"
+export QUADPOD_SMTP_USE_TLS=1
+```
+
+Google requires an app password or another supported SMTP credential. The recipient address alone is not enough to send mail. Keep credentials in the systemd environment, never in Git.
 
 ## Calibration
 
@@ -155,10 +177,29 @@ The `Copy Job Folder to USB/Exports` action writes the same layout into a named 
 
 ## Troubleshooting
 
-- Cannot connect: verify phone is on Quadpod Wi-Fi, try `http://10.42.0.1:5000`, then run `nmcli connection show` and restart NetworkManager if needed.
+- Cannot connect: verify the phone followed the Pi onto the selected network, try `http://quadpod.local`, then hotspot fallback `http://10.42.0.1`.
+- Network switch fails: inspect `nmcli connection show`, ensure only `quadpod-hotspot` is allowed to autoconnect as a hotspot, and run `python scripts/switch_network.py hotspot` from a local console if recovery is needed.
+- Undervoltage/intermittent networking: run `vcgencmd get_throttled` and `journalctl -k -b | grep -i voltage`. Correct the power supply/cable and reboot before further software diagnosis.
 - App not opening: run `sudo systemctl status quadpod.service` and `journalctl -u quadpod.service -n 100`.
 - Load cell not reading: press Tare in Pre-Test, run `scripts/check_hx711_dout.py`, then `scripts/read_hx711_raw.py`. Check DOUT/SCK pins and 5V/GND.
 - Load values wrong: rerun `scripts/calibrate_loadcell.py`, verify `QUADPOD_LOADCELL_REFERENCE_UNIT`, and restart service.
 - Actuator not moving: check PCA9685 power/I2C, run `scripts/probe_pwm.py`, verify Victor neutral/calibration and actuator wiring.
 - Pull will not start: open `/setup-check`, confirm load cell/actuator OK, confirm calibration dates are recorded, confirm angle is recorded, tare, and preload to 10 lb +/- tolerance.
 - Email not sending: download the ZIP manually or connect the Pi to internet and use Archive -> Try Sending Now.
+
+## Performance and UI Verification
+
+Install Playwright in the development virtual environment:
+
+```powershell
+.\venv\Scripts\python.exe -m pip install playwright
+.\venv\Scripts\python.exe -m playwright install chromium
+```
+
+Run the reusable mobile/desktop layout and page-timing check while the mock app is running:
+
+```powershell
+.\venv\Scripts\python.exe scripts\playwright_ui_check.py --base-url http://127.0.0.1:5050
+```
+
+The report and screenshots are written under `artifacts/ui/`. Network status is lazy-loaded only when its collapsed panel opens; load-cell polling runs only while the calibration panel is open.

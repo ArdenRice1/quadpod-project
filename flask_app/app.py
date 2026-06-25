@@ -3,6 +3,8 @@ import os
 import secrets
 import subprocess
 import sys
+import threading
+import time
 from pathlib import Path
 
 from flask import (
@@ -27,6 +29,7 @@ from config import (
     EXPORT_DIR,
     HOTSPOT_IP,
     PHOTO_DIR,
+    PUBLIC_URL,
     SECRET_KEY,
 )
 import storage
@@ -59,6 +62,7 @@ def inject_globals():
         "app_version": APP_VERSION,
         "active_job": storage.get_job(session.get("job_id")) if session.get("job_id") else None,
         "hotspot_ip": HOTSPOT_IP,
+        "public_url": PUBLIC_URL,
         "csrf_token": _csrf_token(),
     }
 
@@ -86,11 +90,14 @@ def home():
 @app.route("/setup-check")
 def setup_check():
     status = quadpod_engine.snapshot()
+    power = _power_status()
     checks = [
-        ("Open app", "good", "Phone URL is http://quadpod.local:5000 or fallback http://%s:5000" % HOTSPOT_IP),
+        ("Open app", "good", "Use %s or fallback http://%s" % (PUBLIC_URL, HOTSPOT_IP)),
         ("Load cell", "good" if status["load_cell"]["ok"] else "bad", status["load_cell"]["last_error"] or "Ready"),
         ("Actuator", "good" if status["actuator"]["ok"] else "bad", status["actuator"]["last_error"] or "Ready"),
     ]
+    if power["message"]:
+        checks.append(("Pi power", power["kind"], power["message"]))
     paths = {
         "database": DATABASE_PATH,
         "exports": str(EXPORT_DIR),
@@ -100,7 +107,6 @@ def setup_check():
         status=status,
         checks=checks,
         paths=paths,
-        network=_network_status(),
     )
 
 
@@ -188,7 +194,14 @@ def archive():
     query = request.args.get("q", "")
     jobs = storage.search_jobs(query)
     queue = storage.list_email_queue()
-    return render_template("archive.html", jobs=jobs, queue=queue, email_to=EMAIL_TO, query=query)
+    return render_template(
+        "archive.html",
+        jobs=jobs,
+        queue=queue,
+        email_to=EMAIL_TO,
+        email_status=email_queue.configuration_status(),
+        query=query,
+    )
 
 
 @app.route("/network")
@@ -196,14 +209,52 @@ def network():
     return render_template("network.html", status=quadpod_engine.snapshot())
 
 
+@app.route("/api/network/status")
+def api_network_status():
+    return jsonify(_network_status())
+
+
 @app.route("/setup/network", methods=["POST"])
 def setup_network():
+    guard = _require_form_token()
+    if guard:
+        return guard
     ssid = request.form.get("ssid", "").strip()
     password = request.form.get("password", "")
-    if ssid:
-        ok, message = _connect_wifi(ssid, password)
-        storage.add_event("Wi-Fi connect requested", data={"ssid": ssid, "ok": ok, "message": message})
-    return redirect(url_for("setup_check"))
+    if not ssid:
+        return redirect(url_for("setup_check"))
+    command = _network_switch_command("wifi", "--ssid", ssid)
+    if password:
+        command.extend(["--password", password])
+    _schedule_network_command(command, "Wi-Fi connection", {"ssid": ssid})
+    return render_template(
+        "network_transition.html",
+        heading="Switching to Wi-Fi",
+        message=f"Quadpod is leaving its hotspot and joining {ssid}. Connect this device to {ssid} if needed.",
+        target_url=f"{PUBLIC_URL}/setup-check",
+        fallback_url="http://quadpod.local:5000/setup-check",
+        delay_seconds=10,
+    )
+
+
+@app.route("/setup/hotspot", methods=["POST"])
+def setup_hotspot():
+    guard = _require_form_token()
+    if guard:
+        return guard
+    _schedule_network_command(
+        _network_switch_command("hotspot"),
+        "Hotspot connection",
+        {},
+    )
+    return render_template(
+        "network_transition.html",
+        heading="Starting Quadpod Hotspot",
+        message="Quadpod is leaving Wi-Fi and starting its hotspot. Join the Quadpod Wi-Fi network, then reopen the app.",
+        target_url=f"http://{HOTSPOT_IP}/setup-check",
+        fallback_url=f"http://{HOTSPOT_IP}:5000/setup-check",
+        delay_seconds=10,
+    )
 
 
 @app.route("/api/calibrate", methods=["POST"])
@@ -265,6 +316,10 @@ def copy_job_usb(job_id):
 
 @app.route("/job/<int:job_id>/email", methods=["POST"])
 def email_job(job_id):
+    email_status = email_queue.configuration_status()
+    if not email_status["configured"]:
+        storage.add_event("Email request rejected", level="error", job_id=job_id, data=email_status)
+        return redirect(url_for("archive"))
     recipient = request.form.get("recipient", EMAIL_TO).strip()
     if not recipient:
         return redirect(url_for("exports"))
@@ -370,6 +425,20 @@ def _require_command_token():
     return None
 
 
+def _require_form_token():
+    token = request.form.get("csrf_token", "")
+    if not secrets.compare_digest(token, _csrf_token()):
+        return render_template(
+            "network_transition.html",
+            heading="Network Change Not Started",
+            message="This page session expired. Return to Setup Check and try again.",
+            target_url=url_for("setup_check"),
+            fallback_url=url_for("setup_check"),
+            delay_seconds=3,
+        ), 403
+    return None
+
+
 def _current_editable_test(job_id):
     test_id = session.get("test_id")
     if test_id:
@@ -403,11 +472,11 @@ def _network_status():
             status["message"] = active.stderr.strip() or "NetworkManager status unavailable"
 
         wifi = subprocess.run(
-            ["nmcli", "-t", "-f", "SSID,SIGNAL,SECURITY", "dev", "wifi", "list"],
+            ["nmcli", "-t", "-f", "SSID,SIGNAL,SECURITY", "dev", "wifi", "list", "--rescan", "no"],
             check=False,
             capture_output=True,
             text=True,
-            timeout=8,
+            timeout=4,
         )
         if wifi.returncode == 0:
             seen = set()
@@ -423,33 +492,95 @@ def _network_status():
     except (OSError, subprocess.SubprocessError) as exc:
         status["message"] = f"Network tools unavailable: {exc}"
 
-    internet = subprocess.run(
-        [sys.executable, "-c", "import socket; socket.create_connection(('1.1.1.1', 53), 2).close()"],
-        check=False,
-        capture_output=True,
-        text=True,
-        timeout=4,
-    )
-    status["internet"] = "Online" if internet.returncode == 0 else "Offline"
+    try:
+        internet = subprocess.run(
+            [sys.executable, "-c", "import socket; socket.create_connection(('1.1.1.1', 53), 1).close()"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+        status["internet"] = "Online" if internet.returncode == 0 else "Offline"
+    except (OSError, subprocess.SubprocessError):
+        status["internet"] = "Unknown"
     return status
 
 
-def _connect_wifi(ssid, password):
-    command = ["nmcli", "dev", "wifi", "connect", ssid]
-    if password:
-        command.extend(["password", password])
+def _power_status():
+    try:
+        result = subprocess.run(
+            ["vcgencmd", "get_throttled"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return {"kind": "", "message": ""}
+    match = result.stdout.strip().split("=")
+    if len(match) != 2:
+        return {"kind": "", "message": ""}
+    try:
+        flags = int(match[1], 16)
+    except ValueError:
+        return {"kind": "", "message": ""}
+
+    current = []
+    history = []
+    labels = [
+        (0, "undervoltage"),
+        (1, "frequency capped"),
+        (2, "throttling"),
+        (3, "temperature limit"),
+    ]
+    for bit, label in labels:
+        if flags & (1 << bit):
+            current.append(label)
+        if flags & (1 << (bit + 16)):
+            history.append(label)
+    if current:
+        return {"kind": "bad", "message": "Current power warning: " + ", ".join(current)}
+    if history:
+        return {"kind": "warn", "message": "Power warning occurred since boot: " + ", ".join(history)}
+    return {"kind": "good", "message": "No Pi throttling or undervoltage flags"}
+
+
+def _schedule_network_command(command, label, event_data):
+    thread = threading.Thread(
+        target=_run_network_command,
+        args=(command, label, event_data),
+        daemon=True,
+    )
+    thread.start()
+
+
+def _run_network_command(command, label, event_data):
+    time.sleep(1.5)
     try:
         result = subprocess.run(
             command,
             check=False,
             capture_output=True,
             text=True,
-            timeout=25,
+            timeout=35,
         )
         message = (result.stdout or result.stderr).strip()
-        return result.returncode == 0, message
+        storage.add_event(
+            label,
+            level="info" if result.returncode == 0 else "error",
+            data={**event_data, "ok": result.returncode == 0, "message": message},
+        )
     except (OSError, subprocess.SubprocessError) as exc:
-        return False, str(exc)
+        storage.add_event(
+            label,
+            level="error",
+            data={**event_data, "ok": False, "message": str(exc)},
+        )
+
+
+def _network_switch_command(mode, *extra):
+    script = Path(__file__).resolve().parents[1] / "scripts" / "switch_network.py"
+    return [sys.executable, str(script), "--delay", "0", mode, *extra]
 
 
 def _save_photo(job_id, test_number, file_storage):

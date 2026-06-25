@@ -13,9 +13,11 @@ Use normal company roof-safety judgment before testing. The app records the meas
 
 1. Power on the Raspberry Pi and Quadpod hardware.
 2. Connect the phone to the Quadpod Wi-Fi network.
-3. Open `http://quadpod.local:5000`.
-4. If that does not load, open `http://10.42.0.1:5000`.
+3. Open `http://quadpod.local`.
+4. In hotspot mode, use `http://10.42.0.1` if the hostname does not load. Port `5000` is a legacy fallback.
 5. Open `Setup` to confirm load cell, actuator, network, and calibration status.
+
+Network and calibration tools are collapsed by default. Open only the panel needed. When switching networks, wait for the handoff page, join the target network on the phone, then reopen the displayed Quadpod address.
 
 ## Start a Job
 
@@ -75,3 +77,7 @@ Use normal company roof-safety judgment before testing. The app records the meas
 7. Clean and pack equipment.
 8. Inspect the job site for stray objects and trash.
 9. Shut down the Pi normally.
+
+## Power Warning
+
+If Setup reports undervoltage or throttling, stop troubleshooting software and correct Pi power first. Use a stable Raspberry Pi power supply and a short, adequate cable. Unstable power can interrupt Wi-Fi, USB, storage, and hardware readings.

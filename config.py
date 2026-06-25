@@ -75,6 +75,7 @@ DISCONNECT_STOP_SECONDS = env_float("QUADPOD_DISCONNECT_STOP_SECONDS", 3.0)
 HOTSPOT_SSID_PREFIX = os.getenv("QUADPOD_HOTSPOT_PREFIX", "Quadpod")
 HOTSPOT_IP = os.getenv("QUADPOD_HOTSPOT_IP", "10.42.0.1")
 HOTSPOT_CIDR = os.getenv("QUADPOD_HOTSPOT_CIDR", "10.42.0.1/24")
+PUBLIC_URL = os.getenv("QUADPOD_PUBLIC_URL", "http://quadpod.local")
 
 # Email queue settings. Downloads always work even when these are unset.
 EMAIL_ENABLED = env_bool("QUADPOD_EMAIL_ENABLED", False)

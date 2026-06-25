@@ -44,16 +44,20 @@ sudo bash /opt/quadpod/scripts/setup-hotspot.sh Quadpod-0001 "change-this-passwo
 Operators connect their phone to the `Quadpod-0001` Wi-Fi network, then open:
 
 ```text
-http://quadpod.local:5000
+http://quadpod.local
 ```
 
 Fallback address:
 
 ```text
-http://10.42.0.1:5000
+http://10.42.0.1
 ```
 
-The built-in Wi-Fi radio is being used as the local access point, so automatic email normally waits until the Pi later gets internet through Ethernet, USB Wi-Fi, phone tethering, or router mode.
+Port `5000` remains available for compatibility. The service listens on ports 80 and 5000.
+
+The app uses `scripts/switch_network.py` for both directions. It sends the browser a handoff page first, waits briefly, then changes NetworkManager profiles. `quadpod-hotspot` is the canonical hotspot profile; duplicate legacy hotspot profiles are disabled to prevent autoconnect conflicts.
+
+The built-in Wi-Fi radio cannot host the hotspot and join normal Wi-Fi simultaneously. The operator device must follow the Pi onto the selected network.
 
 ## Service
 
@@ -70,6 +74,17 @@ Logs:
 ```bash
 journalctl -u quadpod.service -f
 ```
+
+## Power Validation
+
+Check Pi power before diagnosing intermittent networking:
+
+```bash
+vcgencmd get_throttled
+journalctl -k -b | grep -i voltage
+```
+
+`throttled=0x0` is the clean state. Any current or historical undervoltage/throttling flag means the supply or cable must be corrected and the Pi rebooted before validation.
 
 ## Calibration Workflow
 
