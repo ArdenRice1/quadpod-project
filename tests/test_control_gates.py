@@ -77,17 +77,24 @@ class ControlGateTests(unittest.TestCase):
         self.engine._move_auto_preload_direction_locked(increase=False)
         self.assertEqual(self.engine.actuator.last_command, "down_fast")
 
-    def test_auto_preload_coarse_approach_only_before_tension(self):
-        self.assertTrue(self.engine._auto_preload_should_coarse_approach(2.9, True))
-        self.assertFalse(self.engine._auto_preload_should_coarse_approach(3.0, True))
-        self.assertFalse(self.engine._auto_preload_should_coarse_approach(2.9, False))
+    def test_auto_preload_stages_get_smaller_near_target(self):
+        slack = self.engine._auto_preload_stage_for_load(-0.5, True)
+        coarse = self.engine._auto_preload_stage_for_load(1.0, True)
+        approach = self.engine._auto_preload_stage_for_load(4.0, True)
+        lockin = self.engine._auto_preload_stage_for_load(9.0, True)
 
-    def test_auto_preload_coarse_uses_bounded_pulse_before_fine_pulses(self):
-        self.engine.actuator.pull_direction = "up"
-        self.engine.state["jog_speed_percent"] = 1
-        self.engine._move_auto_preload_coarse_locked()
-        self.assertEqual(self.engine.actuator.last_command, "up_fast")
-        self.assertLess(self.engine.actuator.last_pulse_us, 1200)
+        self.assertGreater(slack["pulse_seconds"], coarse["pulse_seconds"])
+        self.assertGreater(coarse["pulse_seconds"], lockin["pulse_seconds"])
+        self.assertGreater(slack["speed_percent"], coarse["speed_percent"])
+        self.assertGreater(coarse["speed_percent"], approach["speed_percent"])
+        self.assertGreater(approach["speed_percent"], lockin["speed_percent"])
+
+    def test_auto_preload_high_band_uses_short_down_pulse(self):
+        down = self.engine._auto_preload_stage_for_load(16.0, False)
+        lockin = self.engine._auto_preload_stage_for_load(9.0, True)
+
+        self.assertLess(down["pulse_seconds"], lockin["pulse_seconds"])
+        self.assertEqual(down["speed_percent"], lockin["speed_percent"])
 
     def test_auto_preload_aborts_large_overshoot_without_easing_down(self):
         self.engine.state["auto_preload_running"] = True
@@ -103,10 +110,7 @@ class ControlGateTests(unittest.TestCase):
         self.assertIsNone(self.engine._auto_preload_direction_for_load(14.9))
         self.assertFalse(self.engine._auto_preload_direction_for_load(15.1))
 
-    def test_auto_preload_recovery_pulse_is_longer_ease_down(self):
-        normal = self.engine._auto_preload_pulse_seconds()
-        recovery = self.engine._auto_preload_pulse_seconds(recovery_pulse=True)
-        self.assertGreater(recovery, normal)
+    def test_auto_preload_ease_down_uses_configured_pull_direction(self):
         self.engine.actuator.pull_direction = "up"
         self.engine._move_auto_preload_direction_locked(increase=False)
         self.assertEqual(self.engine.actuator.last_command, "down_fast")

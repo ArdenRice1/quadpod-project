@@ -16,13 +16,18 @@ from config import (
     LOAD_STABLE_WINDOW_SECONDS,
     POST_STOP_LOG_MAX_SECONDS,
     PRELOAD_AUTO_ABORT_LBS,
+    PRELOAD_AUTO_APPROACH_PULSE_SECONDS,
+    PRELOAD_AUTO_APPROACH_SPEED_PERCENT,
+    PRELOAD_AUTO_APPROACH_UNTIL_LBS,
     PRELOAD_AUTO_COARSE_PULSE_SECONDS,
     PRELOAD_AUTO_COARSE_SPEED_PERCENT,
     PRELOAD_AUTO_COARSE_UNTIL_LBS,
     PRELOAD_AUTO_DEADBAND_LBS,
-    PRELOAD_AUTO_MAX_REVERSALS,
+    PRELOAD_AUTO_DOWN_PULSE_SECONDS,
     PRELOAD_AUTO_PULSE_SECONDS,
-    PRELOAD_AUTO_RECOVERY_MULTIPLIER,
+    PRELOAD_AUTO_SLACK_PULSE_SECONDS,
+    PRELOAD_AUTO_SLACK_SPEED_PERCENT,
+    PRELOAD_AUTO_SLACK_UNTIL_LBS,
     PRELOAD_AUTO_SPEED_PERCENT,
     PRELOAD_AUTO_SETTLE_MAX_SECONDS,
     PRELOAD_AUTO_SETTLE_SECONDS,
@@ -333,17 +338,15 @@ class QuadpodEngine:
     def _auto_preload_loop(self):
         deadline = time.monotonic() + PRELOAD_AUTO_TIMEOUT_SECONDS
         stable_since = None
-        last_direction = None
-        reversals = 0
         try:
             while time.monotonic() < deadline:
                 direction = None
-                coarse_approach = False
-                recovery_pulse = False
+                pulse_seconds = 0.0
                 with self.lock:
                     if self.state["test_running"]:
                         self.state["auto_preload_message"] = "Auto preload cancelled because a pull test started."
                         break
+
                     load = float(self.state.get("current_load") or 0.0)
                     if load >= PRELOAD_AUTO_ABORT_LBS:
                         self.actuator.stop()
@@ -352,6 +355,7 @@ class QuadpodEngine:
                             f"Auto preload stopped at {load:.1f} lb. Reset preload manually before testing."
                         )
                         break
+
                     direction = self._auto_preload_direction_for_load(load)
                     if direction is None:
                         self.actuator.stop()
@@ -367,53 +371,28 @@ class QuadpodEngine:
                         else:
                             stable_since = None
                             self.state["auto_preload_message"] = "Waiting for preload to stabilize."
-                    else:
-                        coarse_approach = self._auto_preload_should_coarse_approach(
-                            load, direction
+                    elif not self._load_stable_locked():
+                        direction = None
+                        stable_since = None
+                        self.actuator.stop()
+                        self.state["actuator_command"] = self.actuator.last_command
+                        self.state["auto_preload_message"] = (
+                            "Waiting for load cell to stabilize before the next preload pulse."
                         )
-                        if coarse_approach:
-                            self._move_auto_preload_coarse_locked()
-                            self.state["actuator_command"] = self.actuator.last_command
-                            stable_since = None
-                            pulse_seconds = self._auto_preload_coarse_pulse_seconds()
-                            self.state["auto_preload_message"] = (
-                                f"Coarse preload pulse toward {PRELOAD_AUTO_COARSE_UNTIL_LBS:.1f} lb; "
-                                "waiting for the load cell."
-                            )
-                        else:
-                            if last_direction is not None and direction != last_direction:
-                                reversals += 1
-                            last_direction = direction
-                            if reversals >= PRELOAD_AUTO_MAX_REVERSALS:
-                                direction = False
-                                recovery_pulse = True
-                                reversals = 0
-                            pulse_seconds = self._auto_preload_pulse_seconds(recovery_pulse)
-                            self._move_auto_preload_direction_locked(increase=direction)
-                            self.state["actuator_command"] = self.actuator.last_command
-                            stable_since = None
-                            if recovery_pulse:
-                                self.state["auto_preload_message"] = (
-                                    "Auto preload is bouncing; easing down with a longer safety pulse."
-                                )
-                            elif direction:
-                                self.state["auto_preload_message"] = (
-                                    f"Auto preload pulse toward {PRELOAD_TARGET_LBS:.1f} lb; waiting for load cell."
-                                )
-                            else:
-                                self.state["auto_preload_message"] = (
-                                    f"Auto easing preload below {PRELOAD_MAX_LBS:.1f} lb; waiting for load cell."
-                                )
+                    else:
+                        stage = self._auto_preload_stage_for_load(load, direction)
+                        pulse_seconds = stage["pulse_seconds"]
+                        self._move_preload_direction_locked(
+                            increase=direction, speed_percent=stage["speed_percent"]
+                        )
+                        self.state["actuator_command"] = self.actuator.last_command
+                        stable_since = None
+                        self.state["auto_preload_message"] = stage["message"]
+
                 if direction is None:
                     time.sleep(0.1)
                     continue
-                if coarse_approach:
-                    time.sleep(pulse_seconds)
-                    with self.lock:
-                        self.actuator.stop()
-                        self.state["actuator_command"] = self.actuator.last_command
-                    self._wait_for_auto_preload_settle(deadline)
-                    continue
+
                 time.sleep(pulse_seconds)
                 with self.lock:
                     self.actuator.stop()
@@ -437,16 +416,60 @@ class QuadpodEngine:
             return False
         return None
 
-    def _auto_preload_should_coarse_approach(self, load, direction):
-        coarse_limit = min(PRELOAD_AUTO_COARSE_UNTIL_LBS, PRELOAD_MIN_LBS)
-        return bool(direction) and load < coarse_limit
+    def _auto_preload_stage_for_load(self, load, increase):
+        if not increase:
+            return {
+                "speed_percent": PRELOAD_AUTO_SPEED_PERCENT,
+                "pulse_seconds": self._auto_preload_down_pulse_seconds(),
+                "message": f"Auto easing preload below {PRELOAD_MAX_LBS:.1f} lb; waiting for load cell.",
+            }
+        if load < PRELOAD_AUTO_SLACK_UNTIL_LBS:
+            return {
+                "speed_percent": PRELOAD_AUTO_SLACK_SPEED_PERCENT,
+                "pulse_seconds": self._auto_preload_slack_pulse_seconds(),
+                "message": (
+                    f"Taking up slack toward {PRELOAD_AUTO_SLACK_UNTIL_LBS:.1f} lb; "
+                    "waiting for the load cell."
+                ),
+            }
+        if load < PRELOAD_AUTO_COARSE_UNTIL_LBS:
+            return {
+                "speed_percent": PRELOAD_AUTO_COARSE_SPEED_PERCENT,
+                "pulse_seconds": self._auto_preload_coarse_pulse_seconds(),
+                "message": (
+                    f"Coarse preload pulse toward {PRELOAD_AUTO_COARSE_UNTIL_LBS:.1f} lb; "
+                    "waiting for the load cell."
+                ),
+            }
+        if load < PRELOAD_AUTO_APPROACH_UNTIL_LBS:
+            return {
+                "speed_percent": PRELOAD_AUTO_APPROACH_SPEED_PERCENT,
+                "pulse_seconds": self._auto_preload_approach_pulse_seconds(),
+                "message": (
+                    f"Approaching preload toward {PRELOAD_AUTO_APPROACH_UNTIL_LBS:.1f} lb; "
+                    "waiting for the load cell."
+                ),
+            }
+        return {
+            "speed_percent": PRELOAD_AUTO_SPEED_PERCENT,
+            "pulse_seconds": self._auto_preload_pulse_seconds(),
+            "message": f"Locking preload toward {PRELOAD_TARGET_LBS:.1f} lb; waiting for load cell.",
+        }
+
+    def _auto_preload_slack_pulse_seconds(self):
+        return max(0.02, PRELOAD_AUTO_SLACK_PULSE_SECONDS)
 
     def _auto_preload_coarse_pulse_seconds(self):
         return max(0.02, PRELOAD_AUTO_COARSE_PULSE_SECONDS)
 
-    def _auto_preload_pulse_seconds(self, recovery_pulse=False):
-        multiplier = PRELOAD_AUTO_RECOVERY_MULTIPLIER if recovery_pulse else 1.0
-        return max(0.02, PRELOAD_AUTO_PULSE_SECONDS * multiplier)
+    def _auto_preload_approach_pulse_seconds(self):
+        return max(0.02, PRELOAD_AUTO_APPROACH_PULSE_SECONDS)
+
+    def _auto_preload_down_pulse_seconds(self):
+        return max(0.02, PRELOAD_AUTO_DOWN_PULSE_SECONDS)
+
+    def _auto_preload_pulse_seconds(self):
+        return max(0.02, PRELOAD_AUTO_PULSE_SECONDS)
 
     def _wait_for_auto_preload_settle(self, deadline):
         started = time.monotonic()
@@ -463,11 +486,6 @@ class QuadpodEngine:
     def _move_auto_preload_direction_locked(self, increase):
         return self._move_preload_direction_locked(
             increase=increase, speed_percent=PRELOAD_AUTO_SPEED_PERCENT
-        )
-
-    def _move_auto_preload_coarse_locked(self):
-        return self._move_preload_direction_locked(
-            increase=True, speed_percent=PRELOAD_AUTO_COARSE_SPEED_PERCENT
         )
 
     def _move_preload_direction_locked(self, increase, speed_percent):
