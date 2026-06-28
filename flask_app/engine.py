@@ -19,6 +19,7 @@ from config import (
     PRELOAD_AUTO_MAX_REVERSALS,
     PRELOAD_AUTO_PULSE_SECONDS,
     PRELOAD_AUTO_RECOVERY_MULTIPLIER,
+    PRELOAD_AUTO_SPEED_PERCENT,
     PRELOAD_AUTO_SETTLE_MAX_SECONDS,
     PRELOAD_AUTO_SETTLE_SECONDS,
     PRELOAD_AUTO_TIMEOUT_SECONDS,
@@ -363,7 +364,7 @@ class QuadpodEngine:
                             recovery_pulse = True
                             reversals = 0
                         pulse_seconds = self._auto_preload_pulse_seconds(recovery_pulse)
-                        self._move_preload_direction_locked(increase=direction)
+                        self._move_auto_preload_direction_locked(increase=direction)
                         self.state["actuator_command"] = self.actuator.last_command
                         stable_since = None
                         if recovery_pulse:
@@ -420,12 +421,18 @@ class QuadpodEngine:
                 return
             time.sleep(0.05)
 
-    def _move_preload_direction_locked(self, increase):
+    def _move_auto_preload_direction_locked(self, increase):
+        return self._move_preload_direction_locked(
+            increase=increase, speed_percent=PRELOAD_AUTO_SPEED_PERCENT
+        )
+
+    def _move_preload_direction_locked(self, increase, speed_percent):
         pull_direction = self.actuator.pull_direction
         direction = pull_direction if increase else ("down" if pull_direction == "up" else "up")
+        speed = max(1, min(100, int(float(speed_percent))))
         if direction == "up":
-            return self.actuator.move_up(fast=True, speed_percent=self.state["jog_speed_percent"])
-        return self.actuator.move_down(fast=True, speed_percent=self.state["jog_speed_percent"])
+            return self.actuator.move_up(fast=True, speed_percent=speed)
+        return self.actuator.move_down(fast=True, speed_percent=speed)
 
     def _record_load_locked(self, load):
         now = time.monotonic()
