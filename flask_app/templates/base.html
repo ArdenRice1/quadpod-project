@@ -27,6 +27,14 @@
   <main class="shell">
     {% block content %}{% endblock %}
   </main>
+  <div id="installPrompt" class="install-prompt" hidden>
+    <strong>Add Quadpod to Home Screen</strong>
+    <div class="small">Open Quadpod faster from the field tablet or phone.</div>
+    <div class="btnrow">
+      <button class="success" type="button" id="installAccept">Add</button>
+      <button class="secondary" type="button" id="installDismiss">Later</button>
+    </div>
+  </div>
   <script>
     window.QUADPOD_CSRF_TOKEN = "{{ csrf_token }}";
     function quadpodJsonHeaders() {
@@ -38,6 +46,29 @@
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("{{ url_for('static', filename='service-worker.js') }}");
     }
+    const installPrompt = document.getElementById("installPrompt");
+    const standalone = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone;
+    let deferredInstallPrompt = null;
+    if (standalone || localStorage.getItem("quadpod-install-dismissed") === "yes") {
+      installPrompt.hidden = true;
+    }
+    window.addEventListener("beforeinstallprompt", (event) => {
+      if (standalone) return;
+      event.preventDefault();
+      deferredInstallPrompt = event;
+      installPrompt.hidden = false;
+    });
+    document.getElementById("installAccept").addEventListener("click", async () => {
+      if (!deferredInstallPrompt) return;
+      deferredInstallPrompt.prompt();
+      await deferredInstallPrompt.userChoice;
+      deferredInstallPrompt = null;
+      installPrompt.hidden = true;
+    });
+    document.getElementById("installDismiss").addEventListener("click", () => {
+      localStorage.setItem("quadpod-install-dismissed", "yes");
+      installPrompt.hidden = true;
+    });
   </script>
   {% block scripts %}{% endblock %}
 </body>

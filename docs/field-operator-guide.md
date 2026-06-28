@@ -32,11 +32,10 @@ Network and calibration tools are collapsed by default. Open only the panel need
 1. Open `Test`.
 2. Use the investigation plan to choose the roof area and test point.
 3. Confirm the point is clear of hazards, representative of the roof condition, and free of seams/visible blemishes.
-4. Record test number, area, roof area, air temperature, roof temperature, wind speed/direction, and angle.
-5. The pull cable must be roughly perpendicular to the roof surface: 90 degrees within 5 degrees.
-6. Record manufacturer/product information if visible.
-7. Record wind-lift evidence, nail size/placement notes, and shingle observations.
-8. Prepare a board showing test point name/number, building number, and identifiers.
+4. Record test number, area, roof area, air temperature, roof temperature, wind speed/direction, angle, and shingle type.
+5. The pull cable must be roughly perpendicular to the roof surface: 80-100 degrees is allowed.
+6. Record wind-lift evidence and nail size/placement notes.
+7. Prepare a board showing test point name/number, building number, and identifiers.
 
 ## Rig and Preload
 
@@ -47,12 +46,12 @@ Network and calibration tools are collapsed by default. Open only the panel need
 5. Align the load cell with the length of the gripper.
 6. Press `Tare` with the rig hanging freely.
 7. Take up cable slack.
-8. Jog to a 10 lb preload.
+8. Use `Auto Preload to 10 lb` or jog to the 10-15 lb preload band.
 
 ## Run the Pull Test
 
 1. Stand clear.
-2. Confirm the phone shows preload within 10 lb +/- tolerance.
+2. Confirm the phone shows preload within 10-15 lb.
 3. Press `Start Pull Test`.
 4. Watch the load and hardware. Use `Stop Test` if anything unsafe happens.
 5. The app stops automatically for confirmed load drop/failure, max force, timeout, load-cell fault, or phone disconnect.
@@ -73,7 +72,7 @@ Network and calibration tools are collapsed by default. Open only the panel need
 3. Download `CSV Bundle ZIP`.
 4. Use `Copy Job Folder to USB/Exports` when a flash drive or local job folder is needed.
 5. Queue email only when SMTP sending has been configured.
-6. Verify the export contains a named `Project_Job#_ALL.csv`, one `audit.json`, and named per-test CSV files under `tests/`.
+6. Verify the export contains a named `Project_Job#_ALL.csv`, one `audit.json`, named per-test CSV files under `tests/`, and force-time graphs under `graphs/`.
 7. Clean and pack equipment.
 8. Inspect the job site for stray objects and trash.
 9. Shut down the Pi normally.

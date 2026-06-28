@@ -105,7 +105,11 @@
         } else if (data.test_running) {
           startBtn.disabled = true;
           reviewLink.hidden = true;
-          setStatus("warn", "Pull running. Stand clear.");
+          if (data.stop_pending) {
+            setStatus("warn", data.stop_reason || "Actuator stopped. Logging until load stabilizes.");
+          } else {
+            setStatus("warn", "Pull running. Stand clear.");
+          }
         } else if (data.test_complete && data.active_test_id === {{ test.id }}) {
           startBtn.disabled = false;
           reviewLink.hidden = false;

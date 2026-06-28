@@ -20,7 +20,9 @@
   </div>
   <div class="btnrow">
     <a class="button secondary" href="{{ url_for('download_trace', test_id=test.id) }}">Download Trace CSV</a>
+    <a class="button secondary" href="{{ url_for('download_force_time_graph', test_id=test.id) }}">Download Graph</a>
   </div>
+  <img class="force-graph" src="{{ url_for('download_force_time_graph', test_id=test.id) }}" alt="Force time graph">
 </section>
 
 <form method="POST">

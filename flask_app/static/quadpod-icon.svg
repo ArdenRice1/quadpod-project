@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="72" fill="#20262d"/>
+  <rect x="54" y="70" width="404" height="372" rx="42" fill="#f4f6f7"/>
+  <path d="M112 334h288M138 334l52-132h132l52 132M190 202l-38-58M322 202l38-58" fill="none" stroke="#136f63" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="256" y="410" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="58" font-weight="800" fill="#20262d">Quadpod</text>
+</svg>

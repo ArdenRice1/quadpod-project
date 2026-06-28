@@ -39,6 +39,7 @@ class StorageExportTests(unittest.TestCase):
             {
                 "test_number": "1",
                 "angle_degrees": "90",
+                "shingle_type": "Architectural",
                 "roof_temperature_f": "122.4",
                 "wind_speed_direction": "7 mph N",
                 "failure_type": "Glue gave way",
@@ -67,6 +68,7 @@ class StorageExportTests(unittest.TestCase):
         self.assertEqual(set(storage.EXPORT_FIELDS), set(row.keys()))
         self.assertEqual(row["project_name"], "Wind Loss Residence")
         self.assertEqual(row["test_number"], "1")
+        self.assertEqual(row["shingle_type"], "Architectural")
         self.assertEqual(row["max_load_lbs"], 34.25)
         self.assertEqual(row["operator_notes"], "Result notes")
         self.assertEqual(row["deviation_description"], "Minor angle shift")
@@ -82,6 +84,7 @@ class StorageExportTests(unittest.TestCase):
             {
                 "test_number": "1",
                 "photo_reference": "field-photo.jpg",
+                "shingle_type": "Three tab",
                 "failure_type": "Shingle tear",
                 "deviation_from_standard": "yes",
                 "effect_on_uncertainty": "Medium",
@@ -100,11 +103,13 @@ class StorageExportTests(unittest.TestCase):
             self.assertIn("Bundle_Job_B-100_ALL.csv", names)
             self.assertIn("audit.json", names)
             self.assertIn("tests/Bundle_Job_B-100_Test-1.csv", names)
+            self.assertIn("graphs/Bundle_Job_B-100_Test-1_force_time.svg", names)
             self.assertIn("photos/field-photo.jpg", names)
             job_csv = zf.read("Bundle_Job_B-100_ALL.csv").decode("utf-8")
             trace = zf.read("tests/Bundle_Job_B-100_Test-1.csv").decode("utf-8")
             audit = zf.read("audit.json").decode("utf-8")
         self.assertIn("Shingle tear", job_csv)
+        self.assertIn("Three tab", job_csv)
         self.assertIn("Effect on Uncertainty,Medium", trace)
         self.assertIn("Timestamp,Elapsed Seconds,Sample #,Force (lbs)", trace)
         self.assertIn("machine_settings", audit)
@@ -119,6 +124,7 @@ class StorageExportTests(unittest.TestCase):
         self.assertTrue((Path(folder) / "USB_Job_USB-001_ALL.csv").exists())
         self.assertTrue((Path(folder) / "audit.json").exists())
         self.assertTrue((Path(folder) / "tests" / "USB_Job_USB-001_Test-1.csv").exists())
+        self.assertTrue((Path(folder) / "tests" / "USB_Job_USB-001_Test-1_force_time.svg").exists())
 
 
 if __name__ == "__main__":

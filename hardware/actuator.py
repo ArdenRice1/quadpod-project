@@ -52,11 +52,11 @@ class Actuator:
             self.last_error = f"PCA9685 init failed: {exc}"
             raise
 
-    def move_up(self, fast=False):
-        return self._move("up", fast=fast)
+    def move_up(self, fast=False, speed_percent=100):
+        return self._move("up", fast=fast, speed_percent=speed_percent)
 
-    def move_down(self, fast=False):
-        return self._move("down", fast=fast)
+    def move_down(self, fast=False, speed_percent=100):
+        return self._move("down", fast=fast, speed_percent=speed_percent)
 
     def pull(self):
         if self.pull_direction == "up":
@@ -66,10 +66,11 @@ class Actuator:
     def stop(self):
         return self.set_pulse_us(VICTOR_NEUTRAL_US, command="neutral")
 
-    def _move(self, direction, fast=False):
+    def _move(self, direction, fast=False, speed_percent=100):
         physical_direction = self._maybe_invert(direction)
         if fast:
-            pulse = VICTOR_JOG_US if physical_direction == "down" else self._mirror(VICTOR_JOG_US)
+            target = VICTOR_JOG_US if physical_direction == "down" else self._mirror(VICTOR_JOG_US)
+            pulse = self._scale_speed(target, speed_percent)
         else:
             pulse = VICTOR_PULL_US if physical_direction == "down" else self._mirror(VICTOR_PULL_US)
         return self.set_pulse_us(pulse, command=f"{direction}_{'fast' if fast else 'pull'}")
@@ -81,6 +82,10 @@ class Actuator:
 
     def _mirror(self, pulse_us):
         return int(VICTOR_NEUTRAL_US - (int(pulse_us) - VICTOR_NEUTRAL_US))
+
+    def _scale_speed(self, target_us, speed_percent):
+        percent = max(1.0, min(100.0, float(speed_percent or 100))) / 100.0
+        return int(round(VICTOR_NEUTRAL_US + ((int(target_us) - VICTOR_NEUTRAL_US) * percent)))
 
     def set_pulse_us(self, pulse_us, command="custom"):
         pulse_us = int(max(min(pulse_us, VICTOR_FORWARD_US), VICTOR_REVERSE_US))

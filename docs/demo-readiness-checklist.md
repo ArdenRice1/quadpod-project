@@ -50,8 +50,9 @@ git status --short --branch
 3. `Test` page:
    - tare
    - jog controls
-   - preload target: `10 lb +/- tolerance`
-   - shingle observations
+   - auto preload and jog speed controls
+   - preload band: `10-15 lb`
+   - shingle type
 
 4. `Live Pull` page:
    - live force, peak, elapsed time, samples
@@ -65,7 +66,7 @@ git status --short --branch
 
 6. `Archive` page:
    - job composite CSV
-   - per-test CSV files
+   - per-test CSV files and force-time graphs
    - audit JSON
    - USB/export job folder
 

@@ -62,7 +62,9 @@ export QUADPOD_DATABASE=/opt/quadpod/flask_app/data/quadpod.db
 export QUADPOD_LOADCELL_REFERENCE_UNIT=10433.64
 export QUADPOD_VICTOR_NEUTRAL_US=1650
 export QUADPOD_VICTOR_PULL_US=1850
-export QUADPOD_VICTOR_JOG_US=1850
+export QUADPOD_VICTOR_JOG_US=2004
+export QUADPOD_PRELOAD_MIN_LBS=10
+export QUADPOD_PRELOAD_MAX_LBS=15
 ```
 
 Install service:
@@ -175,6 +177,7 @@ Export bundle contents:
 - `Project_Job#_ALL.csv`
 - `audit.json`
 - `tests/Project_Job#_Test-#.csv`
+- `graphs/Project_Job#_Test-#_force_time.svg`
 - `photos/<uploaded-photo-files>` when optional in-app photos were uploaded
 
 The `Copy Job Folder to USB/Exports` action writes the same layout into a named job folder. If `QUADPOD_USB_EXPORT_ROOT` is set, that folder is used first. Otherwise the app looks for writable mounted media under `/media` or `/mnt`; if none is available it writes to `flask_app/static/exports/usb_copy`.
@@ -188,7 +191,7 @@ The `Copy Job Folder to USB/Exports` action writes the same layout into a named 
 - Load cell not reading: press Tare in Pre-Test, run `scripts/check_hx711_dout.py`, then `scripts/read_hx711_raw.py`. Check DOUT/SCK pins and 5V/GND.
 - Load values wrong: rerun `scripts/calibrate_loadcell.py`, verify `QUADPOD_LOADCELL_REFERENCE_UNIT`, and restart service.
 - Actuator not moving: check PCA9685 power/I2C, run `scripts/probe_pwm.py`, verify Victor neutral/calibration and actuator wiring.
-- Pull will not start: open `/setup-check`, confirm load cell/actuator OK, confirm calibration dates are recorded, confirm angle is recorded, tare, and preload to 10 lb +/- tolerance.
+- Pull will not start: open `/setup-check`, confirm load cell/actuator OK, confirm calibration dates are recorded, confirm angle is 80-100 degrees, tare, and preload to 10-15 lb.
 - Email not sending: download the ZIP manually or connect the Pi to internet and use Archive -> Try Sending Now.
 
 ## Performance and UI Verification

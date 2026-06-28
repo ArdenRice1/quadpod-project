@@ -56,10 +56,16 @@ class ControlGateTests(unittest.TestCase):
         self.assertIn("preload", message)
 
     def test_start_rejects_high_preload(self):
-        self._set_load(11.0)
+        self._set_load(16.0)
         ok, message = self.engine.start_pull(self.test_id)
         self.assertFalse(ok)
         self.assertIn("preload", message)
+
+    def test_start_accepts_preload_drift_inside_band(self):
+        self._set_load(14.8)
+        ok, message = self.engine.start_pull(self.test_id)
+        self.assertTrue(ok, message)
+        self.assertTrue(self.engine.state["test_running"])
 
     def test_start_rejects_load_cell_fault(self):
         self._set_load(10.0)
@@ -80,6 +86,13 @@ class ControlGateTests(unittest.TestCase):
         ok, message = self.engine.start_pull(self.test_id)
         self.assertTrue(ok, message)
         self.assertTrue(self.engine.state["test_running"])
+
+    def test_start_rejects_angle_outside_allowed_range(self):
+        storage.update_test(self.test_id, form={"angle_degrees": "101"})
+        self._set_load(10.0)
+        ok, message = self.engine.start_pull(self.test_id)
+        self.assertFalse(ok)
+        self.assertIn("80 and 100", message)
 
     def test_start_accepts_recorded_past_calibration_dates(self):
         storage.update_job(

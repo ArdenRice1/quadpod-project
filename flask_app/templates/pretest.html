@@ -13,32 +13,50 @@
     <div class="unit">lbs</div>
   </div>
   <div class="btnrow">
+    <button class="success" type="button" id="autoPreload">Auto Preload to 10 lb</button>
     <button class="secondary" type="button" id="jogUp">Jog Up</button>
     <button class="secondary" type="button" id="jogDown">Jog Down</button>
     <button class="warn" type="button" id="tareBtn">Tare</button>
   </div>
+  <div class="field">
+    <label>Jog Speed</label>
+    <input id="jogSpeed" type="range" min="1" max="100" value="100">
+  </div>
 </section>
 
+{% if job_required %}
+<section class="section">
+  <h2>Project Required</h2>
+  <div class="status warn">Jogging and preload setup are available. Create or resume a job before saving a test or starting a pull.</div>
+  <a class="button full-width success" href="{{ url_for('home') }}">Create Job</a>
+</section>
+{% else %}
 <form method="POST" enctype="multipart/form-data">
   <section class="section">
     <h2>Test Point</h2>
     <div class="grid">
-      <div class="field"><label>Test #</label><input name="test_number" value="{{ defaults.get('test_number', '') }}" required></div>
+      <div class="field"><label>Test # <span class="required">*</span></label><input name="test_number" value="{{ defaults.get('test_number', '') }}" required></div>
       <div class="field"><label>Test Area</label><input name="test_area" value="{{ defaults.get('test_area', '') }}" placeholder="Roof area / slope / grid"></div>
       <div class="field"><label>Roof Area</label><input name="roof_area" value="{{ defaults.get('roof_area', '') }}" placeholder="e.g. 50-100 squares"></div>
-      <div class="field"><label>Angle (85-95 degrees)</label><input name="angle_degrees" type="number" min="85" max="95" step="0.1" value="{{ defaults.get('angle_degrees', '') }}" required></div>
+      <div class="field"><label>Angle (80-100 degrees) <span class="required">*</span></label><input name="angle_degrees" type="number" min="80" max="100" step="0.1" value="{{ defaults.get('angle_degrees', '') }}" required></div>
       <div class="field"><label>Air Temp (F)</label><input name="air_temperature_f" type="number" step="0.1" value="{{ defaults.get('air_temperature_f', '') }}" inputmode="decimal"></div>
       <div class="field"><label>Roof Temp (F)</label><input name="roof_temperature_f" type="number" step="0.1" value="{{ defaults.get('roof_temperature_f', '') }}" inputmode="decimal"></div>
       <div class="field full"><label>Wind Speed & Direction</label><input name="wind_speed_direction" value="{{ defaults.get('wind_speed_direction', '') }}" placeholder="e.g. 8 mph N"></div>
+      <div class="field">
+        <label>Shingle Type</label>
+        <select name="shingle_type">
+          <option value="">Select</option>
+          {% for option in ["Three tab", "Architectural", "Other"] %}
+            <option value="{{ option }}" {% if defaults.get('shingle_type') == option %}selected{% endif %}>{{ option }}</option>
+          {% endfor %}
+        </select>
+      </div>
     </div>
   </section>
 
   <section class="section">
-    <h2>Shingle Record</h2>
+    <h2>Field Observations</h2>
     <div class="grid">
-      <div class="field"><label>Manufacturer</label><input name="shingle_manufacturer" value="{{ defaults.get('shingle_manufacturer', '') }}"></div>
-      <div class="field"><label>Product / Rating</label><input name="shingle_product" value="{{ defaults.get('shingle_product', '') }}"></div>
-      <div class="field full"><label>Shingle Observations</label><textarea name="shingle_observations">{{ defaults.get('shingle_observations', '') }}</textarea></div>
       <div class="field full"><label>Evidence of Wind Lift</label><textarea name="wind_lift_evidence">{{ defaults.get('wind_lift_evidence', '') }}</textarea></div>
       <div class="field full"><label>Nail Size / Placement Notes</label><textarea name="nail_observations">{{ defaults.get('nail_observations', '') }}</textarea></div>
     </div>
@@ -72,18 +90,20 @@
   </div>
 </section>
 {% endif %}
+{% endif %}
 {% endblock %}
 
 {% block scripts %}
 <script>
   const liveLoad = document.getElementById("liveLoad");
   const preloadStatus = document.getElementById("preloadStatus");
+  const jogSpeed = document.getElementById("jogSpeed");
 
   function jog(action) {
     return fetch("{{ url_for('api_jog') }}", {
       method: "POST",
       headers: quadpodJsonHeaders(),
-      body: JSON.stringify({ action })
+      body: JSON.stringify({ action, speed_percent: Number(jogSpeed.value || 100) })
     });
   }
 
@@ -98,6 +118,23 @@
   bindHoldButton("jogUp", "up");
   bindHoldButton("jogDown", "down");
 
+  jogSpeed.addEventListener("input", () => {
+    fetch("{{ url_for('api_jog_speed') }}", {
+      method: "POST",
+      headers: quadpodJsonHeaders(),
+      body: JSON.stringify({ speed_percent: Number(jogSpeed.value || 100) })
+    });
+  });
+
+  document.getElementById("autoPreload").addEventListener("click", () => {
+    fetch("{{ url_for('api_auto_preload') }}", { method: "POST", headers: quadpodJsonHeaders() })
+      .then((res) => res.json())
+      .then((data) => {
+        preloadStatus.className = data.ok ? "status warn" : "status bad";
+        preloadStatus.textContent = data.message || "Auto preload command sent.";
+      });
+  });
+
   document.getElementById("tareBtn").addEventListener("click", () => {
     fetch("{{ url_for('api_tare') }}", { method: "POST", headers: quadpodJsonHeaders() });
   });
@@ -109,12 +146,17 @@
       .then((res) => res.json())
       .then((data) => {
         liveLoad.textContent = data.current_load.toFixed(2);
+        if (data.auto_preload_running || data.auto_preload_message) {
+          preloadStatus.className = data.preload_ready ? "status good" : "status warn";
+          preloadStatus.textContent = data.auto_preload_message;
+          return;
+        }
         if (data.preload_ready) {
           preloadStatus.className = "status good";
-          preloadStatus.textContent = `Preload is within ${data.preload_target_lbs.toFixed(1)} +/- ${data.preload_tolerance_lbs.toFixed(1)} lb.`;
+          preloadStatus.textContent = `Preload is within ${data.preload_min_lbs.toFixed(1)}-${data.preload_max_lbs.toFixed(1)} lb.`;
         } else {
           preloadStatus.className = "status warn";
-          preloadStatus.textContent = `Jog to ${data.preload_target_lbs.toFixed(1)} +/- ${data.preload_tolerance_lbs.toFixed(1)} lb before pulling.`;
+          preloadStatus.textContent = `Auto preload or jog to ${data.preload_min_lbs.toFixed(1)}-${data.preload_max_lbs.toFixed(1)} lb before pulling.`;
         }
       });
   }, 250);

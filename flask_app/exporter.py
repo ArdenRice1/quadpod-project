@@ -1,4 +1,5 @@
 ﻿import csv
+import html
 import json
 import re
 import shutil
@@ -15,6 +16,8 @@ from config import (
     FAILURE_MIN_PEAK_LBS,
     LOADCELL_REFERENCE_UNIT,
     PHOTO_DIR,
+    PRELOAD_MAX_LBS,
+    PRELOAD_MIN_LBS,
     PRELOAD_TARGET_LBS,
     PRELOAD_TOLERANCE_LBS,
     PULL_TARGET_IN_PER_MIN,
@@ -50,8 +53,6 @@ FIELD_LABELS = {
     "tech_2": "Tech. 2",
     "start_time": "Start Time",
     "end_time": "End Time",
-    "air_flow_meter_id": "Air Flow Meter #",
-    "air_flow_meter_calibration_date": "Air Flow Meter Calibration Date",
     "load_cell_id": "Load Cell #",
     "load_cell_calibration_date": "Load Cell Calibration Date",
     "ir_temp_gun_id": "IR Temp. Gun #",
@@ -66,9 +67,7 @@ FIELD_LABELS = {
     "air_temperature_f": "Air Temp. (F)",
     "roof_temperature_f": "Roof Temp. (F)",
     "wind_speed_direction": "Wind Speed & Direction",
-    "shingle_manufacturer": "Shingle Manufacturer",
-    "shingle_product": "Shingle Product / Rating",
-    "shingle_observations": "Shingle Observations",
+    "shingle_type": "Shingle Type",
     "wind_lift_evidence": "Evidence of Wind Lift",
     "nail_observations": "Nail Size / Placement Notes",
     "started_at": "Started At",
@@ -115,8 +114,6 @@ JOB_HEADER_FIELDS = [
 ]
 
 EQUIPMENT_FIELDS = [
-    "air_flow_meter_id",
-    "air_flow_meter_calibration_date",
     "load_cell_id",
     "load_cell_calibration_date",
     "ir_temp_gun_id",
@@ -134,12 +131,10 @@ TEST_DETAIL_FIELDS = [
     "test_area",
     "roof_area",
     "angle_degrees",
-    "shingle_manufacturer",
-    "shingle_product",
+    "shingle_type",
     "air_temperature_f",
     "roof_temperature_f",
     "wind_speed_direction",
-    "shingle_observations",
     "wind_lift_evidence",
     "nail_observations",
 ]
@@ -166,6 +161,7 @@ DEVIATION_FIELDS = [
 JOB_TEST_TABLE = [
     ("test_number", "Test #"),
     ("angle_degrees", "Angle"),
+    ("shingle_type", "Shingle Type"),
     ("peak_load_lbs", "Max Load Value (lbs)"),
     ("completed_at", "Time"),
     ("roof_temperature_f", "Temp."),
@@ -271,6 +267,22 @@ def export_test_trace_csv(test_id):
     return path
 
 
+def export_force_time_graph_svg(test_id):
+    test = storage.get_test(test_id)
+    if not test:
+        raise ValueError("Test not found")
+    job = storage.get_job(test["job_id"])
+    if not job:
+        raise ValueError("Job not found")
+
+    graph_dir = Path(EXPORT_DIR) / "graphs"
+    graph_dir.mkdir(parents=True, exist_ok=True)
+    path = graph_dir / f"{Path(_test_csv_name(job, test)).stem}_force_time.svg"
+    samples = storage.list_samples(test_id)
+    path.write_text(_force_time_svg(job, test, samples), encoding="utf-8")
+    return path
+
+
 def build_audit_payload(job_id):
     job = storage.get_job(job_id)
     if not job:
@@ -303,6 +315,7 @@ def export_job_bundle(job_id):
 
     tests = storage.list_tests(job_id)
     trace_paths = [Path(export_test_trace_csv(test["id"])) for test in tests]
+    graph_paths = [Path(export_force_time_graph_svg(test["id"])) for test in tests]
 
     bundle_path = export_dir / f"{_job_export_zip_name(job)}"
     with zipfile.ZipFile(bundle_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
@@ -310,6 +323,8 @@ def export_job_bundle(job_id):
         zf.write(audit_path, "audit.json")
         for path in trace_paths:
             zf.write(path, f"tests/{path.name}")
+        for path in graph_paths:
+            zf.write(path, f"graphs/{path.name}")
         for photo_path in _job_photo_paths(job_id):
             zf.write(photo_path, f"photos/{photo_path.name}")
     return bundle_path
@@ -333,7 +348,9 @@ def export_job_folder(job_id, root_dir):
     shutil.copy2(audit_path, folder / "audit.json")
     for test in storage.list_tests(job_id):
         trace_path = Path(export_test_trace_csv(test["id"]))
+        graph_path = Path(export_force_time_graph_svg(test["id"]))
         shutil.copy2(trace_path, tests_dir / trace_path.name)
+        shutil.copy2(graph_path, tests_dir / graph_path.name)
     for photo_path in _job_photo_paths(job_id):
         shutil.copy2(photo_path, photos_dir / photo_path.name)
     return folder
@@ -350,6 +367,8 @@ def machine_settings():
         "pull_direction": ACTUATOR_PULL_DIRECTION,
         "pull_target_in_per_min": PULL_TARGET_IN_PER_MIN,
         "preload_target_lbs": PRELOAD_TARGET_LBS,
+        "preload_min_lbs": PRELOAD_MIN_LBS,
+        "preload_max_lbs": PRELOAD_MAX_LBS,
         "preload_tolerance_lbs": PRELOAD_TOLERANCE_LBS,
         "loadcell_reference_unit": LOADCELL_REFERENCE_UNIT,
         "failure_drop_lbs": FAILURE_DROP_LBS,
@@ -440,6 +459,74 @@ def _combined_row(job, test):
         }
     )
     return row
+
+
+def _force_time_svg(job, test, samples):
+    width = 900
+    height = 420
+    left = 64
+    right = 24
+    top = 46
+    bottom = 58
+    plot_w = width - left - right
+    plot_h = height - top - bottom
+    test_number = test["form"].get("test_number") or test["id"]
+    title = f"Quadpod Force-Time - Test {test_number}"
+    subtitle = f"{job['form'].get('project_name') or 'Project'} / {job['form'].get('job_number') or 'Job'}"
+
+    if samples:
+        max_t = max(float(sample.get("elapsed_s") or 0.0) for sample in samples) or 1.0
+        max_f = max(float(sample.get("force_lbs") or 0.0) for sample in samples) or 1.0
+    else:
+        max_t = 1.0
+        max_f = 1.0
+    max_f = max(10.0, max_f * 1.1)
+
+    def x(elapsed):
+        return left + (float(elapsed or 0.0) / max_t) * plot_w
+
+    def y(force):
+        return top + plot_h - (float(force or 0.0) / max_f) * plot_h
+
+    points = " ".join(
+        f"{x(sample.get('elapsed_s')):.1f},{y(sample.get('force_lbs')):.1f}" for sample in samples
+    )
+    if not points:
+        points = f"{left},{top + plot_h}"
+
+    y_ticks = []
+    for index in range(5):
+        value = (max_f / 4) * index
+        yy = y(value)
+        y_ticks.append(
+            f'<line x1="{left}" y1="{yy:.1f}" x2="{width - right}" y2="{yy:.1f}" stroke="#e1e6eb"/>'
+            f'<text x="{left - 10}" y="{yy + 4:.1f}" text-anchor="end">{value:.0f}</text>'
+        )
+
+    x_ticks = []
+    for index in range(5):
+        value = (max_t / 4) * index
+        xx = x(value)
+        x_ticks.append(
+            f'<line x1="{xx:.1f}" y1="{top}" x2="{xx:.1f}" y2="{top + plot_h}" stroke="#eef2f5"/>'
+            f'<text x="{xx:.1f}" y="{height - 22}" text-anchor="middle">{value:.1f}</text>'
+        )
+
+    peak = max((float(sample.get("force_lbs") or 0.0) for sample in samples), default=0.0)
+    return f'''<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}" role="img" aria-label="{html.escape(title)}">
+  <rect width="100%" height="100%" fill="#ffffff"/>
+  <text x="{left}" y="24" font-family="Arial, sans-serif" font-size="20" font-weight="700" fill="#15191d">{html.escape(title)}</text>
+  <text x="{left}" y="42" font-family="Arial, sans-serif" font-size="12" fill="#66727f">{html.escape(subtitle)} - peak {peak:.2f} lb - samples {len(samples)}</text>
+  <g font-family="Arial, sans-serif" font-size="11" fill="#66727f">
+    {''.join(y_ticks)}
+    {''.join(x_ticks)}
+  </g>
+  <rect x="{left}" y="{top}" width="{plot_w}" height="{plot_h}" fill="none" stroke="#9aa7b2"/>
+  <polyline fill="none" stroke="#136f63" stroke-width="3" points="{points}"/>
+  <text x="{left + plot_w / 2:.1f}" y="{height - 6}" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" fill="#66727f">Elapsed seconds</text>
+  <text transform="translate(18 {top + plot_h / 2:.1f}) rotate(-90)" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" fill="#66727f">Force (lbs)</text>
+</svg>
+'''
 
 
 def _write_field_section(writer, title, data, fields):

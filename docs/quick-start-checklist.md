@@ -12,9 +12,9 @@
 
 1. Confirm calibration dates are recorded.
 2. Select test point from investigation plan.
-3. Record angle, temperatures, wind, shingle info, and observations.
+3. Record angle, temperatures, wind, shingle type, and observations.
 4. Tare load cell.
-5. Preload to 10 lb +/- tolerance.
+5. Use Auto Preload or jog to the 10-15 lb preload band.
 
 ## Pull and Result
 
@@ -30,7 +30,7 @@
 
 1. Open `Archive`.
 2. Download `Bundle ZIP`.
-3. Confirm ZIP includes `Project_Job#_ALL.csv`, `audit.json`, and named test CSV files under `tests/`.
+3. Confirm ZIP includes `Project_Job#_ALL.csv`, `audit.json`, named test CSV files under `tests/`, and force-time SVG graphs under `graphs/`.
 4. Use `Copy Job Folder to USB/Exports` for a job folder with the same files.
 5. Queue email if SMTP has been configured.
 
@@ -41,5 +41,5 @@
 - Pi power warning: replace the power supply/cable before troubleshooting intermittent Wi-Fi. `vcgencmd get_throttled` should return `0x0` after a clean reboot and stable power.
 - Load cell not reading: press Tare, check wiring, run `scripts/read_hx711_raw.py`.
 - Actuator not moving: arm controls, verify power, run `scripts/probe_pwm.py`.
-- Pull will not start: open `Setup`, confirm load cell/actuator OK, calibration dates recorded, angle recorded, and preload exactly to 10 lb +/- tolerance.
+- Pull will not start: open `Setup`, confirm load cell/actuator OK, calibration dates recorded, angle is 80-100 degrees, and preload is 10-15 lb.
 - Email did not send: download ZIP manually; Archive shows whether SMTP is configured.

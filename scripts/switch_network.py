@@ -43,6 +43,23 @@ def restart_discovery():
     run(["systemctl", "restart", "avahi-daemon"], check=False)
 
 
+def wifi_connect_command(ssid, password):
+    command = ["nmcli", "device", "wifi", "connect", ssid, "ifname", "wlan0", "name", ssid]
+    if password:
+        command.extend(["password", password])
+    return command
+
+
+def malformed_wifi_profile(exc):
+    text = f"{getattr(exc, 'stdout', '')}\n{getattr(exc, 'stderr', '')}"
+    return "802-11-wireless-security.key-mgmt" in text or "wifi-sec.key-mgmt" in text
+
+
+def rebuild_wifi_profile(ssid, password):
+    run(["nmcli", "connection", "delete", ssid], check=False)
+    run(wifi_connect_command(ssid, password))
+
+
 def switch_to_wifi(ssid, password):
     hotspot = hotspot_profile()
     disable_duplicate_hotspots(hotspot)
@@ -52,15 +69,17 @@ def switch_to_wifi(ssid, password):
 
     try:
         if ssid in connection_names():
-            if password:
-                run(["nmcli", "connection", "modify", ssid, "wifi-sec.key-mgmt", "wpa-psk"])
-                run(["nmcli", "connection", "modify", ssid, "wifi-sec.psk", password])
-            run(["nmcli", "connection", "up", ssid, "ifname", "wlan0"])
+            try:
+                if password:
+                    run(["nmcli", "connection", "modify", ssid, "wifi-sec.key-mgmt", "wpa-psk"])
+                    run(["nmcli", "connection", "modify", ssid, "wifi-sec.psk", password])
+                run(["nmcli", "connection", "up", ssid, "ifname", "wlan0"])
+            except subprocess.CalledProcessError as exc:
+                if not malformed_wifi_profile(exc):
+                    raise
+                rebuild_wifi_profile(ssid, password)
         else:
-            command = ["nmcli", "device", "wifi", "connect", ssid, "ifname", "wlan0", "name", ssid]
-            if password:
-                command.extend(["password", password])
-            run(command)
+            run(wifi_connect_command(ssid, password))
         run(["nmcli", "connection", "modify", ssid, "connection.autoconnect", "yes"])
         run(["nmcli", "connection", "modify", ssid, "connection.autoconnect-priority", "100"])
         restart_discovery()

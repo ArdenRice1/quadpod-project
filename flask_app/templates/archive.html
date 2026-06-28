@@ -85,7 +85,7 @@
   const processEmail = document.getElementById("processEmail");
   if (processEmail) {
     processEmail.addEventListener("click", () => {
-      fetch("{{ url_for('api_process_email') }}", { method: "POST" })
+      fetch("{{ url_for('api_process_email') }}", { method: "POST", headers: quadpodJsonHeaders() })
         .then((res) => res.json())
         .then((data) => {
           const el = document.getElementById("emailStatus");

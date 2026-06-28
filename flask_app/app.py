@@ -126,8 +126,21 @@ def resume_job(job_id):
 @app.route("/pretest", methods=["GET", "POST"])
 def pretest():
     job_id = session.get("job_id")
-    if not job_id or not storage.get_job(job_id):
-        return redirect(url_for("home"))
+    job = storage.get_job(job_id) if job_id else None
+    if not job:
+        if request.method == "POST":
+            return redirect(url_for("home"))
+        return render_template(
+            "pretest.html",
+            defaults={
+                "test_number": "",
+                "air_temperature_f": "",
+                "roof_temperature_f": "",
+                "shingle_type": "",
+            },
+            tests=[],
+            job_required=True,
+        )
 
     if request.method == "POST":
         form = _form_payload(storage.TEST_FIELDS)
@@ -299,6 +312,11 @@ def download_trace(test_id):
     return send_file(exporter.export_test_trace_csv(test_id), as_attachment=True)
 
 
+@app.route("/test/<int:test_id>/force-time.svg")
+def download_force_time_graph(test_id):
+    return send_file(exporter.export_force_time_graph_svg(test_id), mimetype="image/svg+xml")
+
+
 @app.route("/job/<int:job_id>/bundle.zip")
 def download_bundle(job_id):
     return send_file(exporter.export_job_bundle(job_id), as_attachment=True)
@@ -327,6 +345,7 @@ def email_job(job_id):
     subject = f"Quadpod job {job_id} export"
     body = "Attached is the Quadpod field export bundle. If the Pi was offline, this email may have been sent after the field work was completed."
     email_queue.queue_job_email(job_id, recipient, subject, body, bundle)
+    threading.Thread(target=email_queue.process_once, daemon=True).start()
     return redirect(url_for("exports"))
 
 
@@ -346,7 +365,30 @@ def api_jog():
     if guard:
         return guard
     data = request.get_json(silent=True) or {}
-    ok, message = quadpod_engine.jog(data.get("action", "stop"))
+    ok, message = quadpod_engine.jog(data.get("action", "stop"), data.get("speed_percent"))
+    return jsonify({"ok": ok, "message": message, "status": quadpod_engine.snapshot()})
+
+
+@app.route("/api/jog_speed", methods=["POST"])
+def api_jog_speed():
+    guard = _require_command_token()
+    if guard:
+        return guard
+    data = request.get_json(silent=True) or {}
+    try:
+        speed = float(data.get("speed_percent", 100))
+    except (TypeError, ValueError):
+        speed = 100
+    ok, message = quadpod_engine.set_jog_speed(speed)
+    return jsonify({"ok": ok, "message": message, "status": quadpod_engine.snapshot()})
+
+
+@app.route("/api/auto_preload", methods=["POST"])
+def api_auto_preload():
+    guard = _require_command_token()
+    if guard:
+        return guard
+    ok, message = quadpod_engine.auto_preload()
     return jsonify({"ok": ok, "message": message, "status": quadpod_engine.snapshot()})
 
 
@@ -394,6 +436,9 @@ def api_stop():
 
 @app.route("/api/email/process", methods=["POST"])
 def api_process_email():
+    guard = _require_command_token()
+    if guard:
+        return guard
     return jsonify({"message": email_queue.process_once()})
 
 

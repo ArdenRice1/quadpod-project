@@ -7,13 +7,13 @@
   <section class="section">
     <h2>Project</h2>
     <div class="grid">
-      <div class="field full"><label>Project Name</label><input name="project_name" value="{{ defaults.get('project_name', '') }}" required></div>
-      <div class="field full"><label>Project Address</label><input name="project_address" value="{{ defaults.get('project_address', '') }}" required></div>
+      <div class="field full"><label>Project Name <span class="required">*</span></label><input name="project_name" value="{{ defaults.get('project_name', '') }}" required></div>
+      <div class="field full"><label>Project Address <span class="required">*</span></label><input name="project_address" value="{{ defaults.get('project_address', '') }}" required></div>
       <div class="field"><label>City, State, Zip</label><input name="project_city_state_zip" value="{{ defaults.get('project_city_state_zip', '') }}"></div>
       <div class="field"><label>Contact Phone</label><input name="contact_phone" value="{{ defaults.get('contact_phone', '') }}" inputmode="tel"></div>
-      <div class="field"><label>Date</label><input name="date" type="date" value="{{ defaults.date }}" required></div>
+      <div class="field"><label>Date <span class="required">*</span></label><input name="date" type="date" value="{{ defaults.date }}" required></div>
       <div class="field"><label>Date of Suspected Loss</label><input name="suspected_loss_date" type="date" value="{{ defaults.get('suspected_loss_date', '') }}"></div>
-      <div class="field"><label>Job #</label><input name="job_number" value="{{ defaults.get('job_number', '') }}" required></div>
+      <div class="field"><label>Job # <span class="required">*</span></label><input name="job_number" value="{{ defaults.get('job_number', '') }}" required></div>
       <div class="field"><label>Building #</label><input name="building_number" value="{{ defaults.get('building_number', '') }}"></div>
       <div class="field"><label>Start Time</label><input name="start_time" type="time" value="{{ defaults.get('start_time', '') }}"></div>
       <div class="field"><label>End Time</label><input name="end_time" type="time" value="{{ defaults.get('end_time', '') }}"></div>
@@ -23,7 +23,7 @@
   <section class="section">
     <h2>People</h2>
     <div class="grid">
-      <div class="field"><label>Foreman</label><input name="foreman" value="{{ defaults.get('foreman', '') }}" required></div>
+      <div class="field"><label>Foreman <span class="required">*</span></label><input name="foreman" value="{{ defaults.get('foreman', '') }}" required></div>
       <div class="field"><label>Tech 1</label><input name="tech_1" value="{{ defaults.get('tech_1', '') }}"></div>
       <div class="field"><label>Tech 2</label><input name="tech_2" value="{{ defaults.get('tech_2', '') }}"></div>
       <div class="field"><label>Client</label><input name="client_name" value="{{ defaults.get('client_name', '') }}"></div>
@@ -44,12 +44,10 @@
   <section class="section">
     <h2>Equipment & Calibration</h2>
     <div class="grid">
-      <div class="field"><label>Air Flow Meter #</label><input name="air_flow_meter_id" value="{{ defaults.get('air_flow_meter_id', '') }}"></div>
-      <div class="field"><label>Air Flow Meter Calibration Date</label><input name="air_flow_meter_calibration_date" type="date" value="{{ defaults.get('air_flow_meter_calibration_date', '') }}"></div>
-      <div class="field"><label>Load Cell #</label><input name="load_cell_id" value="{{ defaults.get('load_cell_id', '') }}" required></div>
-      <div class="field"><label>Load Cell Calibration Date</label><input name="load_cell_calibration_date" type="date" value="{{ defaults.get('load_cell_calibration_date', '') }}" required></div>
-      <div class="field"><label>IR Temp Gun #</label><input name="ir_temp_gun_id" value="{{ defaults.get('ir_temp_gun_id', '') }}" required></div>
-      <div class="field"><label>IR Temp Gun Calibration Date</label><input name="ir_temp_gun_calibration_date" type="date" value="{{ defaults.get('ir_temp_gun_calibration_date', '') }}" required></div>
+      <div class="field"><label>Load Cell # <span class="required">*</span></label><input name="load_cell_id" value="{{ defaults.get('load_cell_id', '') }}" required></div>
+      <div class="field"><label>Load Cell Calibration Date <span class="required">*</span></label><input name="load_cell_calibration_date" type="date" value="{{ defaults.get('load_cell_calibration_date', '') }}" required></div>
+      <div class="field"><label>IR Temp Gun # <span class="required">*</span></label><input name="ir_temp_gun_id" value="{{ defaults.get('ir_temp_gun_id', '') }}" required></div>
+      <div class="field"><label>IR Temp Gun Calibration Date <span class="required">*</span></label><input name="ir_temp_gun_calibration_date" type="date" value="{{ defaults.get('ir_temp_gun_calibration_date', '') }}" required></div>
     </div>
   </section>
 

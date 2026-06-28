@@ -188,6 +188,10 @@ label {
   color: var(--muted);
 }
 
+.required {
+  color: var(--danger);
+}
+
 input,
 select,
 textarea {
@@ -311,6 +315,39 @@ button.warn {
 
 .metric.compact .value {
   font-size: 44px;
+}
+
+.force-graph {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+}
+
+.install-prompt {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  z-index: 20;
+  max-width: 820px;
+  margin: 0 auto;
+  border: 1px solid #93c5ae;
+  border-radius: var(--radius);
+  background: #edf8f2;
+  color: #0f5d34;
+  padding: 10px;
+  box-shadow: 0 10px 30px rgba(15, 20, 25, 0.18);
+}
+
+.install-prompt[hidden] {
+  display: none;
+}
+
+.install-prompt .btnrow {
+  margin: 8px 0 0;
 }
 
 .status {

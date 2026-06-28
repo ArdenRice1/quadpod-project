@@ -8,5 +8,12 @@
   "display_override": ["standalone", "minimal-ui"],
   "background_color": "#f4f6f7",
   "theme_color": "#20262d",
-  "icons": []
+  "icons": [
+    {
+      "src": "/static/quadpod-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
 }
