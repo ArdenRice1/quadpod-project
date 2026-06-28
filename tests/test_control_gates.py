@@ -72,7 +72,8 @@ class ControlGateTests(unittest.TestCase):
         self.engine.state["jog_speed_percent"] = 1
         self.engine._move_auto_preload_direction_locked(increase=True)
         self.assertEqual(self.engine.actuator.last_command, "up_fast")
-        self.assertLess(self.engine.actuator.last_pulse_us, 1200)
+        self.assertGreater(self.engine.actuator.last_pulse_us, 1200)
+        self.assertLess(self.engine.actuator.last_pulse_us, 1500)
         self.engine._move_auto_preload_direction_locked(increase=False)
         self.assertEqual(self.engine.actuator.last_command, "down_fast")
 
