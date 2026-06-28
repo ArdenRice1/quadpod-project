@@ -8,6 +8,7 @@ from pathlib import Path
 from config import (
     EMAIL_ENABLED,
     EMAIL_FROM,
+    EMAIL_MAX_ATTEMPTS,
     SMTP_HOST,
     SMTP_PASSWORD,
     SMTP_PORT,
@@ -28,6 +29,10 @@ def configuration_status():
         missing.append("SMTP host")
     if not EMAIL_FROM:
         missing.append("from address")
+    if SMTP_USERNAME and not SMTP_PASSWORD:
+        missing.append("SMTP password")
+    if "gmail" in (SMTP_HOST or "").lower() and not SMTP_USERNAME:
+        missing.append("SMTP username")
     if missing:
         return {
             "configured": False,
@@ -44,7 +49,8 @@ def process_once():
     status = configuration_status()
     if not status["configured"]:
         return status["message"]
-    item = storage.next_queued_email()
+    storage.retire_email_retries(EMAIL_MAX_ATTEMPTS)
+    item = storage.next_queued_email(EMAIL_MAX_ATTEMPTS)
     if not item:
         return "No queued email"
 
@@ -53,7 +59,7 @@ def process_once():
         storage.mark_email_sent(item["id"])
         return f"Sent queue item {item['id']}"
     except Exception as exc:
-        storage.mark_email_failed(item["id"], exc)
+        storage.mark_email_failed(item["id"], exc, EMAIL_MAX_ATTEMPTS)
         return _operator_failure_message(exc)
 
 

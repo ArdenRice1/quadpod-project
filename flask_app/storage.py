@@ -466,15 +466,29 @@ def queue_email(job_id, recipient, subject, body, attachment_path):
         return cur.lastrowid
 
 
-def next_queued_email():
+def retire_email_retries(max_attempts):
+    with db() as conn:
+        conn.execute(
+            """
+            UPDATE email_queue
+            SET status='failed', updated_at=?
+            WHERE status='retry' AND attempts >= ?
+            """,
+            (utc_now(), max(1, int(max_attempts))),
+        )
+
+
+def next_queued_email(max_attempts=None):
+    max_attempts = max(1, int(max_attempts or 999999))
     with db() as conn:
         row = conn.execute(
             """
             SELECT * FROM email_queue
-            WHERE status IN ('queued', 'retry')
-            ORDER BY created_at
+            WHERE status='queued' OR (status='retry' AND attempts < ?)
+            ORDER BY CASE status WHEN 'queued' THEN 0 ELSE 1 END, created_at
             LIMIT 1
-            """
+            """,
+            (max_attempts,),
         ).fetchone()
     return dict(row) if row else None
 
@@ -487,15 +501,17 @@ def mark_email_sent(queue_id):
         )
 
 
-def mark_email_failed(queue_id, error):
+def mark_email_failed(queue_id, error, max_attempts=None):
+    max_attempts = max(1, int(max_attempts or 999999))
     with db() as conn:
         conn.execute(
             """
             UPDATE email_queue
-            SET status='retry', updated_at=?, attempts=attempts+1, last_error=?
+            SET status=CASE WHEN attempts + 1 >= ? THEN 'failed' ELSE 'retry' END,
+                updated_at=?, attempts=attempts+1, last_error=?
             WHERE id=?
             """,
-            (utc_now(), str(error)[:500], queue_id),
+            (max_attempts, utc_now(), str(error)[:500], queue_id),
         )
 
 

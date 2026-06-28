@@ -129,6 +129,49 @@ class EmailQueueTests(unittest.TestCase):
 
         smtp.login.assert_called_once_with("quadpod@example.com", "abcdefghijklmnop")
 
+    def test_new_queued_email_is_selected_before_old_retry(self):
+        job_id = storage.create_job({"project_name": "Email Test", "job_number": "E-1"})
+        old_id = storage.queue_email(
+            job_id, "old@example.com", "Old", "Body", str(self.root / "old.zip")
+        )
+        storage.mark_email_failed(old_id, RuntimeError("old failure"), max_attempts=5)
+        new_id = storage.queue_email(
+            job_id, "new@example.com", "New", "Body", str(self.root / "new.zip")
+        )
+
+        item = storage.next_queued_email(max_attempts=5)
+
+        self.assertEqual(item["id"], new_id)
+
+    def test_email_retry_becomes_failed_at_max_attempts(self):
+        job_id = storage.create_job({"project_name": "Email Test", "job_number": "E-1"})
+        queue_id = storage.queue_email(
+            job_id, "field@example.com", "Export", "Body", str(self.root / "export.zip")
+        )
+
+        storage.mark_email_failed(queue_id, RuntimeError("first"), max_attempts=2)
+        storage.mark_email_failed(queue_id, RuntimeError("second"), max_attempts=2)
+
+        row = storage.list_email_queue()[0]
+        self.assertEqual(row["status"], "failed")
+        self.assertEqual(row["attempts"], 2)
+
+    def test_retire_email_retries_marks_stuck_retry_failed(self):
+        job_id = storage.create_job({"project_name": "Email Test", "job_number": "E-1"})
+        queue_id = storage.queue_email(
+            job_id, "field@example.com", "Export", "Body", str(self.root / "export.zip")
+        )
+        with storage.db() as conn:
+            conn.execute(
+                "UPDATE email_queue SET status='retry', attempts=8 WHERE id=?",
+                (queue_id,),
+            )
+
+        storage.retire_email_retries(max_attempts=5)
+
+        row = storage.list_email_queue()[0]
+        self.assertEqual(row["status"], "failed")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -39,6 +39,12 @@
           <a class="button secondary" href="{{ url_for('resume_job', job_id=job.id) }}">Resume</a>
           <a class="button secondary" href="{{ url_for('download_job_report', job_id=job.id) }}">ALL CSV</a>
           <a class="button" href="{{ url_for('download_bundle', job_id=job.id) }}">ZIP</a>
+          <button
+            class="secondary shareZip"
+            type="button"
+            data-url="{{ url_for('download_bundle', job_id=job.id) }}"
+            data-name="quadpod-job-{{ job.id }}.zip"
+          >Share ZIP</button>
         </div>
         <form method="POST" action="{{ url_for('copy_job_usb', job_id=job.id) }}">
           <button class="full-width secondary" type="submit">Copy Job Folder to USB/Exports</button>
@@ -82,6 +88,40 @@
 
 {% block scripts %}
 <script>
+  document.querySelectorAll(".shareZip").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const url = button.dataset.url;
+      const fallback = () => { window.location.href = url; };
+      button.disabled = true;
+      try {
+        if (!navigator.share || !window.File) {
+          fallback();
+          return;
+        }
+        const response = await fetch(url);
+        if (!response.ok) { throw new Error(`ZIP download failed: ${response.status}`); }
+        const blob = await response.blob();
+        const disposition = response.headers.get("Content-Disposition") || "";
+        const match = disposition.match(/filename="?([^";]+)"?/i);
+        const filename = match ? match[1] : button.dataset.name;
+        const file = new File([blob], filename, { type: blob.type || "application/zip" });
+        if (navigator.canShare && !navigator.canShare({ files: [file] })) {
+          fallback();
+          return;
+        }
+        await navigator.share({
+          files: [file],
+          title: "Quadpod export",
+          text: "Quadpod field export ZIP"
+        });
+      } catch (err) {
+        fallback();
+      } finally {
+        button.disabled = false;
+      }
+    });
+  });
+
   const processEmail = document.getElementById("processEmail");
   if (processEmail) {
     processEmail.addEventListener("click", () => {
