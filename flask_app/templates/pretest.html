@@ -103,7 +103,8 @@
     return fetch("{{ url_for('api_jog') }}", {
       method: "POST",
       headers: quadpodJsonHeaders(),
-      body: JSON.stringify({ action, speed_percent: Number(jogSpeed.value || 100) })
+      body: JSON.stringify({ action, speed_percent: Number(jogSpeed.value || 100) }),
+      keepalive: action === "stop"
     });
   }
 

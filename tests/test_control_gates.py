@@ -67,6 +67,14 @@ class ControlGateTests(unittest.TestCase):
         self.assertTrue(ok, message)
         self.assertTrue(self.engine.state["test_running"])
 
+    def test_auto_preload_uses_configured_pull_direction_to_increase_load(self):
+        self.engine.actuator.pull_direction = "up"
+        self.engine.state["jog_speed_percent"] = 100
+        self.engine._move_preload_direction_locked(increase=True)
+        self.assertEqual(self.engine.actuator.last_command, "up_fast")
+        self.engine._move_preload_direction_locked(increase=False)
+        self.assertEqual(self.engine.actuator.last_command, "down_fast")
+
     def test_start_rejects_load_cell_fault(self):
         self._set_load(10.0)
         self.engine.load_cell.last_error = "load cell test fault"

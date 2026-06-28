@@ -331,12 +331,12 @@ class QuadpodEngine:
                         break
                     load = float(self.state.get("current_load") or 0.0)
                     if load < PRELOAD_TARGET_LBS - PRELOAD_AUTO_DEADBAND_LBS:
-                        self.actuator.move_down(fast=True, speed_percent=self.state["jog_speed_percent"])
+                        self._move_preload_direction_locked(increase=True)
                         self.state["actuator_command"] = self.actuator.last_command
-                        self.state["auto_preload_message"] = f"Auto jogging down to {PRELOAD_TARGET_LBS:.1f} lb."
+                        self.state["auto_preload_message"] = f"Auto jogging to {PRELOAD_TARGET_LBS:.1f} lb."
                         stable_since = None
                     elif load > PRELOAD_MAX_LBS:
-                        self.actuator.move_up(fast=True, speed_percent=self.state["jog_speed_percent"])
+                        self._move_preload_direction_locked(increase=False)
                         self.state["actuator_command"] = self.actuator.last_command
                         self.state["auto_preload_message"] = f"Auto easing preload below {PRELOAD_MAX_LBS:.1f} lb."
                         stable_since = None
@@ -365,6 +365,13 @@ class QuadpodEngine:
                 self.actuator.stop()
                 self.state["actuator_command"] = self.actuator.last_command
                 self.state["auto_preload_running"] = False
+
+    def _move_preload_direction_locked(self, increase):
+        pull_direction = self.actuator.pull_direction
+        direction = pull_direction if increase else ("down" if pull_direction == "up" else "up")
+        if direction == "up":
+            return self.actuator.move_up(fast=True, speed_percent=self.state["jog_speed_percent"])
+        return self.actuator.move_down(fast=True, speed_percent=self.state["jog_speed_percent"])
 
     def _record_load_locked(self, load):
         now = time.monotonic()
