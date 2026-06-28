@@ -15,7 +15,8 @@ from config import (
     LOAD_STABLE_DELTA_LBS,
     LOAD_STABLE_WINDOW_SECONDS,
     POST_STOP_LOG_MAX_SECONDS,
-    PRELOAD_AUTO_COARSE_CHECK_SECONDS,
+    PRELOAD_AUTO_ABORT_LBS,
+    PRELOAD_AUTO_COARSE_PULSE_SECONDS,
     PRELOAD_AUTO_COARSE_SPEED_PERCENT,
     PRELOAD_AUTO_COARSE_UNTIL_LBS,
     PRELOAD_AUTO_DEADBAND_LBS,
@@ -344,6 +345,13 @@ class QuadpodEngine:
                         self.state["auto_preload_message"] = "Auto preload cancelled because a pull test started."
                         break
                     load = float(self.state.get("current_load") or 0.0)
+                    if load >= PRELOAD_AUTO_ABORT_LBS:
+                        self.actuator.stop()
+                        self.state["actuator_command"] = self.actuator.last_command
+                        self.state["auto_preload_message"] = (
+                            f"Auto preload stopped at {load:.1f} lb. Reset preload manually before testing."
+                        )
+                        break
                     direction = self._auto_preload_direction_for_load(load)
                     if direction is None:
                         self.actuator.stop()
@@ -367,9 +375,10 @@ class QuadpodEngine:
                             self._move_auto_preload_coarse_locked()
                             self.state["actuator_command"] = self.actuator.last_command
                             stable_since = None
+                            pulse_seconds = self._auto_preload_coarse_pulse_seconds()
                             self.state["auto_preload_message"] = (
-                                f"Coarse preload moving to {PRELOAD_AUTO_COARSE_UNTIL_LBS:.1f} lb; "
-                                "then waiting for the load cell."
+                                f"Coarse preload pulse toward {PRELOAD_AUTO_COARSE_UNTIL_LBS:.1f} lb; "
+                                "waiting for the load cell."
                             )
                         else:
                             if last_direction is not None and direction != last_direction:
@@ -399,17 +408,10 @@ class QuadpodEngine:
                     time.sleep(0.1)
                     continue
                 if coarse_approach:
-                    time.sleep(PRELOAD_AUTO_COARSE_CHECK_SECONDS)
+                    time.sleep(pulse_seconds)
                     with self.lock:
-                        load = float(self.state.get("current_load") or 0.0)
-                        if (
-                            load >= PRELOAD_AUTO_COARSE_UNTIL_LBS
-                            or self.state["test_running"]
-                        ):
-                            self.actuator.stop()
-                            self.state["actuator_command"] = self.actuator.last_command
-                        else:
-                            continue
+                        self.actuator.stop()
+                        self.state["actuator_command"] = self.actuator.last_command
                     self._wait_for_auto_preload_settle(deadline)
                     continue
                 time.sleep(pulse_seconds)
@@ -438,6 +440,9 @@ class QuadpodEngine:
     def _auto_preload_should_coarse_approach(self, load, direction):
         coarse_limit = min(PRELOAD_AUTO_COARSE_UNTIL_LBS, PRELOAD_MIN_LBS)
         return bool(direction) and load < coarse_limit
+
+    def _auto_preload_coarse_pulse_seconds(self):
+        return max(0.02, PRELOAD_AUTO_COARSE_PULSE_SECONDS)
 
     def _auto_preload_pulse_seconds(self, recovery_pulse=False):
         multiplier = PRELOAD_AUTO_RECOVERY_MULTIPLIER if recovery_pulse else 1.0

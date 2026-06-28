@@ -82,12 +82,20 @@ class ControlGateTests(unittest.TestCase):
         self.assertFalse(self.engine._auto_preload_should_coarse_approach(3.0, True))
         self.assertFalse(self.engine._auto_preload_should_coarse_approach(2.9, False))
 
-    def test_auto_preload_coarse_uses_full_speed_before_fine_pulses(self):
+    def test_auto_preload_coarse_uses_bounded_pulse_before_fine_pulses(self):
         self.engine.actuator.pull_direction = "up"
         self.engine.state["jog_speed_percent"] = 1
         self.engine._move_auto_preload_coarse_locked()
         self.assertEqual(self.engine.actuator.last_command, "up_fast")
         self.assertLess(self.engine.actuator.last_pulse_us, 1200)
+
+    def test_auto_preload_aborts_large_overshoot_without_easing_down(self):
+        self.engine.state["auto_preload_running"] = True
+        self._set_load(65.0)
+        self.engine._auto_preload_loop()
+        self.assertEqual(self.engine.actuator.last_command, "neutral")
+        self.assertFalse(self.engine.state["auto_preload_running"])
+        self.assertIn("stopped at 65.0 lb", self.engine.state["auto_preload_message"])
 
     def test_auto_preload_pulses_only_outside_safe_band(self):
         self.assertTrue(self.engine._auto_preload_direction_for_load(9.9))
