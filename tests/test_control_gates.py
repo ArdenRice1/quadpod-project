@@ -75,6 +75,20 @@ class ControlGateTests(unittest.TestCase):
         self.engine._move_preload_direction_locked(increase=False)
         self.assertEqual(self.engine.actuator.last_command, "down_fast")
 
+    def test_auto_preload_pulses_only_outside_safe_band(self):
+        self.assertTrue(self.engine._auto_preload_direction_for_load(9.9))
+        self.assertIsNone(self.engine._auto_preload_direction_for_load(10.0))
+        self.assertIsNone(self.engine._auto_preload_direction_for_load(14.9))
+        self.assertFalse(self.engine._auto_preload_direction_for_load(15.1))
+
+    def test_auto_preload_recovery_pulse_is_longer_ease_down(self):
+        normal = self.engine._auto_preload_pulse_seconds()
+        recovery = self.engine._auto_preload_pulse_seconds(recovery_pulse=True)
+        self.assertGreater(recovery, normal)
+        self.engine.actuator.pull_direction = "up"
+        self.engine._move_preload_direction_locked(increase=False)
+        self.assertEqual(self.engine.actuator.last_command, "down_fast")
+
     def test_start_rejects_load_cell_fault(self):
         self._set_load(10.0)
         self.engine.load_cell.last_error = "load cell test fault"

@@ -16,6 +16,11 @@ from config import (
     LOAD_STABLE_WINDOW_SECONDS,
     POST_STOP_LOG_MAX_SECONDS,
     PRELOAD_AUTO_DEADBAND_LBS,
+    PRELOAD_AUTO_MAX_REVERSALS,
+    PRELOAD_AUTO_PULSE_SECONDS,
+    PRELOAD_AUTO_RECOVERY_MULTIPLIER,
+    PRELOAD_AUTO_SETTLE_MAX_SECONDS,
+    PRELOAD_AUTO_SETTLE_SECONDS,
     PRELOAD_AUTO_TIMEOUT_SECONDS,
     PRELOAD_MAX_LBS,
     PRELOAD_MIN_LBS,
@@ -323,24 +328,19 @@ class QuadpodEngine:
     def _auto_preload_loop(self):
         deadline = time.monotonic() + PRELOAD_AUTO_TIMEOUT_SECONDS
         stable_since = None
+        last_direction = None
+        reversals = 0
         try:
             while time.monotonic() < deadline:
+                direction = None
+                recovery_pulse = False
                 with self.lock:
                     if self.state["test_running"]:
                         self.state["auto_preload_message"] = "Auto preload cancelled because a pull test started."
                         break
                     load = float(self.state.get("current_load") or 0.0)
-                    if load < PRELOAD_TARGET_LBS - PRELOAD_AUTO_DEADBAND_LBS:
-                        self._move_preload_direction_locked(increase=True)
-                        self.state["actuator_command"] = self.actuator.last_command
-                        self.state["auto_preload_message"] = f"Auto jogging to {PRELOAD_TARGET_LBS:.1f} lb."
-                        stable_since = None
-                    elif load > PRELOAD_MAX_LBS:
-                        self._move_preload_direction_locked(increase=False)
-                        self.state["actuator_command"] = self.actuator.last_command
-                        self.state["auto_preload_message"] = f"Auto easing preload below {PRELOAD_MAX_LBS:.1f} lb."
-                        stable_since = None
-                    else:
+                    direction = self._auto_preload_direction_for_load(load)
+                    if direction is None:
                         self.actuator.stop()
                         self.state["actuator_command"] = self.actuator.last_command
                         if PRELOAD_MIN_LBS <= load <= PRELOAD_MAX_LBS and self._load_stable_locked():
@@ -354,7 +354,38 @@ class QuadpodEngine:
                         else:
                             stable_since = None
                             self.state["auto_preload_message"] = "Waiting for preload to stabilize."
-                time.sleep(0.1)
+                    else:
+                        if last_direction is not None and direction != last_direction:
+                            reversals += 1
+                        last_direction = direction
+                        if reversals >= PRELOAD_AUTO_MAX_REVERSALS:
+                            direction = False
+                            recovery_pulse = True
+                            reversals = 0
+                        pulse_seconds = self._auto_preload_pulse_seconds(recovery_pulse)
+                        self._move_preload_direction_locked(increase=direction)
+                        self.state["actuator_command"] = self.actuator.last_command
+                        stable_since = None
+                        if recovery_pulse:
+                            self.state["auto_preload_message"] = (
+                                "Auto preload is bouncing; easing down with a longer safety pulse."
+                            )
+                        elif direction:
+                            self.state["auto_preload_message"] = (
+                                f"Auto preload pulse toward {PRELOAD_TARGET_LBS:.1f} lb; waiting for load cell."
+                            )
+                        else:
+                            self.state["auto_preload_message"] = (
+                                f"Auto easing preload below {PRELOAD_MAX_LBS:.1f} lb; waiting for load cell."
+                            )
+                if direction is None:
+                    time.sleep(0.1)
+                    continue
+                time.sleep(pulse_seconds)
+                with self.lock:
+                    self.actuator.stop()
+                    self.state["actuator_command"] = self.actuator.last_command
+                self._wait_for_auto_preload_settle(deadline)
             else:
                 with self.lock:
                     self.actuator.stop()
@@ -365,6 +396,29 @@ class QuadpodEngine:
                 self.actuator.stop()
                 self.state["actuator_command"] = self.actuator.last_command
                 self.state["auto_preload_running"] = False
+
+    def _auto_preload_direction_for_load(self, load):
+        if load < PRELOAD_MIN_LBS:
+            return True
+        if load > PRELOAD_MAX_LBS:
+            return False
+        return None
+
+    def _auto_preload_pulse_seconds(self, recovery_pulse=False):
+        multiplier = PRELOAD_AUTO_RECOVERY_MULTIPLIER if recovery_pulse else 1.0
+        return max(0.02, PRELOAD_AUTO_PULSE_SECONDS * multiplier)
+
+    def _wait_for_auto_preload_settle(self, deadline):
+        started = time.monotonic()
+        while time.monotonic() < deadline:
+            elapsed = time.monotonic() - started
+            with self.lock:
+                stable = self._load_stable_locked()
+            if elapsed >= PRELOAD_AUTO_SETTLE_SECONDS and stable:
+                return
+            if elapsed >= PRELOAD_AUTO_SETTLE_MAX_SECONDS:
+                return
+            time.sleep(0.05)
 
     def _move_preload_direction_locked(self, increase):
         pull_direction = self.actuator.pull_direction
