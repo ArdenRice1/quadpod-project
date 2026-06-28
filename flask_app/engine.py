@@ -186,6 +186,8 @@ class QuadpodEngine:
                     "stop_pending": False,
                     "stop_pending_started_at": None,
                     "last_error": "",
+                    "auto_preload_running": False,
+                    "auto_preload_message": "",
                 }
             )
             self.last_client_poll = time.monotonic()
@@ -408,6 +410,8 @@ class QuadpodEngine:
                 self.actuator.stop()
                 self.state["actuator_command"] = self.actuator.last_command
                 self.state["auto_preload_running"] = False
+                if self.state.get("auto_preload_message", "").startswith("Preload stable"):
+                    self.state["auto_preload_message"] = ""
 
     def _auto_preload_direction_for_load(self, load):
         if load < PRELOAD_MIN_LBS:
@@ -532,6 +536,8 @@ class QuadpodEngine:
         self.state["stop_pending"] = False
         self.state["stop_pending_started_at"] = None
         self.state["stop_reason"] = reason
+        self.state["auto_preload_running"] = False
+        self.state["auto_preload_message"] = ""
 
         if test_id and was_running:
             storage.update_test(

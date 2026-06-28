@@ -71,7 +71,7 @@
       <div class="item">
         <strong>{{ item.status }}</strong>
         <span class="muted">to {{ item.recipient }} - attempts {{ item.attempts }}</span>
-        {% if item.last_error %}<div class="small">{{ item.last_error }}</div>{% endif %}
+        {% if item.last_error %}<div class="small muted">Email not sent. Check email settings; ZIP and USB export still work.</div>{% endif %}
       </div>
     {% else %}
       <div class="item muted">No email queued.</div>
@@ -89,7 +89,7 @@
         .then((res) => res.json())
         .then((data) => {
           const el = document.getElementById("emailStatus");
-          el.className = "status";
+          el.className = data.message.includes("failed") || data.message.includes("could not") ? "status warn" : "status";
           el.textContent = data.message;
         });
     });

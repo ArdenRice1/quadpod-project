@@ -54,7 +54,14 @@ def process_once():
         return f"Sent queue item {item['id']}"
     except Exception as exc:
         storage.mark_email_failed(item["id"], exc)
-        return f"Email queue item {item['id']} failed: {exc}"
+        return _operator_failure_message(exc)
+
+
+def _operator_failure_message(error):
+    text = str(error)
+    if "535" in text or "BadCredentials" in text or "Username and Password not accepted" in text:
+        return "Email sign-in failed. Update the Gmail app password in email settings."
+    return "Email could not send. Use ZIP/USB export and check email settings."
 
 
 def start_worker(interval_s=300):
@@ -113,5 +120,9 @@ def _send_message(msg):
         if SMTP_USE_TLS:
             smtp.starttls()
         if SMTP_USERNAME:
-            smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
+            smtp.login(SMTP_USERNAME, _smtp_password())
         smtp.send_message(msg)
+
+
+def _smtp_password():
+    return (SMTP_PASSWORD or "").replace(" ", "")
