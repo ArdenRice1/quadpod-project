@@ -109,11 +109,11 @@ class ControlGateTests(unittest.TestCase):
 
     def test_auto_preload_early_stages_are_modestly_faster(self):
         expected = [
-            (-8.0, 95, 0.60),
-            (-4.75, 78, 0.26),
-            (-4.25, 70, 0.21),
-            (-3.75, 62, 0.17),
-            (-3.25, 54, 0.13),
+            (-8.0, 80, 0.25),
+            (-4.75, 68, 0.18),
+            (-4.25, 60, 0.14),
+            (-3.75, 52, 0.11),
+            (-3.25, 44, 0.09),
         ]
 
         for load, speed, pulse in expected:
@@ -159,6 +159,25 @@ class ControlGateTests(unittest.TestCase):
         self.assertIsNone(self.engine._auto_preload_direction_for_load(0.0))
         self.assertIsNone(self.engine._auto_preload_direction_for_load(0.5))
         self.assertFalse(self.engine._auto_preload_direction_for_load(0.6))
+
+    def test_auto_preload_pulse_stops_when_max_reached(self):
+        self.engine.state["current_load"] = 0.5
+        self.engine.actuator.move_up(fast=True, speed_percent=80)
+
+        keep_running = self.engine._run_auto_preload_pulse(True, 0.2, time.monotonic() + 1.0)
+
+        self.assertTrue(keep_running)
+        self.assertEqual(self.engine.actuator.last_command, "neutral")
+
+    def test_auto_preload_pulse_aborts_if_load_exceeds_limit(self):
+        self.engine.state["current_load"] = 1.1
+        self.engine.actuator.move_up(fast=True, speed_percent=80)
+
+        keep_running = self.engine._run_auto_preload_pulse(True, 0.2, time.monotonic() + 1.0)
+
+        self.assertFalse(keep_running)
+        self.assertEqual(self.engine.actuator.last_command, "neutral")
+        self.assertIn("exceeded 1.0 lb at 1.1 lb", self.engine.state["auto_preload_message"])
 
     def _set_load_history(self, samples):
         now = time.monotonic()

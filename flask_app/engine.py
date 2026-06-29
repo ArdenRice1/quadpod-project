@@ -23,6 +23,7 @@ from config import (
     PRELOAD_AUTO_DOWN_PULSE_SECONDS,
     PRELOAD_AUTO_MIN_PULSE_SECONDS,
     PRELOAD_AUTO_PULSE_SECONDS,
+    PRELOAD_AUTO_PULSE_CHECK_SECONDS,
     PRELOAD_AUTO_SPEED_PERCENT,
     PRELOAD_AUTO_STABLE_DELTA_LBS,
     PRELOAD_AUTO_STABLE_WINDOW_SECONDS,
@@ -426,10 +427,8 @@ class QuadpodEngine:
                     time.sleep(0.1)
                     continue
 
-                time.sleep(pulse_seconds)
-                with self.lock:
-                    self.actuator.stop()
-                    self.state["actuator_command"] = self.actuator.last_command
+                if not self._run_auto_preload_pulse(direction, pulse_seconds, deadline):
+                    break
                 self._wait_for_auto_preload_settle(deadline)
             else:
                 with self.lock:
@@ -481,6 +480,34 @@ class QuadpodEngine:
 
     def _auto_preload_pulse_seconds(self):
         return max(PRELOAD_AUTO_MIN_PULSE_SECONDS, PRELOAD_AUTO_PULSE_SECONDS)
+
+    def _run_auto_preload_pulse(self, increase, pulse_seconds, deadline):
+        end_time = min(time.monotonic() + pulse_seconds, deadline)
+        check_interval = max(0.005, PRELOAD_AUTO_PULSE_CHECK_SECONDS)
+        try:
+            while time.monotonic() < end_time:
+                time.sleep(min(check_interval, max(0.0, end_time - time.monotonic())))
+                with self.lock:
+                    load = float(self.state.get("current_load") or 0.0)
+                    if self.state.get("test_running"):
+                        self.state["auto_preload_message"] = "Auto tension cancelled because a pull test started."
+                        return False
+                    if load > PRELOAD_AUTO_ABORT_LBS:
+                        self.actuator.stop()
+                        self.state["actuator_command"] = self.actuator.last_command
+                        self.state["auto_preload_message"] = (
+                            f"Auto tension exceeded {PRELOAD_AUTO_ABORT_LBS:.1f} lb at {load:.1f} lb. Reset before testing."
+                        )
+                        return False
+                    if increase and load >= PRELOAD_MAX_LBS:
+                        self.actuator.stop()
+                        self.state["actuator_command"] = self.actuator.last_command
+                        return True
+            return True
+        finally:
+            with self.lock:
+                self.actuator.stop()
+                self.state["actuator_command"] = self.actuator.last_command
 
     def _wait_for_auto_preload_settle(self, deadline):
         started = time.monotonic()
