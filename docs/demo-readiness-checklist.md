@@ -51,7 +51,7 @@ git status --short --branch
    - tare
    - jog controls
    - auto preload and jog speed controls
-   - preload band: `10-15 lb`
+   - Auto Tension reaches Ready after settling
    - shingle type
 
 4. `Live Pull` page:
@@ -78,7 +78,7 @@ Suggested talk track:
 
 1. The operator powers on the Pi and opens one URL.
 2. The app keeps normal commands behind same-session browser validation.
-3. The app prevents a pull until calibration dates are recorded, angle is recorded, hardware is healthy, and preload is correct.
+3. The app prevents a pull until calibration dates are recorded, angle is recorded, hardware is healthy, and Auto Tension is ready.
 4. Archive search can find past projects by project, address, job number, client, or date.
 5. Exports carry the field record: form data, trace data, machine settings, and one audit payload.
 

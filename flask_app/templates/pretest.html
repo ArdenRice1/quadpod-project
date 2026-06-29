@@ -154,7 +154,7 @@
           preloadStatus.textContent = autoMessage || "Auto tension running.";
           return;
         }
-        if (data.preload_ready && data.preload_stable) {
+        if (data.preload_ready && data.auto_preload_short_stable && data.auto_preload_drift_stable) {
           preloadStatus.className = "status good";
           preloadStatus.textContent = "Ready.";
         } else if (data.preload_ready) {

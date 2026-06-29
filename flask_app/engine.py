@@ -17,6 +17,9 @@ from config import (
     POST_STOP_LOG_MAX_SECONDS,
     PRELOAD_AUTO_ABORT_LBS,
     PRELOAD_AUTO_DEADBAND_LBS,
+    PRELOAD_AUTO_DRIFT_MAX_DROP_LBS,
+    PRELOAD_AUTO_DRIFT_WARN_SECONDS,
+    PRELOAD_AUTO_DRIFT_WINDOW_SECONDS,
     PRELOAD_AUTO_DOWN_PULSE_SECONDS,
     PRELOAD_AUTO_MIN_PULSE_SECONDS,
     PRELOAD_AUTO_PULSE_SECONDS,
@@ -72,6 +75,10 @@ class QuadpodEngine:
             "jog_speed_percent": 100,
             "auto_preload_running": False,
             "auto_preload_message": "",
+            "auto_preload_short_stable": False,
+            "auto_preload_drift_stable": False,
+            "auto_preload_drift_drop_lbs": 0.0,
+            "auto_preload_drift_window_s": 0.0,
         }
 
     def start(self):
@@ -335,6 +342,7 @@ class QuadpodEngine:
     def _auto_preload_loop(self):
         deadline = time.monotonic() + PRELOAD_AUTO_TIMEOUT_SECONDS
         stable_since = None
+        in_band_since = None
         try:
             while time.monotonic() < deadline:
                 direction = None
@@ -357,17 +365,31 @@ class QuadpodEngine:
                     if direction is None:
                         self.actuator.stop()
                         self.state["actuator_command"] = self.actuator.last_command
-                        if PRELOAD_MIN_LBS <= load <= PRELOAD_MAX_LBS and self._auto_preload_load_stable_locked():
+                        now = time.monotonic()
+                        in_band = PRELOAD_MIN_LBS <= load <= PRELOAD_MAX_LBS
+                        ready = in_band and self._auto_preload_ready_locked()
+                        if ready:
                             if stable_since is None:
-                                stable_since = time.monotonic()
-                            if time.monotonic() - stable_since >= PRELOAD_STABILITY_SECONDS:
+                                stable_since = now
+                            if now - stable_since >= PRELOAD_STABILITY_SECONDS:
                                 self.state["auto_preload_message"] = (
                                     f"Tension stable at {load:.1f} lb. Ready to test."
                                 )
                                 break
                         else:
                             stable_since = None
-                            self.state["auto_preload_message"] = "Waiting for tension to stabilize."
+                            if in_band:
+                                if in_band_since is None:
+                                    in_band_since = now
+                                if now - in_band_since >= PRELOAD_AUTO_DRIFT_WARN_SECONDS:
+                                    self.state["auto_preload_message"] = (
+                                        "Tension is still settling. Check attachment if it keeps drifting."
+                                    )
+                                else:
+                                    self.state["auto_preload_message"] = "Waiting for tension to settle."
+                            else:
+                                in_band_since = None
+                                self.state["auto_preload_message"] = "Waiting for tension to stabilize."
                     elif not self._auto_preload_load_stable_locked():
                         direction = None
                         stable_since = None
@@ -384,6 +406,7 @@ class QuadpodEngine:
                         )
                         self.state["actuator_command"] = self.actuator.last_command
                         stable_since = None
+                        in_band_since = None
                         self.state["auto_preload_message"] = stage["message"]
 
                 if direction is None:
@@ -474,7 +497,12 @@ class QuadpodEngine:
     def _record_load_locked(self, load):
         now = time.monotonic()
         self.load_history.append((now, float(load)))
-        cutoff = now - max(0.2, LOAD_STABLE_WINDOW_SECONDS, PRELOAD_AUTO_STABLE_WINDOW_SECONDS)
+        cutoff = now - max(
+            0.2,
+            LOAD_STABLE_WINDOW_SECONDS,
+            PRELOAD_AUTO_STABLE_WINDOW_SECONDS,
+            PRELOAD_AUTO_DRIFT_WINDOW_SECONDS,
+        )
         while self.load_history and self.load_history[0][0] < cutoff:
             self.load_history.popleft()
 
@@ -491,6 +519,33 @@ class QuadpodEngine:
         if len(values) < 3:
             return False
         return max(values) - min(values) <= PRELOAD_AUTO_STABLE_DELTA_LBS
+
+    def _auto_preload_ready_locked(self):
+        short_stable = self._auto_preload_load_stable_locked()
+        drift_stable, drop_lbs, window_s = self._auto_preload_drift_stable_locked()
+        self.state["auto_preload_short_stable"] = short_stable
+        self.state["auto_preload_drift_stable"] = drift_stable
+        self.state["auto_preload_drift_drop_lbs"] = round(drop_lbs, 3)
+        self.state["auto_preload_drift_window_s"] = round(window_s, 3)
+        return short_stable and drift_stable
+
+    def _auto_preload_drift_stable_locked(self):
+        now = time.monotonic()
+        required_window = max(0.2, PRELOAD_AUTO_DRIFT_WINDOW_SECONDS)
+        cutoff = now - required_window
+        samples = [(sample_time, value) for sample_time, value in self.load_history if sample_time >= cutoff]
+        if len(samples) < 3:
+            return False, 0.0, 0.0
+
+        window_s = samples[-1][0] - samples[0][0]
+        if window_s < required_window * 0.9:
+            return False, 0.0, window_s
+
+        edge_count = max(1, len(samples) // 4)
+        early_avg = sum(value for _, value in samples[:edge_count]) / edge_count
+        late_avg = sum(value for _, value in samples[-edge_count:]) / edge_count
+        downward_drop = max(0.0, early_avg - late_avg)
+        return downward_drop <= PRELOAD_AUTO_DRIFT_MAX_DROP_LBS, downward_drop, window_s
 
     def _begin_stop_locked(self, reason):
         if self.state.get("stop_pending"):

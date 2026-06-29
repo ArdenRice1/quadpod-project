@@ -46,12 +46,12 @@ Network and calibration tools are collapsed by default. Open only the panel need
 5. Align the load cell with the length of the gripper.
 6. Press `Tare` with the rig hanging freely.
 7. Take up cable slack.
-8. Use `Auto Preload to 10 lb` or jog to the 10-15 lb preload band.
+8. Use `Auto Tension` after taring in the air and lowering the attachment into place.
 
 ## Run the Pull Test
 
 1. Stand clear.
-2. Confirm the phone shows preload within 10-15 lb.
+2. Confirm the phone shows Ready after Auto Tension settles.
 3. Press `Start Pull Test`.
 4. Watch the load and hardware. Use `Stop Test` if anything unsafe happens.
 5. The app stops automatically for confirmed load drop/failure, max force, timeout, load-cell fault, or phone disconnect.

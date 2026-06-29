@@ -191,7 +191,7 @@ The `Copy Job Folder to USB/Exports` action writes the same layout into a named 
 - Load cell not reading: press Tare in Pre-Test, run `scripts/check_hx711_dout.py`, then `scripts/read_hx711_raw.py`. Check DOUT/SCK pins and 5V/GND.
 - Load values wrong: rerun `scripts/calibrate_loadcell.py`, verify `QUADPOD_LOADCELL_REFERENCE_UNIT`, and restart service.
 - Actuator not moving: check PCA9685 power/I2C, run `scripts/probe_pwm.py`, verify Victor neutral/calibration and actuator wiring.
-- Pull will not start: open `/setup-check`, confirm load cell/actuator OK, confirm calibration dates are recorded, confirm angle is 80-100 degrees, tare, and preload to 10-15 lb.
+- Pull will not start: open `/setup-check`, confirm load cell/actuator OK, confirm calibration dates are recorded, confirm angle is 80-100 degrees, tare in the air, lower the attachment, and run Auto Tension until Ready.
 - Email not sending: download the ZIP manually or connect the Pi to internet and use Archive -> Try Sending Now.
 
 ## Performance and UI Verification

@@ -14,7 +14,7 @@
 2. Select test point from investigation plan.
 3. Record angle, temperatures, wind, shingle type, and observations.
 4. Tare load cell.
-5. Use Auto Preload or jog to the 10-15 lb preload band.
+5. Use Auto Tension after taring in the air and lowering the attachment into place.
 
 ## Pull and Result
 
@@ -41,5 +41,5 @@
 - Pi power warning: replace the power supply/cable before troubleshooting intermittent Wi-Fi. `vcgencmd get_throttled` should return `0x0` after a clean reboot and stable power.
 - Load cell not reading: press Tare, check wiring, run `scripts/read_hx711_raw.py`.
 - Actuator not moving: arm controls, verify power, run `scripts/probe_pwm.py`.
-- Pull will not start: open `Setup`, confirm load cell/actuator OK, calibration dates recorded, angle is 80-100 degrees, and preload is 10-15 lb.
+- Pull will not start: open `Setup`, confirm load cell/actuator OK, calibration dates recorded, angle is 80-100 degrees, and Auto Tension shows Ready.
 - Email did not send: download ZIP manually; Archive shows whether SMTP is configured.
