@@ -35,6 +35,7 @@ from config import (
     PRELOAD_STABILITY_SECONDS,
     PRELOAD_TARGET_LBS,
     PRELOAD_TOLERANCE_LBS,
+    PULL_TARGET_IN_PER_MIN,
     SAMPLE_RATE_HZ,
     USE_MOCK_HARDWARE,
 )
@@ -201,12 +202,24 @@ class QuadpodEngine:
                 peak_load_lbs=round(load, 3),
                 software_version=APP_VERSION,
             )
-            storage.add_event("Pull started", test_id=test_id, data={"initial_load_lbs": load})
+            self.actuator.stop()
+            self.state["actuator_command"] = self.actuator.last_command
             ok = self.actuator.pull()
             self.state["actuator_command"] = self.actuator.last_command
             if not ok:
                 self._finish_stop_locked("actuator fault")
                 return False, self.actuator.last_error
+            storage.add_event(
+                "Pull started",
+                test_id=test_id,
+                data={
+                    "initial_load_lbs": load,
+                    "pull_command": self.actuator.last_command,
+                    "pull_pulse_us": self.actuator.last_pulse_us,
+                    "pull_target_ipm": PULL_TARGET_IN_PER_MIN,
+                    "jog_speed_percent": self.state.get("jog_speed_percent"),
+                },
+            )
             return True, "Pull started."
 
     def _start_gate_errors_locked(self, test, load):

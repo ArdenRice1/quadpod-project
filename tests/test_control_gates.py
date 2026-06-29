@@ -11,6 +11,7 @@ sys.path.insert(0, str(ROOT / "flask_app"))
 import storage
 import engine as engine_module
 from engine import QuadpodEngine
+from config import VICTOR_PULL_US
 
 
 class ControlGateTests(unittest.TestCase):
@@ -229,6 +230,22 @@ class ControlGateTests(unittest.TestCase):
         ok, message = self.engine.start_pull(self.test_id)
         self.assertTrue(ok, message)
         self.assertTrue(self.engine.state["test_running"])
+
+
+    def test_start_pull_ignores_jog_speed_slider(self):
+        self.engine.actuator.pull_direction = "up"
+        self.engine.state["jog_speed_percent"] = 1
+        self.engine.jog("up")
+        jog_pulse = self.engine.actuator.last_pulse_us
+        self._set_load(0.25)
+
+        ok, message = self.engine.start_pull(self.test_id)
+
+        self.assertTrue(ok, message)
+        self.assertNotEqual(self.engine.actuator.last_pulse_us, jog_pulse)
+        self.assertEqual(self.engine.actuator.last_command, "up_pull")
+        self.assertEqual(self.engine.actuator.last_pulse_us, self.engine.actuator._mirror(VICTOR_PULL_US))
+        self.assertEqual(self.engine.state["jog_speed_percent"], 1)
 
     def test_start_rejects_angle_outside_allowed_range(self):
         storage.update_test(self.test_id, form={"angle_degrees": "101"})

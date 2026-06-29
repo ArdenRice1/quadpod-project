@@ -7,6 +7,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from hardware.actuator import Actuator
+from config import VICTOR_PULL_US
 
 
 class ActuatorTests(unittest.TestCase):
@@ -20,6 +21,28 @@ class ActuatorTests(unittest.TestCase):
         actuator.stop()
         self.assertEqual(actuator.last_command, "neutral")
         self.assertEqual(actuator.last_pulse_us, 1500)
+
+    def test_pull_uses_fixed_pull_pulse_not_jog_speed_scale(self):
+        actuator = Actuator(use_mock=True, pull_direction="down")
+
+        actuator.move_down(fast=True, speed_percent=1)
+        jog_pulse = actuator.last_pulse_us
+        actuator.pull()
+
+        self.assertNotEqual(actuator.last_pulse_us, jog_pulse)
+        self.assertEqual(actuator.last_command, "down_pull")
+        self.assertEqual(actuator.last_pulse_us, VICTOR_PULL_US)
+
+    def test_up_pull_uses_mirrored_fixed_pull_pulse_not_jog_speed_scale(self):
+        actuator = Actuator(use_mock=True, pull_direction="up")
+
+        actuator.move_up(fast=True, speed_percent=1)
+        jog_pulse = actuator.last_pulse_us
+        actuator.pull()
+
+        self.assertNotEqual(actuator.last_pulse_us, jog_pulse)
+        self.assertEqual(actuator.last_command, "up_pull")
+        self.assertEqual(actuator.last_pulse_us, actuator._mirror(VICTOR_PULL_US))
 
     def test_hardware_init_passes_explicit_i2c_bus(self):
         class FakePCA9685:
