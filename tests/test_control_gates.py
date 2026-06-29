@@ -83,16 +83,23 @@ class ControlGateTests(unittest.TestCase):
             self.engine._auto_preload_stage_for_load(1.0, True),
             self.engine._auto_preload_stage_for_load(4.0, True),
             self.engine._auto_preload_stage_for_load(7.0, True),
-            self.engine._auto_preload_stage_for_load(8.5, True),
-            self.engine._auto_preload_stage_for_load(9.1, True),
-            self.engine._auto_preload_stage_for_load(9.4, True),
+            self.engine._auto_preload_stage_for_load(8.8, True),
+            self.engine._auto_preload_stage_for_load(9.15, True),
+            self.engine._auto_preload_stage_for_load(9.35, True),
+            self.engine._auto_preload_stage_for_load(9.45, True),
         ]
 
         for earlier, later in zip(stages, stages[1:]):
             self.assertGreaterEqual(earlier["pulse_seconds"], later["pulse_seconds"])
             self.assertGreater(earlier["speed_percent"], later["speed_percent"])
-        self.assertEqual(stages[-1]["speed_percent"], 15)
-        self.assertEqual(stages[-1]["pulse_seconds"], 0.02)
+        self.assertEqual(stages[-1]["speed_percent"], 10)
+        self.assertEqual(stages[-1]["pulse_seconds"], 0.006)
+
+    def test_auto_preload_slack_stage_is_faster_until_one_pound(self):
+        stage = self.engine._auto_preload_stage_for_load(0.8, True)
+
+        self.assertEqual(stage["speed_percent"], 90)
+        self.assertEqual(stage["pulse_seconds"], 0.5)
 
     def test_auto_preload_aborts_any_load_over_limit_without_easing_down(self):
         self.engine.state["auto_preload_running"] = True

@@ -30,6 +30,7 @@ from config import (
     PRELOAD_AUTO_MICRO_PULSE_SECONDS,
     PRELOAD_AUTO_MICRO_SPEED_PERCENT,
     PRELOAD_AUTO_MICRO_UNTIL_LBS,
+    PRELOAD_AUTO_MIN_PULSE_SECONDS,
     PRELOAD_AUTO_PULSE_SECONDS,
     PRELOAD_AUTO_SLACK_PULSE_SECONDS,
     PRELOAD_AUTO_SLACK_SPEED_PERCENT,
@@ -42,7 +43,13 @@ from config import (
     PRELOAD_AUTO_STABLE_WINDOW_SECONDS,
     PRELOAD_AUTO_SETTLE_MAX_SECONDS,
     PRELOAD_AUTO_SETTLE_SECONDS,
+    PRELOAD_AUTO_FEATHER_PULSE_SECONDS,
+    PRELOAD_AUTO_FEATHER_SPEED_PERCENT,
+    PRELOAD_AUTO_FEATHER_UNTIL_LBS,
     PRELOAD_AUTO_TIMEOUT_SECONDS,
+    PRELOAD_AUTO_TRIM_PULSE_SECONDS,
+    PRELOAD_AUTO_TRIM_SPEED_PERCENT,
+    PRELOAD_AUTO_TRIM_UNTIL_LBS,
     PRELOAD_MAX_LBS,
     PRELOAD_MIN_LBS,
     PRELOAD_STABILITY_SECONDS,
@@ -492,6 +499,24 @@ class QuadpodEngine:
                     "waiting for the load cell."
                 ),
             }
+        if load < PRELOAD_AUTO_TRIM_UNTIL_LBS:
+            return {
+                "speed_percent": PRELOAD_AUTO_TRIM_SPEED_PERCENT,
+                "pulse_seconds": self._auto_preload_trim_pulse_seconds(),
+                "message": (
+                    f"Trim preload pulse toward {PRELOAD_AUTO_TRIM_UNTIL_LBS:.1f} lb; "
+                    "waiting for the load cell."
+                ),
+            }
+        if load < PRELOAD_AUTO_FEATHER_UNTIL_LBS:
+            return {
+                "speed_percent": PRELOAD_AUTO_FEATHER_SPEED_PERCENT,
+                "pulse_seconds": self._auto_preload_feather_pulse_seconds(),
+                "message": (
+                    f"Feather preload pulse toward {PRELOAD_AUTO_FEATHER_UNTIL_LBS:.1f} lb; "
+                    "waiting for the load cell."
+                ),
+            }
         return {
             "speed_percent": PRELOAD_AUTO_SPEED_PERCENT,
             "pulse_seconds": self._auto_preload_pulse_seconds(),
@@ -499,28 +524,34 @@ class QuadpodEngine:
         }
 
     def _auto_preload_slack_pulse_seconds(self):
-        return max(0.02, PRELOAD_AUTO_SLACK_PULSE_SECONDS)
+        return max(PRELOAD_AUTO_MIN_PULSE_SECONDS, PRELOAD_AUTO_SLACK_PULSE_SECONDS)
 
     def _auto_preload_coarse_pulse_seconds(self):
-        return max(0.02, PRELOAD_AUTO_COARSE_PULSE_SECONDS)
+        return max(PRELOAD_AUTO_MIN_PULSE_SECONDS, PRELOAD_AUTO_COARSE_PULSE_SECONDS)
 
     def _auto_preload_approach_pulse_seconds(self):
-        return max(0.02, PRELOAD_AUTO_APPROACH_PULSE_SECONDS)
+        return max(PRELOAD_AUTO_MIN_PULSE_SECONDS, PRELOAD_AUTO_APPROACH_PULSE_SECONDS)
 
     def _auto_preload_slow_pulse_seconds(self):
-        return max(0.02, PRELOAD_AUTO_SLOW_PULSE_SECONDS)
+        return max(PRELOAD_AUTO_MIN_PULSE_SECONDS, PRELOAD_AUTO_SLOW_PULSE_SECONDS)
 
     def _auto_preload_fine_pulse_seconds(self):
-        return max(0.02, PRELOAD_AUTO_FINE_PULSE_SECONDS)
+        return max(PRELOAD_AUTO_MIN_PULSE_SECONDS, PRELOAD_AUTO_FINE_PULSE_SECONDS)
 
     def _auto_preload_micro_pulse_seconds(self):
-        return max(0.02, PRELOAD_AUTO_MICRO_PULSE_SECONDS)
+        return max(PRELOAD_AUTO_MIN_PULSE_SECONDS, PRELOAD_AUTO_MICRO_PULSE_SECONDS)
+
+    def _auto_preload_trim_pulse_seconds(self):
+        return max(PRELOAD_AUTO_MIN_PULSE_SECONDS, PRELOAD_AUTO_TRIM_PULSE_SECONDS)
+
+    def _auto_preload_feather_pulse_seconds(self):
+        return max(PRELOAD_AUTO_MIN_PULSE_SECONDS, PRELOAD_AUTO_FEATHER_PULSE_SECONDS)
 
     def _auto_preload_down_pulse_seconds(self):
-        return max(0.02, PRELOAD_AUTO_DOWN_PULSE_SECONDS)
+        return max(PRELOAD_AUTO_MIN_PULSE_SECONDS, PRELOAD_AUTO_DOWN_PULSE_SECONDS)
 
     def _auto_preload_pulse_seconds(self):
-        return max(0.02, PRELOAD_AUTO_PULSE_SECONDS)
+        return max(PRELOAD_AUTO_MIN_PULSE_SECONDS, PRELOAD_AUTO_PULSE_SECONDS)
 
     def _wait_for_auto_preload_settle(self, deadline):
         started = time.monotonic()
