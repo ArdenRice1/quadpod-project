@@ -50,19 +50,19 @@ class ControlGateTests(unittest.TestCase):
         self.engine.state["current_load"] = value
 
     def test_start_rejects_low_preload(self):
-        self._set_load(9.0)
+        self._set_load(-0.1)
         ok, message = self.engine.start_pull(self.test_id)
         self.assertFalse(ok)
-        self.assertIn("preload", message)
+        self.assertIn("tension", message)
 
     def test_start_rejects_high_preload(self):
-        self._set_load(10.6)
+        self._set_load(1.1)
         ok, message = self.engine.start_pull(self.test_id)
         self.assertFalse(ok)
-        self.assertIn("preload", message)
+        self.assertIn("tension", message)
 
     def test_start_accepts_preload_inside_tight_band(self):
-        self._set_load(10.3)
+        self._set_load(0.5)
         ok, message = self.engine.start_pull(self.test_id)
         self.assertTrue(ok, message)
         self.assertTrue(self.engine.state["test_running"])
@@ -77,16 +77,22 @@ class ControlGateTests(unittest.TestCase):
         self.engine._move_auto_preload_direction_locked(increase=False)
         self.assertEqual(self.engine.actuator.last_command, "down_fast")
 
-    def test_auto_preload_stages_get_smaller_near_target(self):
+    def test_auto_preload_stages_get_smaller_near_zero_tension(self):
         stages = [
+            self.engine._auto_preload_stage_for_load(-10.0, True),
+            self.engine._auto_preload_stage_for_load(-4.75, True),
+            self.engine._auto_preload_stage_for_load(-4.25, True),
+            self.engine._auto_preload_stage_for_load(-3.75, True),
+            self.engine._auto_preload_stage_for_load(-3.25, True),
+            self.engine._auto_preload_stage_for_load(-2.75, True),
+            self.engine._auto_preload_stage_for_load(-2.25, True),
+            self.engine._auto_preload_stage_for_load(-1.75, True),
+            self.engine._auto_preload_stage_for_load(-1.25, True),
+            self.engine._auto_preload_stage_for_load(-0.9, True),
+            self.engine._auto_preload_stage_for_load(-0.7, True),
             self.engine._auto_preload_stage_for_load(-0.5, True),
-            self.engine._auto_preload_stage_for_load(1.0, True),
-            self.engine._auto_preload_stage_for_load(4.0, True),
-            self.engine._auto_preload_stage_for_load(7.0, True),
-            self.engine._auto_preload_stage_for_load(8.8, True),
-            self.engine._auto_preload_stage_for_load(9.15, True),
-            self.engine._auto_preload_stage_for_load(9.35, True),
-            self.engine._auto_preload_stage_for_load(9.45, True),
+            self.engine._auto_preload_stage_for_load(-0.3, True),
+            self.engine._auto_preload_stage_for_load(-0.1, True),
         ]
 
         for earlier, later in zip(stages, stages[1:]):
@@ -95,19 +101,19 @@ class ControlGateTests(unittest.TestCase):
         self.assertEqual(stages[-1]["speed_percent"], 10)
         self.assertEqual(stages[-1]["pulse_seconds"], 0.006)
 
-    def test_auto_preload_slack_stage_is_faster_until_one_pound(self):
-        stage = self.engine._auto_preload_stage_for_load(0.8, True)
+    def test_auto_preload_fast_course_stage_for_hanging_attachment_weight(self):
+        stage = self.engine._auto_preload_stage_for_load(-8.0, True)
 
         self.assertEqual(stage["speed_percent"], 90)
         self.assertEqual(stage["pulse_seconds"], 0.5)
 
     def test_auto_preload_aborts_any_load_over_limit_without_easing_down(self):
         self.engine.state["auto_preload_running"] = True
-        self._set_load(10.6)
+        self._set_load(1.6)
         self.engine._auto_preload_loop()
         self.assertEqual(self.engine.actuator.last_command, "neutral")
         self.assertFalse(self.engine.state["auto_preload_running"])
-        self.assertIn("exceeded 10.5 lb at 10.6 lb", self.engine.state["auto_preload_message"])
+        self.assertIn("exceeded 1.5 lb at 1.6 lb", self.engine.state["auto_preload_message"])
 
     def test_auto_preload_aborts_large_overshoot_without_easing_down(self):
         self.engine.state["auto_preload_running"] = True
@@ -115,13 +121,13 @@ class ControlGateTests(unittest.TestCase):
         self.engine._auto_preload_loop()
         self.assertEqual(self.engine.actuator.last_command, "neutral")
         self.assertFalse(self.engine.state["auto_preload_running"])
-        self.assertIn("exceeded 10.5 lb at 65.0 lb", self.engine.state["auto_preload_message"])
+        self.assertIn("exceeded 1.5 lb at 65.0 lb", self.engine.state["auto_preload_message"])
 
     def test_auto_preload_pulses_only_outside_safe_band(self):
-        self.assertTrue(self.engine._auto_preload_direction_for_load(9.4))
-        self.assertIsNone(self.engine._auto_preload_direction_for_load(9.5))
-        self.assertIsNone(self.engine._auto_preload_direction_for_load(10.5))
-        self.assertFalse(self.engine._auto_preload_direction_for_load(10.6))
+        self.assertTrue(self.engine._auto_preload_direction_for_load(-0.1))
+        self.assertIsNone(self.engine._auto_preload_direction_for_load(0.0))
+        self.assertIsNone(self.engine._auto_preload_direction_for_load(1.0))
+        self.assertFalse(self.engine._auto_preload_direction_for_load(1.1))
 
     def test_auto_preload_ease_down_uses_configured_pull_direction(self):
         self.engine.actuator.pull_direction = "up"
@@ -129,28 +135,28 @@ class ControlGateTests(unittest.TestCase):
         self.assertEqual(self.engine.actuator.last_command, "down_fast")
 
     def test_start_rejects_load_cell_fault(self):
-        self._set_load(10.0)
+        self._set_load(0.5)
         self.engine.load_cell.last_error = "load cell test fault"
         ok, message = self.engine.start_pull(self.test_id)
         self.assertFalse(ok)
         self.assertIn("load cell test fault", message)
 
     def test_start_rejects_actuator_fault(self):
-        self._set_load(10.0)
+        self._set_load(0.5)
         self.engine.actuator.last_error = "actuator test fault"
         ok, message = self.engine.start_pull(self.test_id)
         self.assertFalse(ok)
         self.assertIn("actuator test fault", message)
 
     def test_start_succeeds_when_all_gates_pass(self):
-        self._set_load(10.0)
+        self._set_load(0.5)
         ok, message = self.engine.start_pull(self.test_id)
         self.assertTrue(ok, message)
         self.assertTrue(self.engine.state["test_running"])
 
     def test_start_rejects_angle_outside_allowed_range(self):
         storage.update_test(self.test_id, form={"angle_degrees": "101"})
-        self._set_load(10.0)
+        self._set_load(0.5)
         ok, message = self.engine.start_pull(self.test_id)
         self.assertFalse(ok)
         self.assertIn("80 and 100", message)
@@ -163,13 +169,13 @@ class ControlGateTests(unittest.TestCase):
                 "ir_temp_gun_calibration_date": "2024-01-01",
             },
         )
-        self._set_load(10.0)
+        self._set_load(0.5)
         ok, message = self.engine.start_pull(self.test_id)
         self.assertTrue(ok, message)
 
     def test_start_does_not_require_photo_reference(self):
         storage.update_test(self.test_id, form={"photo_reference": ""})
-        self._set_load(10.0)
+        self._set_load(0.5)
         ok, message = self.engine.start_pull(self.test_id)
         self.assertTrue(ok, message)
 
@@ -182,7 +188,7 @@ class ControlGateTests(unittest.TestCase):
                 "site_free_of_blemishes": "",
             },
         )
-        self._set_load(10.0)
+        self._set_load(0.5)
         ok, message = self.engine.start_pull(self.test_id)
         self.assertTrue(ok, message)
 

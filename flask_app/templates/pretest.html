@@ -13,7 +13,7 @@
     <div class="unit">lbs</div>
   </div>
   <div class="btnrow">
-    <button class="success" type="button" id="autoPreload">Auto Preload to 10 lb</button>
+    <button class="success" type="button" id="autoPreload">Auto Tension</button>
     <button class="secondary" type="button" id="jogUp">Jog Up</button>
     <button class="secondary" type="button" id="jogDown">Jog Down</button>
     <button class="warn" type="button" id="tareBtn">Tare</button>
@@ -132,7 +132,7 @@
       .then((res) => res.json())
       .then((data) => {
         preloadStatus.className = data.ok ? "status warn" : "status bad";
-        preloadStatus.textContent = data.message || "Auto preload command sent.";
+        preloadStatus.textContent = data.message || "Auto tension command sent.";
       });
   });
 
@@ -148,18 +148,21 @@
       .then((data) => {
         liveLoad.textContent = data.current_load.toFixed(2);
         const autoMessage = data.auto_preload_message || "";
-        const needsAction = autoMessage.includes("stopped") || autoMessage.includes("timed out") || autoMessage.includes("cancelled");
+        const needsAction = autoMessage.includes("stopped") || autoMessage.includes("timed out") || autoMessage.includes("cancelled") || autoMessage.includes("exceeded");
         if (data.auto_preload_running || needsAction) {
           preloadStatus.className = needsAction ? "status bad" : "status warn";
-          preloadStatus.textContent = autoMessage || "Auto preload running.";
+          preloadStatus.textContent = autoMessage || "Auto tension running.";
           return;
         }
-        if (data.preload_ready) {
+        if (data.preload_ready && data.preload_stable) {
           preloadStatus.className = "status good";
           preloadStatus.textContent = "Ready.";
+        } else if (data.preload_ready) {
+          preloadStatus.className = "status warn";
+          preloadStatus.textContent = "Waiting for tension to settle.";
         } else {
           preloadStatus.className = "status warn";
-          preloadStatus.textContent = `Set preload to ${data.preload_min_lbs.toFixed(1)}-${data.preload_max_lbs.toFixed(1)} lb.`;
+          preloadStatus.textContent = "Use Auto Tension.";
         }
       });
   }, 250);

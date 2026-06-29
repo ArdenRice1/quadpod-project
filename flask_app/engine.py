@@ -16,40 +16,17 @@ from config import (
     LOAD_STABLE_WINDOW_SECONDS,
     POST_STOP_LOG_MAX_SECONDS,
     PRELOAD_AUTO_ABORT_LBS,
-    PRELOAD_AUTO_APPROACH_PULSE_SECONDS,
-    PRELOAD_AUTO_APPROACH_SPEED_PERCENT,
-    PRELOAD_AUTO_APPROACH_UNTIL_LBS,
-    PRELOAD_AUTO_COARSE_PULSE_SECONDS,
-    PRELOAD_AUTO_COARSE_SPEED_PERCENT,
-    PRELOAD_AUTO_COARSE_UNTIL_LBS,
     PRELOAD_AUTO_DEADBAND_LBS,
     PRELOAD_AUTO_DOWN_PULSE_SECONDS,
-    PRELOAD_AUTO_FINE_PULSE_SECONDS,
-    PRELOAD_AUTO_FINE_SPEED_PERCENT,
-    PRELOAD_AUTO_FINE_UNTIL_LBS,
-    PRELOAD_AUTO_MICRO_PULSE_SECONDS,
-    PRELOAD_AUTO_MICRO_SPEED_PERCENT,
-    PRELOAD_AUTO_MICRO_UNTIL_LBS,
     PRELOAD_AUTO_MIN_PULSE_SECONDS,
     PRELOAD_AUTO_PULSE_SECONDS,
-    PRELOAD_AUTO_SLACK_PULSE_SECONDS,
-    PRELOAD_AUTO_SLACK_SPEED_PERCENT,
-    PRELOAD_AUTO_SLACK_UNTIL_LBS,
-    PRELOAD_AUTO_SLOW_PULSE_SECONDS,
-    PRELOAD_AUTO_SLOW_SPEED_PERCENT,
-    PRELOAD_AUTO_SLOW_UNTIL_LBS,
     PRELOAD_AUTO_SPEED_PERCENT,
     PRELOAD_AUTO_STABLE_DELTA_LBS,
     PRELOAD_AUTO_STABLE_WINDOW_SECONDS,
     PRELOAD_AUTO_SETTLE_MAX_SECONDS,
     PRELOAD_AUTO_SETTLE_SECONDS,
-    PRELOAD_AUTO_FEATHER_PULSE_SECONDS,
-    PRELOAD_AUTO_FEATHER_SPEED_PERCENT,
-    PRELOAD_AUTO_FEATHER_UNTIL_LBS,
     PRELOAD_AUTO_TIMEOUT_SECONDS,
-    PRELOAD_AUTO_TRIM_PULSE_SECONDS,
-    PRELOAD_AUTO_TRIM_SPEED_PERCENT,
-    PRELOAD_AUTO_TRIM_UNTIL_LBS,
+    PRELOAD_AUTO_TENSION_STAGES,
     PRELOAD_MAX_LBS,
     PRELOAD_MIN_LBS,
     PRELOAD_STABILITY_SECONDS,
@@ -144,11 +121,11 @@ class QuadpodEngine:
     def auto_preload(self):
         with self.lock:
             if self.state["test_running"]:
-                return False, "Cannot auto-preload while a pull test is running."
+                return False, "Cannot auto tension while a pull test is running."
             if self.state["auto_preload_running"]:
-                return True, "Auto preload is already running."
+                return True, "Auto tension is already running."
             self.state["auto_preload_running"] = True
-            self.state["auto_preload_message"] = "Auto preload started."
+            self.state["auto_preload_message"] = "Auto tension started."
             self.auto_preload_thread = threading.Thread(target=self._auto_preload_loop, daemon=True)
             self.auto_preload_thread.start()
             return True, self.state["auto_preload_message"]
@@ -228,7 +205,7 @@ class QuadpodEngine:
     def _start_gate_errors_locked(self, test, load):
         errors = []
         if load < PRELOAD_MIN_LBS or load > PRELOAD_MAX_LBS:
-            errors.append(f"preload must be {PRELOAD_MIN_LBS:.1f}-{PRELOAD_MAX_LBS:.1f} lb")
+            errors.append(f"tension must be {PRELOAD_MIN_LBS:.1f}-{PRELOAD_MAX_LBS:.1f} lb")
 
         load_health = self.load_cell.health()
         if not load_health.get("ok"):
@@ -364,7 +341,7 @@ class QuadpodEngine:
                 pulse_seconds = 0.0
                 with self.lock:
                     if self.state["test_running"]:
-                        self.state["auto_preload_message"] = "Auto preload cancelled because a pull test started."
+                        self.state["auto_preload_message"] = "Auto tension cancelled because a pull test started."
                         break
 
                     load = float(self.state.get("current_load") or 0.0)
@@ -372,7 +349,7 @@ class QuadpodEngine:
                         self.actuator.stop()
                         self.state["actuator_command"] = self.actuator.last_command
                         self.state["auto_preload_message"] = (
-                            f"Auto preload exceeded {PRELOAD_AUTO_ABORT_LBS:.1f} lb at {load:.1f} lb. Reset before testing."
+                            f"Auto tension exceeded {PRELOAD_AUTO_ABORT_LBS:.1f} lb at {load:.1f} lb. Reset before testing."
                         )
                         break
 
@@ -385,19 +362,19 @@ class QuadpodEngine:
                                 stable_since = time.monotonic()
                             if time.monotonic() - stable_since >= PRELOAD_STABILITY_SECONDS:
                                 self.state["auto_preload_message"] = (
-                                    f"Preload stable at {load:.1f} lb. Ready to test."
+                                    f"Tension stable at {load:.1f} lb. Ready to test."
                                 )
                                 break
                         else:
                             stable_since = None
-                            self.state["auto_preload_message"] = "Waiting for preload to stabilize."
+                            self.state["auto_preload_message"] = "Waiting for tension to stabilize."
                     elif not self._auto_preload_load_stable_locked():
                         direction = None
                         stable_since = None
                         self.actuator.stop()
                         self.state["actuator_command"] = self.actuator.last_command
                         self.state["auto_preload_message"] = (
-                            "Waiting for load cell to stabilize before the next preload pulse."
+                            "Waiting for load cell to stabilize before the next tension pulse."
                         )
                     else:
                         stage = self._auto_preload_stage_for_load(load, direction)
@@ -422,13 +399,13 @@ class QuadpodEngine:
                 with self.lock:
                     self.actuator.stop()
                     self.state["actuator_command"] = self.actuator.last_command
-                    self.state["auto_preload_message"] = "Auto preload timed out. Use jog controls and try again."
+                    self.state["auto_preload_message"] = "Auto tension timed out. Use jog controls and try again."
         finally:
             with self.lock:
                 self.actuator.stop()
                 self.state["actuator_command"] = self.actuator.last_command
                 self.state["auto_preload_running"] = False
-                if self.state.get("auto_preload_message", "").startswith("Preload stable"):
+                if self.state.get("auto_preload_message", "").startswith("Tension stable"):
                     self.state["auto_preload_message"] = ""
 
     def _auto_preload_direction_for_load(self, load):
@@ -443,109 +420,25 @@ class QuadpodEngine:
             return {
                 "speed_percent": PRELOAD_AUTO_SPEED_PERCENT,
                 "pulse_seconds": self._auto_preload_down_pulse_seconds(),
-                "message": f"Auto easing preload below {PRELOAD_MAX_LBS:.1f} lb; waiting for load cell.",
+                "message": "Auto tension easing down; waiting for load cell.",
             }
-        if load < PRELOAD_AUTO_SLACK_UNTIL_LBS:
-            return {
-                "speed_percent": PRELOAD_AUTO_SLACK_SPEED_PERCENT,
-                "pulse_seconds": self._auto_preload_slack_pulse_seconds(),
-                "message": (
-                    f"Taking up slack toward {PRELOAD_AUTO_SLACK_UNTIL_LBS:.1f} lb; "
-                    "waiting for the load cell."
-                ),
-            }
-        if load < PRELOAD_AUTO_COARSE_UNTIL_LBS:
-            return {
-                "speed_percent": PRELOAD_AUTO_COARSE_SPEED_PERCENT,
-                "pulse_seconds": self._auto_preload_coarse_pulse_seconds(),
-                "message": (
-                    f"Coarse preload pulse toward {PRELOAD_AUTO_COARSE_UNTIL_LBS:.1f} lb; "
-                    "waiting for the load cell."
-                ),
-            }
-        if load < PRELOAD_AUTO_APPROACH_UNTIL_LBS:
-            return {
-                "speed_percent": PRELOAD_AUTO_APPROACH_SPEED_PERCENT,
-                "pulse_seconds": self._auto_preload_approach_pulse_seconds(),
-                "message": (
-                    f"Approaching preload toward {PRELOAD_AUTO_APPROACH_UNTIL_LBS:.1f} lb; "
-                    "waiting for the load cell."
-                ),
-            }
-        if load < PRELOAD_AUTO_SLOW_UNTIL_LBS:
-            return {
-                "speed_percent": PRELOAD_AUTO_SLOW_SPEED_PERCENT,
-                "pulse_seconds": self._auto_preload_slow_pulse_seconds(),
-                "message": (
-                    f"Slowing preload toward {PRELOAD_AUTO_SLOW_UNTIL_LBS:.1f} lb; "
-                    "waiting for the load cell."
-                ),
-            }
-        if load < PRELOAD_AUTO_FINE_UNTIL_LBS:
-            return {
-                "speed_percent": PRELOAD_AUTO_FINE_SPEED_PERCENT,
-                "pulse_seconds": self._auto_preload_fine_pulse_seconds(),
-                "message": (
-                    f"Fine preload pulse toward {PRELOAD_AUTO_FINE_UNTIL_LBS:.1f} lb; "
-                    "waiting for the load cell."
-                ),
-            }
-        if load < PRELOAD_AUTO_MICRO_UNTIL_LBS:
-            return {
-                "speed_percent": PRELOAD_AUTO_MICRO_SPEED_PERCENT,
-                "pulse_seconds": self._auto_preload_micro_pulse_seconds(),
-                "message": (
-                    f"Micro preload pulse toward {PRELOAD_AUTO_MICRO_UNTIL_LBS:.1f} lb; "
-                    "waiting for the load cell."
-                ),
-            }
-        if load < PRELOAD_AUTO_TRIM_UNTIL_LBS:
-            return {
-                "speed_percent": PRELOAD_AUTO_TRIM_SPEED_PERCENT,
-                "pulse_seconds": self._auto_preload_trim_pulse_seconds(),
-                "message": (
-                    f"Trim preload pulse toward {PRELOAD_AUTO_TRIM_UNTIL_LBS:.1f} lb; "
-                    "waiting for the load cell."
-                ),
-            }
-        if load < PRELOAD_AUTO_FEATHER_UNTIL_LBS:
-            return {
-                "speed_percent": PRELOAD_AUTO_FEATHER_SPEED_PERCENT,
-                "pulse_seconds": self._auto_preload_feather_pulse_seconds(),
-                "message": (
-                    f"Feather preload pulse toward {PRELOAD_AUTO_FEATHER_UNTIL_LBS:.1f} lb; "
-                    "waiting for the load cell."
-                ),
-            }
+
+        for threshold, speed_percent, pulse_seconds in PRELOAD_AUTO_TENSION_STAGES:
+            if load < threshold:
+                return {
+                    "speed_percent": speed_percent,
+                    "pulse_seconds": self._auto_preload_configured_pulse_seconds(pulse_seconds),
+                    "message": "Auto tensioning; waiting for load cell.",
+                }
+
         return {
             "speed_percent": PRELOAD_AUTO_SPEED_PERCENT,
             "pulse_seconds": self._auto_preload_pulse_seconds(),
-            "message": f"Final preload tap toward {PRELOAD_MIN_LBS:.1f} lb; waiting for load cell.",
+            "message": "Final auto tension tap; waiting for load cell.",
         }
 
-    def _auto_preload_slack_pulse_seconds(self):
-        return max(PRELOAD_AUTO_MIN_PULSE_SECONDS, PRELOAD_AUTO_SLACK_PULSE_SECONDS)
-
-    def _auto_preload_coarse_pulse_seconds(self):
-        return max(PRELOAD_AUTO_MIN_PULSE_SECONDS, PRELOAD_AUTO_COARSE_PULSE_SECONDS)
-
-    def _auto_preload_approach_pulse_seconds(self):
-        return max(PRELOAD_AUTO_MIN_PULSE_SECONDS, PRELOAD_AUTO_APPROACH_PULSE_SECONDS)
-
-    def _auto_preload_slow_pulse_seconds(self):
-        return max(PRELOAD_AUTO_MIN_PULSE_SECONDS, PRELOAD_AUTO_SLOW_PULSE_SECONDS)
-
-    def _auto_preload_fine_pulse_seconds(self):
-        return max(PRELOAD_AUTO_MIN_PULSE_SECONDS, PRELOAD_AUTO_FINE_PULSE_SECONDS)
-
-    def _auto_preload_micro_pulse_seconds(self):
-        return max(PRELOAD_AUTO_MIN_PULSE_SECONDS, PRELOAD_AUTO_MICRO_PULSE_SECONDS)
-
-    def _auto_preload_trim_pulse_seconds(self):
-        return max(PRELOAD_AUTO_MIN_PULSE_SECONDS, PRELOAD_AUTO_TRIM_PULSE_SECONDS)
-
-    def _auto_preload_feather_pulse_seconds(self):
-        return max(PRELOAD_AUTO_MIN_PULSE_SECONDS, PRELOAD_AUTO_FEATHER_PULSE_SECONDS)
+    def _auto_preload_configured_pulse_seconds(self, pulse_seconds):
+        return max(PRELOAD_AUTO_MIN_PULSE_SECONDS, float(pulse_seconds))
 
     def _auto_preload_down_pulse_seconds(self):
         return max(PRELOAD_AUTO_MIN_PULSE_SECONDS, PRELOAD_AUTO_DOWN_PULSE_SECONDS)
