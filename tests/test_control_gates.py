@@ -56,13 +56,13 @@ class ControlGateTests(unittest.TestCase):
         self.assertIn("preload", message)
 
     def test_start_rejects_high_preload(self):
-        self._set_load(16.0)
+        self._set_load(10.6)
         ok, message = self.engine.start_pull(self.test_id)
         self.assertFalse(ok)
         self.assertIn("preload", message)
 
-    def test_start_accepts_preload_drift_inside_band(self):
-        self._set_load(14.8)
+    def test_start_accepts_preload_inside_tight_band(self):
+        self._set_load(10.3)
         ok, message = self.engine.start_pull(self.test_id)
         self.assertTrue(ok, message)
         self.assertTrue(self.engine.state["test_running"])
@@ -78,23 +78,29 @@ class ControlGateTests(unittest.TestCase):
         self.assertEqual(self.engine.actuator.last_command, "down_fast")
 
     def test_auto_preload_stages_get_smaller_near_target(self):
-        slack = self.engine._auto_preload_stage_for_load(-0.5, True)
-        coarse = self.engine._auto_preload_stage_for_load(1.0, True)
-        approach = self.engine._auto_preload_stage_for_load(4.0, True)
-        lockin = self.engine._auto_preload_stage_for_load(9.0, True)
+        stages = [
+            self.engine._auto_preload_stage_for_load(-0.5, True),
+            self.engine._auto_preload_stage_for_load(1.0, True),
+            self.engine._auto_preload_stage_for_load(4.0, True),
+            self.engine._auto_preload_stage_for_load(7.0, True),
+            self.engine._auto_preload_stage_for_load(8.5, True),
+            self.engine._auto_preload_stage_for_load(9.1, True),
+            self.engine._auto_preload_stage_for_load(9.4, True),
+        ]
 
-        self.assertGreater(slack["pulse_seconds"], coarse["pulse_seconds"])
-        self.assertGreater(coarse["pulse_seconds"], lockin["pulse_seconds"])
-        self.assertGreater(slack["speed_percent"], coarse["speed_percent"])
-        self.assertGreater(coarse["speed_percent"], approach["speed_percent"])
-        self.assertGreater(approach["speed_percent"], lockin["speed_percent"])
+        for earlier, later in zip(stages, stages[1:]):
+            self.assertGreaterEqual(earlier["pulse_seconds"], later["pulse_seconds"])
+            self.assertGreater(earlier["speed_percent"], later["speed_percent"])
+        self.assertEqual(stages[-1]["speed_percent"], 15)
+        self.assertEqual(stages[-1]["pulse_seconds"], 0.02)
 
-    def test_auto_preload_high_band_uses_short_down_pulse(self):
-        down = self.engine._auto_preload_stage_for_load(16.0, False)
-        lockin = self.engine._auto_preload_stage_for_load(9.0, True)
-
-        self.assertLess(down["pulse_seconds"], lockin["pulse_seconds"])
-        self.assertEqual(down["speed_percent"], lockin["speed_percent"])
+    def test_auto_preload_aborts_any_load_over_limit_without_easing_down(self):
+        self.engine.state["auto_preload_running"] = True
+        self._set_load(10.6)
+        self.engine._auto_preload_loop()
+        self.assertEqual(self.engine.actuator.last_command, "neutral")
+        self.assertFalse(self.engine.state["auto_preload_running"])
+        self.assertIn("exceeded 10.5 lb at 10.6 lb", self.engine.state["auto_preload_message"])
 
     def test_auto_preload_aborts_large_overshoot_without_easing_down(self):
         self.engine.state["auto_preload_running"] = True
@@ -102,13 +108,13 @@ class ControlGateTests(unittest.TestCase):
         self.engine._auto_preload_loop()
         self.assertEqual(self.engine.actuator.last_command, "neutral")
         self.assertFalse(self.engine.state["auto_preload_running"])
-        self.assertIn("stopped at 65.0 lb", self.engine.state["auto_preload_message"])
+        self.assertIn("exceeded 10.5 lb at 65.0 lb", self.engine.state["auto_preload_message"])
 
     def test_auto_preload_pulses_only_outside_safe_band(self):
-        self.assertTrue(self.engine._auto_preload_direction_for_load(9.9))
-        self.assertIsNone(self.engine._auto_preload_direction_for_load(10.0))
-        self.assertIsNone(self.engine._auto_preload_direction_for_load(14.9))
-        self.assertFalse(self.engine._auto_preload_direction_for_load(15.1))
+        self.assertTrue(self.engine._auto_preload_direction_for_load(9.4))
+        self.assertIsNone(self.engine._auto_preload_direction_for_load(9.5))
+        self.assertIsNone(self.engine._auto_preload_direction_for_load(10.5))
+        self.assertFalse(self.engine._auto_preload_direction_for_load(10.6))
 
     def test_auto_preload_ease_down_uses_configured_pull_direction(self):
         self.engine.actuator.pull_direction = "up"

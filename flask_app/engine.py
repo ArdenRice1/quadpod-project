@@ -24,11 +24,22 @@ from config import (
     PRELOAD_AUTO_COARSE_UNTIL_LBS,
     PRELOAD_AUTO_DEADBAND_LBS,
     PRELOAD_AUTO_DOWN_PULSE_SECONDS,
+    PRELOAD_AUTO_FINE_PULSE_SECONDS,
+    PRELOAD_AUTO_FINE_SPEED_PERCENT,
+    PRELOAD_AUTO_FINE_UNTIL_LBS,
+    PRELOAD_AUTO_MICRO_PULSE_SECONDS,
+    PRELOAD_AUTO_MICRO_SPEED_PERCENT,
+    PRELOAD_AUTO_MICRO_UNTIL_LBS,
     PRELOAD_AUTO_PULSE_SECONDS,
     PRELOAD_AUTO_SLACK_PULSE_SECONDS,
     PRELOAD_AUTO_SLACK_SPEED_PERCENT,
     PRELOAD_AUTO_SLACK_UNTIL_LBS,
+    PRELOAD_AUTO_SLOW_PULSE_SECONDS,
+    PRELOAD_AUTO_SLOW_SPEED_PERCENT,
+    PRELOAD_AUTO_SLOW_UNTIL_LBS,
     PRELOAD_AUTO_SPEED_PERCENT,
+    PRELOAD_AUTO_STABLE_DELTA_LBS,
+    PRELOAD_AUTO_STABLE_WINDOW_SECONDS,
     PRELOAD_AUTO_SETTLE_MAX_SECONDS,
     PRELOAD_AUTO_SETTLE_SECONDS,
     PRELOAD_AUTO_TIMEOUT_SECONDS,
@@ -350,11 +361,11 @@ class QuadpodEngine:
                         break
 
                     load = float(self.state.get("current_load") or 0.0)
-                    if load >= PRELOAD_AUTO_ABORT_LBS:
+                    if load > PRELOAD_AUTO_ABORT_LBS:
                         self.actuator.stop()
                         self.state["actuator_command"] = self.actuator.last_command
                         self.state["auto_preload_message"] = (
-                            f"Auto preload stopped at {load:.1f} lb. Reset preload manually before testing."
+                            f"Auto preload exceeded {PRELOAD_AUTO_ABORT_LBS:.1f} lb at {load:.1f} lb. Reset before testing."
                         )
                         break
 
@@ -362,7 +373,7 @@ class QuadpodEngine:
                     if direction is None:
                         self.actuator.stop()
                         self.state["actuator_command"] = self.actuator.last_command
-                        if PRELOAD_MIN_LBS <= load <= PRELOAD_MAX_LBS and self._load_stable_locked():
+                        if PRELOAD_MIN_LBS <= load <= PRELOAD_MAX_LBS and self._auto_preload_load_stable_locked():
                             if stable_since is None:
                                 stable_since = time.monotonic()
                             if time.monotonic() - stable_since >= PRELOAD_STABILITY_SECONDS:
@@ -373,7 +384,7 @@ class QuadpodEngine:
                         else:
                             stable_since = None
                             self.state["auto_preload_message"] = "Waiting for preload to stabilize."
-                    elif not self._load_stable_locked():
+                    elif not self._auto_preload_load_stable_locked():
                         direction = None
                         stable_since = None
                         self.actuator.stop()
@@ -454,10 +465,37 @@ class QuadpodEngine:
                     "waiting for the load cell."
                 ),
             }
+        if load < PRELOAD_AUTO_SLOW_UNTIL_LBS:
+            return {
+                "speed_percent": PRELOAD_AUTO_SLOW_SPEED_PERCENT,
+                "pulse_seconds": self._auto_preload_slow_pulse_seconds(),
+                "message": (
+                    f"Slowing preload toward {PRELOAD_AUTO_SLOW_UNTIL_LBS:.1f} lb; "
+                    "waiting for the load cell."
+                ),
+            }
+        if load < PRELOAD_AUTO_FINE_UNTIL_LBS:
+            return {
+                "speed_percent": PRELOAD_AUTO_FINE_SPEED_PERCENT,
+                "pulse_seconds": self._auto_preload_fine_pulse_seconds(),
+                "message": (
+                    f"Fine preload pulse toward {PRELOAD_AUTO_FINE_UNTIL_LBS:.1f} lb; "
+                    "waiting for the load cell."
+                ),
+            }
+        if load < PRELOAD_AUTO_MICRO_UNTIL_LBS:
+            return {
+                "speed_percent": PRELOAD_AUTO_MICRO_SPEED_PERCENT,
+                "pulse_seconds": self._auto_preload_micro_pulse_seconds(),
+                "message": (
+                    f"Micro preload pulse toward {PRELOAD_AUTO_MICRO_UNTIL_LBS:.1f} lb; "
+                    "waiting for the load cell."
+                ),
+            }
         return {
             "speed_percent": PRELOAD_AUTO_SPEED_PERCENT,
             "pulse_seconds": self._auto_preload_pulse_seconds(),
-            "message": f"Locking preload toward {PRELOAD_TARGET_LBS:.1f} lb; waiting for load cell.",
+            "message": f"Final preload tap toward {PRELOAD_MIN_LBS:.1f} lb; waiting for load cell.",
         }
 
     def _auto_preload_slack_pulse_seconds(self):
@@ -468,6 +506,15 @@ class QuadpodEngine:
 
     def _auto_preload_approach_pulse_seconds(self):
         return max(0.02, PRELOAD_AUTO_APPROACH_PULSE_SECONDS)
+
+    def _auto_preload_slow_pulse_seconds(self):
+        return max(0.02, PRELOAD_AUTO_SLOW_PULSE_SECONDS)
+
+    def _auto_preload_fine_pulse_seconds(self):
+        return max(0.02, PRELOAD_AUTO_FINE_PULSE_SECONDS)
+
+    def _auto_preload_micro_pulse_seconds(self):
+        return max(0.02, PRELOAD_AUTO_MICRO_PULSE_SECONDS)
 
     def _auto_preload_down_pulse_seconds(self):
         return max(0.02, PRELOAD_AUTO_DOWN_PULSE_SECONDS)
@@ -480,7 +527,7 @@ class QuadpodEngine:
         while time.monotonic() < deadline:
             elapsed = time.monotonic() - started
             with self.lock:
-                stable = self._load_stable_locked()
+                stable = self._auto_preload_load_stable_locked()
             if elapsed >= PRELOAD_AUTO_SETTLE_SECONDS and stable:
                 return
             if elapsed >= PRELOAD_AUTO_SETTLE_MAX_SECONDS:
@@ -503,7 +550,7 @@ class QuadpodEngine:
     def _record_load_locked(self, load):
         now = time.monotonic()
         self.load_history.append((now, float(load)))
-        cutoff = now - max(0.2, LOAD_STABLE_WINDOW_SECONDS)
+        cutoff = now - max(0.2, LOAD_STABLE_WINDOW_SECONDS, PRELOAD_AUTO_STABLE_WINDOW_SECONDS)
         while self.load_history and self.load_history[0][0] < cutoff:
             self.load_history.popleft()
 
@@ -512,6 +559,14 @@ class QuadpodEngine:
             return False
         values = [value for _, value in self.load_history]
         return max(values) - min(values) <= LOAD_STABLE_DELTA_LBS
+
+    def _auto_preload_load_stable_locked(self):
+        now = time.monotonic()
+        cutoff = now - max(0.2, PRELOAD_AUTO_STABLE_WINDOW_SECONDS)
+        values = [value for sample_time, value in self.load_history if sample_time >= cutoff]
+        if len(values) < 3:
+            return False
+        return max(values) - min(values) <= PRELOAD_AUTO_STABLE_DELTA_LBS
 
     def _begin_stop_locked(self, reason):
         if self.state.get("stop_pending"):
