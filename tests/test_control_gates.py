@@ -23,6 +23,8 @@ class ControlGateTests(unittest.TestCase):
         storage.init_db()
         self.engine = QuadpodEngine(use_mock=True)
         self.original_drift_window = engine_module.PRELOAD_AUTO_DRIFT_WINDOW_SECONDS
+        self.original_coarse_settle = engine_module.PRELOAD_AUTO_COARSE_SETTLE_SECONDS
+        self.original_coarse_settle_max = engine_module.PRELOAD_AUTO_COARSE_SETTLE_MAX_SECONDS
         engine_module.PRELOAD_AUTO_DRIFT_WINDOW_SECONDS = 5.0
         self.job_id = storage.create_job(self._job_form())
         self.test_id = storage.create_test(self.job_id, self._test_form())
@@ -30,6 +32,8 @@ class ControlGateTests(unittest.TestCase):
     def tearDown(self):
         self.engine.stop("test cleanup")
         engine_module.PRELOAD_AUTO_DRIFT_WINDOW_SECONDS = self.original_drift_window
+        engine_module.PRELOAD_AUTO_COARSE_SETTLE_SECONDS = self.original_coarse_settle
+        engine_module.PRELOAD_AUTO_COARSE_SETTLE_MAX_SECONDS = self.original_coarse_settle_max
         self.tempdir.cleanup()
 
     def _job_form(self, **updates):
@@ -137,6 +141,26 @@ class ControlGateTests(unittest.TestCase):
             stage = self.engine._auto_preload_stage_for_load(load, True)
             self.assertEqual(stage["speed_percent"], speed)
             self.assertEqual(stage["pulse_seconds"], pulse)
+
+    def test_auto_preload_marks_only_far_from_target_stages_as_coarse(self):
+        self.assertTrue(self.engine._auto_preload_stage_for_load(-4.75, True)["coarse"])
+        self.assertTrue(self.engine._auto_preload_stage_for_load(-3.25, True)["coarse"])
+        self.assertFalse(self.engine._auto_preload_stage_for_load(-2.75, True)["coarse"])
+        self.assertFalse(self.engine._auto_preload_stage_for_load(-0.3, True)["coarse"])
+
+    def test_auto_preload_coarse_settle_does_not_wait_for_final_stability(self):
+        engine_module.PRELOAD_AUTO_COARSE_SETTLE_SECONDS = 0.01
+        engine_module.PRELOAD_AUTO_COARSE_SETTLE_MAX_SECONDS = 0.03
+        self._set_load_history([
+            (0.10, -6.0),
+            (0.05, -5.0),
+            (0.00, -4.0),
+        ])
+
+        started = time.monotonic()
+        self.engine._wait_for_auto_preload_settle(time.monotonic() + 1.0, coarse=True)
+
+        self.assertLess(time.monotonic() - started, 0.2)
 
     def test_auto_preload_aborts_any_load_over_limit_without_easing_down(self):
         self.engine.state["auto_preload_running"] = True
