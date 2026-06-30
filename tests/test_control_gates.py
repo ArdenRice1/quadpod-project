@@ -60,7 +60,7 @@ class ControlGateTests(unittest.TestCase):
         self.engine.state["current_load"] = value
 
     def test_start_rejects_low_preload(self):
-        self._set_load(-0.1)
+        self._set_load(-0.6)
         ok, message = self.engine.start_pull(self.test_id)
         self.assertFalse(ok)
         self.assertIn("tension", message)
@@ -72,10 +72,13 @@ class ControlGateTests(unittest.TestCase):
         self.assertIn("tension", message)
 
     def test_start_accepts_preload_inside_tight_band(self):
-        self._set_load(0.5)
-        ok, message = self.engine.start_pull(self.test_id)
-        self.assertTrue(ok, message)
-        self.assertTrue(self.engine.state["test_running"])
+        for load in (-0.5, 0.0, 0.5):
+            with self.subTest(load=load):
+                self.engine.state["test_running"] = False
+                self._set_load(load)
+                ok, message = self.engine.start_pull(self.test_id)
+                self.assertTrue(ok, message)
+                self.assertTrue(self.engine.state["test_running"])
 
     def test_auto_preload_uses_configured_pull_direction_to_increase_load(self):
         self.engine.actuator.pull_direction = "up"
@@ -179,7 +182,9 @@ class ControlGateTests(unittest.TestCase):
         self.assertIn("exceeded 1.0 lb at 65.0 lb", self.engine.state["auto_preload_message"])
 
     def test_auto_preload_pulses_only_outside_safe_band(self):
-        self.assertTrue(self.engine._auto_preload_direction_for_load(-0.1))
+        self.assertTrue(self.engine._auto_preload_direction_for_load(-0.6))
+        self.assertIsNone(self.engine._auto_preload_direction_for_load(-0.5))
+        self.assertIsNone(self.engine._auto_preload_direction_for_load(-0.1))
         self.assertIsNone(self.engine._auto_preload_direction_for_load(0.0))
         self.assertIsNone(self.engine._auto_preload_direction_for_load(0.5))
         self.assertFalse(self.engine._auto_preload_direction_for_load(0.6))
