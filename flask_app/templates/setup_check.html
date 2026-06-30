@@ -24,7 +24,7 @@
       <div class="item"><strong>Internet:</strong><br><span id="internetStatus">Open panel to check</span></div>
       <div class="item full"><strong>Active Connection:</strong><br><span id="activeConnection">Open panel to check</span></div>
     </div>
-    <form method="POST" action="{{ url_for('setup_network') }}">
+    <form class="network-switch-form" method="POST" action="{{ url_for('setup_network') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <div class="grid">
         <div class="field"><label>Wi-Fi SSID</label><input name="ssid" list="wifiNetworks" placeholder="Network name" required></div>
@@ -33,7 +33,7 @@
       <datalist id="wifiNetworks"></datalist>
       <button class="full-width secondary" type="submit">Switch to Wi-Fi</button>
     </form>
-    <form method="POST" action="{{ url_for('setup_hotspot') }}">
+    <form class="network-switch-form" method="POST" action="{{ url_for('setup_hotspot') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <button class="full-width secondary" type="submit">Switch to Quadpod Hotspot</button>
     </form>
@@ -151,6 +151,18 @@
         message.className = "status bad";
         message.textContent = `Network status failed: ${error}`;
       });
+  });
+
+  document.querySelectorAll(".network-switch-form").forEach((form) => {
+    form.addEventListener("submit", () => {
+      document.querySelectorAll(".network-switch-form button").forEach((button) => {
+        button.disabled = true;
+      });
+      const message = document.getElementById("networkMessage");
+      message.hidden = false;
+      message.className = "status warn";
+      message.textContent = "Network change started. Wait for Quadpod before tapping again.";
+    });
   });
 </script>
 {% endblock %}

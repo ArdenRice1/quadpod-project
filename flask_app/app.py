@@ -52,6 +52,10 @@ RESULT_CHECKBOX_FIELDS = [
     "deviation_from_standard",
 ]
 
+NETWORK_COMMAND_LOCKOUT_SECONDS = 45
+_network_command_lock = threading.Lock()
+_network_command_until = 0.0
+
 if EMAIL_ENABLED:
     email_queue.start_worker()
 
@@ -239,11 +243,17 @@ def setup_network():
     command = _network_switch_command("wifi", "--ssid", ssid)
     if password:
         command.extend(["--password", password])
-    _schedule_network_command(command, "Wi-Fi connection", {"ssid": ssid})
+    scheduled = _schedule_network_command(command, "Wi-Fi connection", {"ssid": ssid})
+    heading = "Switching to Wi-Fi" if scheduled else "Network Switch Already Running"
+    message = (
+        f"Quadpod is leaving its hotspot and joining {ssid}. Connect this device to {ssid} if needed."
+        if scheduled
+        else "Quadpod is already changing networks. Wait a moment before trying again."
+    )
     return render_template(
         "network_transition.html",
-        heading="Switching to Wi-Fi",
-        message=f"Quadpod is leaving its hotspot and joining {ssid}. Connect this device to {ssid} if needed.",
+        heading=heading,
+        message=message,
         target_url=f"{PUBLIC_URL}/setup-check",
         fallback_url="http://quadpod.local:5000/setup-check",
         delay_seconds=10,
@@ -255,15 +265,21 @@ def setup_hotspot():
     guard = _require_form_token()
     if guard:
         return guard
-    _schedule_network_command(
+    scheduled = _schedule_network_command(
         _network_switch_command("hotspot"),
         "Hotspot connection",
         {},
     )
+    heading = "Starting Quadpod Hotspot" if scheduled else "Network Switch Already Running"
+    message = (
+        "Quadpod is leaving Wi-Fi and starting its hotspot. Join the Quadpod Wi-Fi network, then reopen the app."
+        if scheduled
+        else "Quadpod is already changing networks. Wait a moment before trying again."
+    )
     return render_template(
         "network_transition.html",
-        heading="Starting Quadpod Hotspot",
-        message="Quadpod is leaving Wi-Fi and starting its hotspot. Join the Quadpod Wi-Fi network, then reopen the app.",
+        heading=heading,
+        message=message,
         target_url=f"http://{HOTSPOT_IP}/setup-check",
         fallback_url=f"http://{HOTSPOT_IP}:5000/setup-check",
         delay_seconds=10,
@@ -635,15 +651,28 @@ def _startup_power_alert():
 
 
 def _schedule_network_command(command, label, event_data):
+    global _network_command_until
+    now = time.monotonic()
+    with _network_command_lock:
+        if now < _network_command_until:
+            storage.add_event(
+                f"{label} ignored",
+                level="warn",
+                data={**event_data, "ok": False, "message": "Network switch already running"},
+            )
+            return False
+        _network_command_until = now + NETWORK_COMMAND_LOCKOUT_SECONDS
     thread = threading.Thread(
         target=_run_network_command,
         args=(command, label, event_data),
         daemon=True,
     )
     thread.start()
+    return True
 
 
 def _run_network_command(command, label, event_data):
+    global _network_command_until
     time.sleep(1.5)
     try:
         result = subprocess.run(
@@ -665,6 +694,9 @@ def _run_network_command(command, label, event_data):
             level="error",
             data={**event_data, "ok": False, "message": str(exc)},
         )
+    finally:
+        with _network_command_lock:
+            _network_command_until = 0.0
 
 
 def _network_switch_command(mode, *extra):

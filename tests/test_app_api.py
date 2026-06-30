@@ -207,6 +207,25 @@ class AppApiTests(unittest.TestCase):
         self.assertIn("Network Change Not Started", response.get_data(as_text=True))
         schedule.assert_not_called()
 
+    def test_network_switch_scheduler_blocks_duplicate_requests(self):
+        class FakeThread:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def start(self):
+                pass
+
+        app_module._network_command_until = 0.0
+        try:
+            with patch.object(app_module.threading, "Thread", FakeThread):
+                first = app_module._schedule_network_command(["true"], "Wi-Fi connection", {})
+                second = app_module._schedule_network_command(["true"], "Wi-Fi connection", {})
+
+            self.assertTrue(first)
+            self.assertFalse(second)
+        finally:
+            app_module._network_command_until = 0.0
+
     def test_power_status_decodes_undervoltage_history(self):
         completed = SimpleNamespace(stdout="throttled=0x50000\n", returncode=0)
         with patch.object(app_module.subprocess, "run", return_value=completed):

@@ -43,6 +43,14 @@ def restart_discovery():
     run(["systemctl", "restart", "avahi-daemon"], check=False)
 
 
+def disable_wifi_powersave(profile):
+    run(["nmcli", "connection", "modify", profile, "802-11-wireless.powersave", "2"], check=False)
+
+
+def set_radio_powersave_off():
+    run(["iw", "dev", "wlan0", "set", "power_save", "off"], check=False)
+
+
 def wifi_connect_command(ssid, password):
     command = ["nmcli", "device", "wifi", "connect", ssid, "ifname", "wlan0", "name", ssid]
     if password:
@@ -58,10 +66,13 @@ def malformed_wifi_profile(exc):
 def rebuild_wifi_profile(ssid, password):
     run(["nmcli", "connection", "delete", ssid], check=False)
     run(wifi_connect_command(ssid, password))
+    disable_wifi_powersave(ssid)
 
 
 def switch_to_wifi(ssid, password):
     hotspot = hotspot_profile()
+    set_radio_powersave_off()
+    disable_wifi_powersave(hotspot)
     disable_duplicate_hotspots(hotspot)
     run(["nmcli", "connection", "modify", hotspot, "connection.autoconnect", "no"], check=False)
     run(["nmcli", "connection", "down", hotspot], check=False)
@@ -73,6 +84,7 @@ def switch_to_wifi(ssid, password):
                 if password:
                     run(["nmcli", "connection", "modify", ssid, "wifi-sec.key-mgmt", "wpa-psk"])
                     run(["nmcli", "connection", "modify", ssid, "wifi-sec.psk", password])
+                disable_wifi_powersave(ssid)
                 run(["nmcli", "connection", "up", ssid, "ifname", "wlan0"])
             except subprocess.CalledProcessError as exc:
                 if not malformed_wifi_profile(exc):
@@ -80,8 +92,10 @@ def switch_to_wifi(ssid, password):
                 rebuild_wifi_profile(ssid, password)
         else:
             run(wifi_connect_command(ssid, password))
+            disable_wifi_powersave(ssid)
         run(["nmcli", "connection", "modify", ssid, "connection.autoconnect", "yes"])
         run(["nmcli", "connection", "modify", ssid, "connection.autoconnect-priority", "100"])
+        set_radio_powersave_off()
         restart_discovery()
         print(f"Connected to Wi-Fi profile: {ssid}")
         return 0
@@ -94,11 +108,14 @@ def switch_to_wifi(ssid, password):
 
 def switch_to_hotspot():
     hotspot = hotspot_profile()
+    set_radio_powersave_off()
+    disable_wifi_powersave(hotspot)
     disable_duplicate_hotspots(hotspot)
     run(["nmcli", "connection", "modify", hotspot, "connection.autoconnect", "yes"])
     run(["nmcli", "connection", "modify", hotspot, "connection.autoconnect-priority", "200"])
     try:
         run(["nmcli", "connection", "up", hotspot])
+        set_radio_powersave_off()
         restart_discovery()
         print(f"Started hotspot profile: {hotspot}")
         return 0
