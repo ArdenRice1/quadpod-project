@@ -34,6 +34,33 @@ def env_int(name, default):
     return int(value)
 
 
+def env_stage_overrides(name, default):
+    value = os.getenv(name)
+    stages = list(default)
+    if value in (None, ""):
+        return stages
+
+    by_threshold = {threshold: index for index, (threshold, _, _) in enumerate(stages)}
+    for raw_stage in value.split(","):
+        raw_stage = raw_stage.strip()
+        if not raw_stage:
+            continue
+        parts = [part.strip() for part in raw_stage.split(":")]
+        if len(parts) != 3:
+            raise ValueError(f"{name} stage must be threshold:speed:pulse, got {raw_stage!r}")
+        threshold = float(parts[0])
+        speed_percent = int(parts[1])
+        pulse_seconds = float(parts[2])
+        if threshold not in by_threshold:
+            raise ValueError(f"{name} threshold {threshold} does not match a known auto tension stage")
+        if not 1 <= speed_percent <= 100:
+            raise ValueError(f"{name} speed must be 1-100 percent, got {speed_percent}")
+        if not 0.005 <= pulse_seconds <= 0.5:
+            raise ValueError(f"{name} pulse must be 0.005-0.5 seconds, got {pulse_seconds}")
+        stages[by_threshold[threshold]] = (threshold, speed_percent, pulse_seconds)
+    return stages
+
+
 USE_MOCK_HARDWARE = env_bool("QUADPOD_MOCK_HARDWARE", True)
 DATABASE_PATH = os.getenv("QUADPOD_DATABASE", str(DATA_DIR / "quadpod.db"))
 
@@ -81,7 +108,7 @@ PRELOAD_AUTO_STABLE_DELTA_LBS = env_float("QUADPOD_PRELOAD_AUTO_STABLE_DELTA_LBS
 PRELOAD_AUTO_DRIFT_WINDOW_SECONDS = env_float("QUADPOD_PRELOAD_AUTO_DRIFT_WINDOW_SECONDS", 20.0)
 PRELOAD_AUTO_DRIFT_MAX_DROP_LBS = env_float("QUADPOD_PRELOAD_AUTO_DRIFT_MAX_DROP_LBS", 0.15)
 PRELOAD_AUTO_DRIFT_WARN_SECONDS = env_float("QUADPOD_PRELOAD_AUTO_DRIFT_WARN_SECONDS", 60.0)
-PRELOAD_AUTO_TENSION_STAGES = [
+DEFAULT_PRELOAD_AUTO_TENSION_STAGES = [
     (-5.0, 80, 0.25),
     (-4.5, 68, 0.18),
     (-4.0, 60, 0.14),
@@ -97,6 +124,10 @@ PRELOAD_AUTO_TENSION_STAGES = [
     (-0.2, 12, 0.010),
     (0.0, 10, 0.006),
 ]
+PRELOAD_AUTO_TENSION_STAGES = env_stage_overrides(
+    "QUADPOD_PRELOAD_AUTO_TENSION_STAGES",
+    DEFAULT_PRELOAD_AUTO_TENSION_STAGES,
+)
 FAILURE_DROP_LBS = env_float("QUADPOD_FAILURE_DROP_LBS", 12.0)
 FAILURE_DROP_PERCENT = env_float("QUADPOD_FAILURE_DROP_PERCENT", 0.35)
 FAILURE_CONFIRM_SAMPLES = env_int("QUADPOD_FAILURE_CONFIRM_SAMPLES", 8)
