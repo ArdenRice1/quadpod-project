@@ -25,13 +25,21 @@ from config import (
     PRELOAD_AUTO_DRIFT_WINDOW_SECONDS,
     PRELOAD_AUTO_DOWN_PULSE_SECONDS,
     PRELOAD_AUTO_MIN_PULSE_SECONDS,
+    PRELOAD_AUTO_APPROACH_MAX_DELTA_LBS,
+    PRELOAD_AUTO_COARSE_MAX_DELTA_LBS,
+    PRELOAD_AUTO_FINAL_MAX_DELTA_LBS,
+    PRELOAD_AUTO_MAX_RISE_RATE_LBS_PER_SECOND,
     PRELOAD_AUTO_PULSE_SECONDS,
     PRELOAD_AUTO_PULSE_CHECK_SECONDS,
+    PRELOAD_AUTO_PREDICT_LOOKAHEAD_SECONDS,
+    PRELOAD_AUTO_PREDICT_STOP_LBS,
+    PRELOAD_AUTO_RATE_WINDOW_SECONDS,
     PRELOAD_AUTO_SPEED_PERCENT,
     PRELOAD_AUTO_STABLE_DELTA_LBS,
     PRELOAD_AUTO_STABLE_WINDOW_SECONDS,
     PRELOAD_AUTO_SETTLE_MAX_SECONDS,
     PRELOAD_AUTO_SETTLE_SECONDS,
+    PRELOAD_AUTO_TARGET_LBS,
     PRELOAD_AUTO_TIMEOUT_SECONDS,
     PRELOAD_AUTO_TENSION_STAGES,
     PRELOAD_MAX_LBS,
@@ -430,7 +438,7 @@ class QuadpodEngine:
                     time.sleep(0.1)
                     continue
 
-                if not self._run_auto_preload_pulse(direction, pulse_seconds, deadline):
+                if not self._run_auto_preload_pulse(direction, stage, deadline):
                     break
                 self._wait_for_auto_preload_settle(deadline, coarse=stage.get("coarse", False))
             else:
@@ -457,6 +465,7 @@ class QuadpodEngine:
         if not increase:
             return {
                 "coarse": False,
+                "max_delta_lbs": PRELOAD_AUTO_FINAL_MAX_DELTA_LBS,
                 "speed_percent": PRELOAD_AUTO_SPEED_PERCENT,
                 "pulse_seconds": self._auto_preload_down_pulse_seconds(),
                 "message": "Auto tension easing down; waiting for load cell.",
@@ -464,8 +473,10 @@ class QuadpodEngine:
 
         for threshold, speed_percent, pulse_seconds in PRELOAD_AUTO_TENSION_STAGES:
             if load < threshold:
+                coarse = self._auto_preload_coarse_active_locked(load, increase)
                 return {
-                    "coarse": self._auto_preload_coarse_active_locked(load, increase),
+                    "coarse": coarse,
+                    "max_delta_lbs": self._auto_preload_max_delta_lbs(load, coarse),
                     "speed_percent": speed_percent,
                     "pulse_seconds": self._auto_preload_configured_pulse_seconds(pulse_seconds),
                     "message": "Auto tensioning; waiting for load cell.",
@@ -473,6 +484,7 @@ class QuadpodEngine:
 
         return {
             "coarse": False,
+            "max_delta_lbs": PRELOAD_AUTO_FINAL_MAX_DELTA_LBS,
             "speed_percent": PRELOAD_AUTO_SPEED_PERCENT,
             "pulse_seconds": self._auto_preload_pulse_seconds(),
             "message": "Final auto tension tap; waiting for load cell.",
@@ -480,6 +492,13 @@ class QuadpodEngine:
 
     def _auto_preload_coarse_active_locked(self, load, increase):
         return bool(increase and load < PRELOAD_AUTO_COARSE_UNTIL_LBS)
+
+    def _auto_preload_max_delta_lbs(self, load, coarse):
+        if coarse:
+            return PRELOAD_AUTO_COARSE_MAX_DELTA_LBS
+        if load < PRELOAD_MIN_LBS:
+            return PRELOAD_AUTO_APPROACH_MAX_DELTA_LBS
+        return PRELOAD_AUTO_FINAL_MAX_DELTA_LBS
 
     def _auto_preload_configured_pulse_seconds(self, pulse_seconds):
         return max(PRELOAD_AUTO_MIN_PULSE_SECONDS, float(pulse_seconds))
@@ -490,14 +509,20 @@ class QuadpodEngine:
     def _auto_preload_pulse_seconds(self):
         return max(PRELOAD_AUTO_MIN_PULSE_SECONDS, PRELOAD_AUTO_PULSE_SECONDS)
 
-    def _run_auto_preload_pulse(self, increase, pulse_seconds, deadline):
+    def _run_auto_preload_pulse(self, increase, stage, deadline):
+        pulse_seconds = stage["pulse_seconds"]
+        max_delta_lbs = max(0.0, float(stage.get("max_delta_lbs") or 0.0))
         end_time = min(time.monotonic() + pulse_seconds, deadline)
         check_interval = max(0.005, PRELOAD_AUTO_PULSE_CHECK_SECONDS)
+        with self.lock:
+            start_load = float(self.state.get("current_load") or 0.0)
         try:
             while time.monotonic() < end_time:
                 time.sleep(min(check_interval, max(0.0, end_time - time.monotonic())))
                 with self.lock:
                     load = float(self.state.get("current_load") or 0.0)
+                    rate = self._auto_preload_load_rate_locked()
+                    predicted_load = load + max(0.0, rate) * PRELOAD_AUTO_PREDICT_LOOKAHEAD_SECONDS
                     if self.state.get("test_running"):
                         self.state["auto_preload_message"] = "Auto tension cancelled because a pull test started."
                         return False
@@ -508,10 +533,25 @@ class QuadpodEngine:
                             f"Auto tension exceeded {PRELOAD_AUTO_ABORT_LBS:.1f} lb at {load:.1f} lb. Reset before testing."
                         )
                         return False
-                    if increase and load >= PRELOAD_MAX_LBS:
-                        self.actuator.stop()
-                        self.state["actuator_command"] = self.actuator.last_command
-                        return True
+                    if increase:
+                        if load >= PRELOAD_AUTO_TARGET_LBS:
+                            self.actuator.stop()
+                            self.state["actuator_command"] = self.actuator.last_command
+                            return True
+                        if predicted_load >= PRELOAD_AUTO_PREDICT_STOP_LBS:
+                            self.actuator.stop()
+                            self.state["actuator_command"] = self.actuator.last_command
+                            self.state["auto_preload_message"] = "Auto tension paused before predicted overshoot."
+                            return True
+                        if max_delta_lbs and load - start_load >= max_delta_lbs:
+                            self.actuator.stop()
+                            self.state["actuator_command"] = self.actuator.last_command
+                            self.state["auto_preload_message"] = "Auto tension paused after load changed quickly."
+                            return True
+                        if load >= PRELOAD_MAX_LBS:
+                            self.actuator.stop()
+                            self.state["actuator_command"] = self.actuator.last_command
+                            return True
             return True
         finally:
             with self.lock:
@@ -526,8 +566,10 @@ class QuadpodEngine:
             elapsed = time.monotonic() - started
             with self.lock:
                 stable = self._auto_preload_load_stable_locked()
+                rate = self._auto_preload_load_rate_locked()
             if coarse and elapsed >= max(0.0, settle_seconds):
-                return
+                if rate <= PRELOAD_AUTO_MAX_RISE_RATE_LBS_PER_SECOND:
+                    return
             if elapsed >= settle_seconds and stable:
                 return
             if elapsed >= max_seconds:
@@ -572,6 +614,19 @@ class QuadpodEngine:
         if len(values) < 3:
             return False
         return max(values) - min(values) <= PRELOAD_AUTO_STABLE_DELTA_LBS
+
+    def _auto_preload_load_rate_locked(self):
+        now = time.monotonic()
+        cutoff = now - max(0.1, PRELOAD_AUTO_RATE_WINDOW_SECONDS)
+        samples = [(sample_time, value) for sample_time, value in self.load_history if sample_time >= cutoff]
+        if len(samples) < 2:
+            return 0.0
+        first_time, first_value = samples[0]
+        last_time, last_value = samples[-1]
+        elapsed = last_time - first_time
+        if elapsed <= 0:
+            return 0.0
+        return (last_value - first_value) / elapsed
 
     def _auto_preload_ready_locked(self):
         short_stable = self._auto_preload_load_stable_locked()

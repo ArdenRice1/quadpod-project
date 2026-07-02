@@ -1,5 +1,6 @@
 import sys
 import tempfile
+import threading
 import time
 import unittest
 from pathlib import Path
@@ -58,6 +59,12 @@ class ControlGateTests(unittest.TestCase):
 
     def _set_load(self, value):
         self.engine.state["current_load"] = value
+
+    def _pulse_stage(self, pulse_seconds=0.2, max_delta_lbs=0.0):
+        return {
+            "pulse_seconds": pulse_seconds,
+            "max_delta_lbs": max_delta_lbs,
+        }
 
     def test_start_rejects_low_preload(self):
         self._set_load(-0.6)
@@ -151,6 +158,20 @@ class ControlGateTests(unittest.TestCase):
         self.assertFalse(self.engine._auto_preload_stage_for_load(-2.75, True)["coarse"])
         self.assertFalse(self.engine._auto_preload_stage_for_load(-0.3, True)["coarse"])
 
+    def test_auto_preload_stage_limits_load_delta_by_zone(self):
+        self.assertEqual(
+            self.engine._auto_preload_stage_for_load(-4.75, True)["max_delta_lbs"],
+            engine_module.PRELOAD_AUTO_COARSE_MAX_DELTA_LBS,
+        )
+        self.assertEqual(
+            self.engine._auto_preload_stage_for_load(-2.75, True)["max_delta_lbs"],
+            engine_module.PRELOAD_AUTO_APPROACH_MAX_DELTA_LBS,
+        )
+        self.assertEqual(
+            self.engine._auto_preload_stage_for_load(-0.3, True)["max_delta_lbs"],
+            engine_module.PRELOAD_AUTO_FINAL_MAX_DELTA_LBS,
+        )
+
     def test_auto_preload_coarse_settle_does_not_wait_for_final_stability(self):
         engine_module.PRELOAD_AUTO_COARSE_SETTLE_SECONDS = 0.01
         engine_module.PRELOAD_AUTO_COARSE_SETTLE_MAX_SECONDS = 0.03
@@ -193,7 +214,7 @@ class ControlGateTests(unittest.TestCase):
         self.engine.state["current_load"] = 0.5
         self.engine.actuator.move_up(fast=True, speed_percent=80)
 
-        keep_running = self.engine._run_auto_preload_pulse(True, 0.2, time.monotonic() + 1.0)
+        keep_running = self.engine._run_auto_preload_pulse(True, self._pulse_stage(), time.monotonic() + 1.0)
 
         self.assertTrue(keep_running)
         self.assertEqual(self.engine.actuator.last_command, "neutral")
@@ -202,11 +223,48 @@ class ControlGateTests(unittest.TestCase):
         self.engine.state["current_load"] = 1.1
         self.engine.actuator.move_up(fast=True, speed_percent=80)
 
-        keep_running = self.engine._run_auto_preload_pulse(True, 0.2, time.monotonic() + 1.0)
+        keep_running = self.engine._run_auto_preload_pulse(True, self._pulse_stage(), time.monotonic() + 1.0)
 
         self.assertFalse(keep_running)
         self.assertEqual(self.engine.actuator.last_command, "neutral")
         self.assertIn("exceeded 1.0 lb at 1.1 lb", self.engine.state["auto_preload_message"])
+
+    def test_auto_preload_pulse_stops_on_predicted_overshoot(self):
+        self.engine.state["current_load"] = -0.4
+        self._set_load_history([
+            (0.60, -1.0),
+            (0.30, -0.7),
+            (0.00, -0.4),
+        ])
+        self.engine.actuator.move_up(fast=True, speed_percent=80)
+
+        keep_running = self.engine._run_auto_preload_pulse(True, self._pulse_stage(0.2), time.monotonic() + 1.0)
+
+        self.assertTrue(keep_running)
+        self.assertEqual(self.engine.actuator.last_command, "neutral")
+        self.assertIn("predicted overshoot", self.engine.state["auto_preload_message"])
+
+    def test_auto_preload_pulse_stops_after_large_load_change(self):
+        self.engine.state["current_load"] = -8.0
+
+        def update_load():
+            time.sleep(0.03)
+            self.engine.state["current_load"] = -7.4
+
+        thread = threading.Thread(target=update_load)
+        thread.start()
+        self.engine.actuator.move_up(fast=True, speed_percent=80)
+
+        keep_running = self.engine._run_auto_preload_pulse(
+            True,
+            self._pulse_stage(0.2, max_delta_lbs=0.5),
+            time.monotonic() + 1.0,
+        )
+        thread.join(timeout=1.0)
+
+        self.assertTrue(keep_running)
+        self.assertEqual(self.engine.actuator.last_command, "neutral")
+        self.assertIn("load changed quickly", self.engine.state["auto_preload_message"])
 
     def _set_load_history(self, samples):
         now = time.monotonic()
