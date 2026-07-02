@@ -62,8 +62,10 @@ class ControlGateTests(unittest.TestCase):
 
     def _pulse_stage(self, pulse_seconds=0.2, max_delta_lbs=0.0):
         return {
+            "coarse": False,
             "pulse_seconds": pulse_seconds,
             "max_delta_lbs": max_delta_lbs,
+            "speed_percent": 80,
         }
 
     def test_start_rejects_low_preload(self):
@@ -211,13 +213,15 @@ class ControlGateTests(unittest.TestCase):
         self.assertFalse(self.engine._auto_preload_direction_for_load(0.6))
 
     def test_auto_preload_pulse_stops_when_max_reached(self):
-        self.engine.state["current_load"] = 0.5
+        self.engine.state["current_load"] = 0.51
         self.engine.actuator.move_up(fast=True, speed_percent=80)
 
         keep_running = self.engine._run_auto_preload_pulse(True, self._pulse_stage(), time.monotonic() + 1.0)
 
         self.assertTrue(keep_running)
         self.assertEqual(self.engine.actuator.last_command, "neutral")
+        self.assertIn("above the allowed band", self.engine.state["auto_preload_message"])
+        self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "pulse_stop_above_band")
 
     def test_auto_preload_pulse_stops_when_allowed_band_is_reached(self):
         self.engine.state["current_load"] = -0.4
@@ -228,6 +232,7 @@ class ControlGateTests(unittest.TestCase):
         self.assertTrue(keep_running)
         self.assertEqual(self.engine.actuator.last_command, "neutral")
         self.assertIn("allowed band", self.engine.state["auto_preload_message"])
+        self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "pulse_stop_allowed_band")
 
     def test_auto_preload_pulse_aborts_if_load_exceeds_limit(self):
         self.engine.state["current_load"] = 1.1
@@ -253,6 +258,7 @@ class ControlGateTests(unittest.TestCase):
         self.assertTrue(keep_running)
         self.assertEqual(self.engine.actuator.last_command, "neutral")
         self.assertIn("predicted overshoot", self.engine.state["auto_preload_message"])
+        self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "pulse_stop_predicted")
 
     def test_auto_preload_pulse_stops_after_large_load_change(self):
         self.engine.state["current_load"] = -8.0
@@ -275,6 +281,15 @@ class ControlGateTests(unittest.TestCase):
         self.assertTrue(keep_running)
         self.assertEqual(self.engine.actuator.last_command, "neutral")
         self.assertIn("load changed quickly", self.engine.state["auto_preload_message"])
+        self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "pulse_stop_delta")
+
+    def test_auto_preload_trace_is_internal_and_bounded(self):
+        for index in range(engine_module.PRELOAD_AUTO_TRACE_MAX_ENTRIES + 10):
+            self.engine._record_auto_preload_trace_locked("sample", index=index, load=-0.1)
+
+        self.assertEqual(len(self.engine.auto_preload_trace), engine_module.PRELOAD_AUTO_TRACE_MAX_ENTRIES)
+        self.assertEqual(self.engine.auto_preload_trace[-1]["index"], engine_module.PRELOAD_AUTO_TRACE_MAX_ENTRIES + 9)
+        self.assertNotIn("auto_preload_trace", self.engine.snapshot())
 
     def _set_load_history(self, samples):
         now = time.monotonic()
