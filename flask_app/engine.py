@@ -39,7 +39,6 @@ from config import (
     PRELOAD_AUTO_STABLE_WINDOW_SECONDS,
     PRELOAD_AUTO_SETTLE_MAX_SECONDS,
     PRELOAD_AUTO_SETTLE_SECONDS,
-    PRELOAD_AUTO_TARGET_LBS,
     PRELOAD_AUTO_TIMEOUT_SECONDS,
     PRELOAD_AUTO_TENSION_STAGES,
     PRELOAD_MAX_LBS,
@@ -534,9 +533,10 @@ class QuadpodEngine:
                         )
                         return False
                     if increase:
-                        if load >= PRELOAD_AUTO_TARGET_LBS:
+                        if load >= PRELOAD_MIN_LBS:
                             self.actuator.stop()
                             self.state["actuator_command"] = self.actuator.last_command
+                            self.state["auto_preload_message"] = "Auto tension paused inside the allowed band."
                             return True
                         if predicted_load >= PRELOAD_AUTO_PREDICT_STOP_LBS:
                             self.actuator.stop()

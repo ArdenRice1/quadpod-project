@@ -219,6 +219,16 @@ class ControlGateTests(unittest.TestCase):
         self.assertTrue(keep_running)
         self.assertEqual(self.engine.actuator.last_command, "neutral")
 
+    def test_auto_preload_pulse_stops_when_allowed_band_is_reached(self):
+        self.engine.state["current_load"] = -0.4
+        self.engine.actuator.move_up(fast=True, speed_percent=80)
+
+        keep_running = self.engine._run_auto_preload_pulse(True, self._pulse_stage(), time.monotonic() + 1.0)
+
+        self.assertTrue(keep_running)
+        self.assertEqual(self.engine.actuator.last_command, "neutral")
+        self.assertIn("allowed band", self.engine.state["auto_preload_message"])
+
     def test_auto_preload_pulse_aborts_if_load_exceeds_limit(self):
         self.engine.state["current_load"] = 1.1
         self.engine.actuator.move_up(fast=True, speed_percent=80)
@@ -230,11 +240,11 @@ class ControlGateTests(unittest.TestCase):
         self.assertIn("exceeded 1.0 lb at 1.1 lb", self.engine.state["auto_preload_message"])
 
     def test_auto_preload_pulse_stops_on_predicted_overshoot(self):
-        self.engine.state["current_load"] = -0.4
+        self.engine.state["current_load"] = -0.6
         self._set_load_history([
-            (0.60, -1.0),
-            (0.30, -0.7),
-            (0.00, -0.4),
+            (0.60, -1.2),
+            (0.30, -0.9),
+            (0.00, -0.6),
         ])
         self.engine.actuator.move_up(fast=True, speed_percent=80)
 
