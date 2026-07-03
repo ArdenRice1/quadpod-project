@@ -56,6 +56,7 @@ from config import (
     PRELOAD_AUTO_MAX_RISE_RATE_LBS_PER_SECOND,
     PRELOAD_AUTO_MAX_STOP_MARGIN_LBS,
     PRELOAD_AUTO_MIN_STOP_MARGIN_LBS,
+    PRELOAD_AUTO_NEAR_BAND_HOLD_MARGIN_LBS,
     PRELOAD_AUTO_PULSE_SECONDS,
     PRELOAD_AUTO_PULSE_CHECK_SECONDS,
     PRELOAD_AUTO_PREDICT_LOOKAHEAD_SECONDS,
@@ -99,6 +100,7 @@ class QuadpodEngine:
         self.auto_preload_last_stop_load = None
         self.auto_preload_last_stop_increase = None
         self.auto_preload_contact_detected = False
+        self.auto_preload_near_band_seen = False
         self.auto_preload_thread = None
         self.state = {
             "current_load": 0.0,
@@ -457,6 +459,9 @@ class QuadpodEngine:
                         self.state["actuator_command"] = self.actuator.last_command
                         now = time.monotonic()
                         in_band = PRELOAD_MIN_LBS <= load <= PRELOAD_MAX_LBS
+                        near_band_hold = self._auto_preload_near_band_hold_locked(load)
+                        if in_band:
+                            self.auto_preload_near_band_seen = True
                         ready = in_band and self._auto_preload_ready_locked()
                         if in_band:
                             if stable_since is None:
@@ -474,6 +479,15 @@ class QuadpodEngine:
                                 )
                                 break
                             self.state["auto_preload_message"] = "Settling"
+                        elif near_band_hold:
+                            stable_since = None
+                            self.state["auto_preload_message"] = "Settling"
+                            self._record_auto_preload_trace_locked(
+                                "near_band_hold",
+                                load=load,
+                                min_lbs=PRELOAD_MIN_LBS,
+                                margin_lbs=PRELOAD_AUTO_NEAR_BAND_HOLD_MARGIN_LBS,
+                            )
                         else:
                             stable_since = None
                             self.state["auto_preload_message"] = "Settling"
@@ -539,6 +553,7 @@ class QuadpodEngine:
         self.auto_preload_last_stop_load = None
         self.auto_preload_last_stop_increase = None
         self.auto_preload_contact_detected = False
+        self.auto_preload_near_band_seen = False
 
     def _clear_auto_preload_status_locked(self):
         self.state["auto_preload_running"] = False
@@ -562,6 +577,8 @@ class QuadpodEngine:
         self.state["stop_pending_started_at"] = None
 
     def _auto_preload_direction_for_load(self, load):
+        if self._auto_preload_near_band_hold_locked(load):
+            return None
         if load < PRELOAD_MIN_LBS:
             return True
         if load > PRELOAD_MAX_LBS:
@@ -641,6 +658,12 @@ class QuadpodEngine:
             increase
             and self.auto_preload_contact_detected
             and load < PRELOAD_AUTO_CONTACT_MODE_START_LBS
+        )
+
+    def _auto_preload_near_band_hold_locked(self, load):
+        return bool(
+            self.auto_preload_near_band_seen
+            and PRELOAD_MIN_LBS - PRELOAD_AUTO_NEAR_BAND_HOLD_MARGIN_LBS <= load < PRELOAD_MIN_LBS
         )
 
     def _auto_preload_max_delta_lbs(self, load, coarse):
@@ -727,6 +750,8 @@ class QuadpodEngine:
                 pulse_seconds=pulse_seconds,
                 max_delta_lbs=max_delta_lbs,
                 coarse=stage.get("coarse", False),
+                contact=stage.get("contact", False),
+                contact_coarse=stage.get("contact_coarse", False),
             )
         try:
             while time.monotonic() < end_time:
@@ -769,6 +794,7 @@ class QuadpodEngine:
                     delta_lbs = load - start_load
                     self._auto_preload_note_contact_locked(delta_lbs, load)
                     if load > PRELOAD_MAX_LBS:
+                        self.auto_preload_near_band_seen = True
                         self.state["auto_preload_message"] = "Settling"
                         self._record_auto_preload_trace_locked(
                             "pulse_stop_above_band",
@@ -780,6 +806,7 @@ class QuadpodEngine:
                         self._remember_auto_preload_stop_locked(load, increase)
                         return True
                     if load >= PRELOAD_MIN_LBS:
+                        self.auto_preload_near_band_seen = True
                         self.state["auto_preload_message"] = "Settling"
                         self._record_auto_preload_trace_locked(
                             "pulse_stop_allowed_band",
@@ -792,6 +819,7 @@ class QuadpodEngine:
                         self._remember_auto_preload_stop_locked(load, increase)
                         return True
                     if predicted_load >= PRELOAD_AUTO_PREDICT_STOP_LBS:
+                        self.auto_preload_near_band_seen = True
                         self.state["auto_preload_message"] = "Settling"
                         self._record_auto_preload_trace_locked(
                             "pulse_stop_predicted",
@@ -893,6 +921,8 @@ class QuadpodEngine:
         )
         load = self._median(samples)
         if self._auto_preload_control_samples_are_trustworthy(previous_load, samples, load):
+            if self._auto_preload_should_ignore_drop_after_near_band(previous_load, load):
+                return previous_load, samples, True, False, "control_load_drop_ignored_after_near_band"
             return load, samples, True, False, "control_load_confirmed"
 
         self.load_cell.reset_hardware()
@@ -906,6 +936,8 @@ class QuadpodEngine:
         retry_load = self._median(retry_samples)
         all_samples = samples + retry_samples
         if self._auto_preload_control_samples_are_trustworthy(previous_load, retry_samples, retry_load):
+            if self._auto_preload_should_ignore_drop_after_near_band(previous_load, retry_load):
+                return previous_load, all_samples, True, False, "control_load_drop_ignored_after_near_band"
             return retry_load, all_samples, True, False, "control_load_confirmed"
         if PRELOAD_MIN_LBS <= previous_load <= PRELOAD_MAX_LBS:
             return previous_load, all_samples, True, False, "control_load_spike_ignored_in_band"
@@ -916,6 +948,7 @@ class QuadpodEngine:
             abs(load - previous_load) >= PRELOAD_AUTO_CONTROL_SPIKE_DELTA_LBS
             or abs(load) >= PRELOAD_AUTO_CONTROL_HARD_SPIKE_LBS
             or (load > PRELOAD_AUTO_ABORT_LBS and previous_load <= PRELOAD_AUTO_ABORT_LBS)
+            or self._auto_preload_should_ignore_drop_after_near_band(previous_load, load)
         )
 
     def _auto_preload_control_samples_are_trustworthy(self, previous_load, samples, load):
@@ -927,6 +960,13 @@ class QuadpodEngine:
         if abs(load - previous_load) >= PRELOAD_AUTO_CONTROL_SPIKE_DELTA_LBS:
             return False
         return True
+
+    def _auto_preload_should_ignore_drop_after_near_band(self, previous_load, load):
+        return bool(
+            self.auto_preload_near_band_seen
+            and previous_load >= PRELOAD_MIN_LBS - PRELOAD_AUTO_NEAR_BAND_HOLD_MARGIN_LBS
+            and load < PRELOAD_MIN_LBS - PRELOAD_AUTO_NEAR_BAND_HOLD_MARGIN_LBS
+        )
 
     def _median(self, values):
         ordered = sorted(values)
