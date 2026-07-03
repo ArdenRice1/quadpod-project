@@ -536,6 +536,33 @@ class ControlGateTests(unittest.TestCase):
         self.assertFalse(self.engine.auto_preload_near_band_seen)
         self.assertEqual(len(self.engine.auto_preload_trace), 0)
 
+    def test_auto_preload_waits_on_sudden_negative_jump_near_target(self):
+        self.engine.state["current_load"] = -1.57
+        self._set_load_history([
+            (0.60, -0.66),
+            (0.30, -0.63),
+            (0.00, -1.57),
+        ])
+
+        should_wait = self.engine._auto_preload_should_wait_for_settle_locked(-1.57, True)
+
+        self.assertTrue(should_wait)
+        self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "negative_jump_hold")
+        self.assertGreaterEqual(self.engine.auto_preload_trace[-1]["drop_lbs"], 0.5)
+
+    def test_auto_preload_allows_normal_below_band_reading(self):
+        self.engine.state["current_load"] = -1.57
+        self._set_load_history([
+            (0.60, -1.72),
+            (0.30, -1.63),
+            (0.00, -1.57),
+        ])
+
+        should_wait = self.engine._auto_preload_should_wait_for_settle_locked(-1.57, True)
+
+        self.assertFalse(should_wait)
+        self.assertEqual(len(self.engine.auto_preload_trace), 0)
+
     def test_auto_preload_pulse_stops_after_large_load_change(self):
         self.engine.state["current_load"] = -8.0
 

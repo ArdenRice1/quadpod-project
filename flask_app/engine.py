@@ -57,6 +57,8 @@ from config import (
     PRELOAD_AUTO_MAX_STOP_MARGIN_LBS,
     PRELOAD_AUTO_MIN_STOP_MARGIN_LBS,
     PRELOAD_AUTO_NEAR_BAND_HOLD_MARGIN_LBS,
+    PRELOAD_AUTO_NEGATIVE_JUMP_DELTA_LBS,
+    PRELOAD_AUTO_NEGATIVE_JUMP_GUARD_START_LBS,
     PRELOAD_AUTO_PULSE_SECONDS,
     PRELOAD_AUTO_PULSE_CHECK_SECONDS,
     PRELOAD_AUTO_PREDICT_LOOKAHEAD_SECONDS,
@@ -675,6 +677,8 @@ class QuadpodEngine:
             return False
         if not increase:
             return True
+        if self._auto_preload_negative_jump_hold_locked(load):
+            return True
 
         predicted_load = self._auto_preload_predicted_load_locked(load, increase)
         if predicted_load >= PRELOAD_MIN_LBS:
@@ -698,6 +702,33 @@ class QuadpodEngine:
         rate = self._auto_preload_load_rate_locked()
         stop_margin = self._auto_preload_stop_margin_locked() if increase else 0.0
         return float(load) + max(0.0, rate) * PRELOAD_AUTO_PREDICT_LOOKAHEAD_SECONDS + stop_margin
+
+    def _auto_preload_negative_jump_hold_locked(self, load):
+        now = time.monotonic()
+        cutoff = now - max(0.2, PRELOAD_AUTO_RATE_WINDOW_SECONDS)
+        samples = [(sample_time, value) for sample_time, value in self.load_history if sample_time >= cutoff]
+        if len(samples) < 3:
+            return False
+
+        previous_values = [value for _, value in samples[:-1]]
+        if not previous_values:
+            return False
+
+        recent_best_load = max(previous_values)
+        if recent_best_load < PRELOAD_AUTO_NEGATIVE_JUMP_GUARD_START_LBS:
+            return False
+
+        drop_lbs = recent_best_load - float(load)
+        if drop_lbs < PRELOAD_AUTO_NEGATIVE_JUMP_DELTA_LBS:
+            return False
+
+        self._record_auto_preload_trace_locked(
+            "negative_jump_hold",
+            load=load,
+            recent_best_load=recent_best_load,
+            drop_lbs=drop_lbs,
+        )
+        return True
 
     def _auto_preload_max_delta_lbs(self, load, coarse):
         if coarse:
