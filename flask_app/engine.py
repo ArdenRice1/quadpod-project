@@ -40,6 +40,9 @@ from config import (
     PRELOAD_AUTO_CONTROL_HARD_SPIKE_LBS,
     PRELOAD_AUTO_CONTROL_SPIKE_RETRY_SECONDS,
     PRELOAD_AUTO_CONTROL_SPIKE_DELTA_LBS,
+    PRELOAD_AUTO_CONTACT_COARSE_MAX_DELTA_LBS,
+    PRELOAD_AUTO_CONTACT_COARSE_PULSE_SECONDS,
+    PRELOAD_AUTO_CONTACT_COARSE_SPEED_PERCENT,
     PRELOAD_AUTO_CONTACT_DELTA_LBS,
     PRELOAD_AUTO_CONTACT_MAX_DELTA_LBS,
     PRELOAD_AUTO_CONTACT_MODE_START_LBS,
@@ -592,6 +595,23 @@ class QuadpodEngine:
                         ),
                         "message": "Auto Tension",
                     }
+                if self._auto_preload_contact_coarse_active_locked(load, increase):
+                    return {
+                        "coarse": True,
+                        "contact_coarse": True,
+                        "fast_settle": True,
+                        "approach_settle": load < PRELOAD_AUTO_APPROACH_SETTLE_UNTIL_LBS,
+                        "max_delta_lbs": PRELOAD_AUTO_CONTACT_COARSE_MAX_DELTA_LBS,
+                        "speed_percent": min(speed_percent, PRELOAD_AUTO_CONTACT_COARSE_SPEED_PERCENT),
+                        "pulse_seconds": max(
+                            PRELOAD_AUTO_MIN_PULSE_SECONDS,
+                            min(
+                                self._auto_preload_configured_pulse_seconds(pulse_seconds),
+                                PRELOAD_AUTO_CONTACT_COARSE_PULSE_SECONDS,
+                            ),
+                        ),
+                        "message": "Auto Tension",
+                    }
                 return {
                     "coarse": coarse,
                     "approach_settle": load < PRELOAD_AUTO_APPROACH_SETTLE_UNTIL_LBS,
@@ -615,6 +635,13 @@ class QuadpodEngine:
 
     def _auto_preload_contact_mode_active_locked(self, load):
         return bool(self.auto_preload_contact_detected and load >= PRELOAD_AUTO_CONTACT_MODE_START_LBS)
+
+    def _auto_preload_contact_coarse_active_locked(self, load, increase):
+        return bool(
+            increase
+            and self.auto_preload_contact_detected
+            and load < PRELOAD_AUTO_CONTACT_MODE_START_LBS
+        )
 
     def _auto_preload_max_delta_lbs(self, load, coarse):
         if coarse:

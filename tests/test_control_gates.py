@@ -225,9 +225,10 @@ class ControlGateTests(unittest.TestCase):
 
         self.assertTrue(normal["coarse"])
         self.assertTrue(contact["coarse"])
-        self.assertNotIn("contact", contact)
-        self.assertEqual(contact["speed_percent"], normal["speed_percent"])
-        self.assertEqual(contact["pulse_seconds"], normal["pulse_seconds"])
+        self.assertTrue(contact["contact_coarse"])
+        self.assertLess(contact["speed_percent"], normal["speed_percent"])
+        self.assertLess(contact["pulse_seconds"], normal["pulse_seconds"])
+        self.assertEqual(contact["max_delta_lbs"], engine_module.PRELOAD_AUTO_CONTACT_COARSE_MAX_DELTA_LBS)
 
     def test_auto_preload_contact_mode_tightens_stage_near_target(self):
         normal = self.engine._auto_preload_stage_for_load(-2.0, True)
