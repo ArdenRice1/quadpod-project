@@ -197,7 +197,8 @@ class ControlGateTests(unittest.TestCase):
         self.engine._auto_preload_loop()
         self.assertEqual(self.engine.actuator.last_command, "neutral")
         self.assertFalse(self.engine.state["auto_preload_running"])
-        self.assertIn("exceeded 1.0 lb at 1.1 lb", self.engine.state["auto_preload_message"])
+        self.assertEqual(self.engine.state["auto_preload_message"], "Check tension")
+        self.assertEqual(self.engine.auto_preload_trace[-2]["event"], "abort")
 
     def test_auto_preload_aborts_large_overshoot_without_easing_down(self):
         self.engine.state["auto_preload_running"] = True
@@ -205,7 +206,8 @@ class ControlGateTests(unittest.TestCase):
         self.engine._auto_preload_loop()
         self.assertEqual(self.engine.actuator.last_command, "neutral")
         self.assertFalse(self.engine.state["auto_preload_running"])
-        self.assertIn("exceeded 1.0 lb at 65.0 lb", self.engine.state["auto_preload_message"])
+        self.assertEqual(self.engine.state["auto_preload_message"], "Check tension")
+        self.assertEqual(self.engine.auto_preload_trace[-2]["event"], "abort")
 
     def test_auto_preload_pulses_only_outside_safe_band(self):
         self.assertTrue(self.engine._auto_preload_direction_for_load(-0.6))
@@ -223,7 +225,7 @@ class ControlGateTests(unittest.TestCase):
 
         self.assertTrue(keep_running)
         self.assertEqual(self.engine.actuator.last_command, "neutral")
-        self.assertIn("above the allowed band", self.engine.state["auto_preload_message"])
+        self.assertEqual(self.engine.state["auto_preload_message"], "Settling")
         self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "pulse_stop_above_band")
 
     def test_auto_preload_pulse_stops_when_allowed_band_is_reached(self):
@@ -234,7 +236,7 @@ class ControlGateTests(unittest.TestCase):
 
         self.assertTrue(keep_running)
         self.assertEqual(self.engine.actuator.last_command, "neutral")
-        self.assertIn("allowed band", self.engine.state["auto_preload_message"])
+        self.assertEqual(self.engine.state["auto_preload_message"], "Settling")
         self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "pulse_stop_allowed_band")
 
     def test_auto_preload_pulse_aborts_if_load_exceeds_limit(self):
@@ -245,20 +247,92 @@ class ControlGateTests(unittest.TestCase):
 
         self.assertFalse(keep_running)
         self.assertEqual(self.engine.actuator.last_command, "neutral")
-        self.assertIn("exceeded 1.0 lb at 1.1 lb", self.engine.state["auto_preload_message"])
+        self.assertEqual(self.engine.state["auto_preload_message"], "Check tension")
+        self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "pulse_abort")
 
     def test_auto_preload_pulse_uses_fresh_control_load(self):
         engine_module.PRELOAD_AUTO_DIRECT_LOAD_READ = True
         self.engine.state["current_load"] = -4.0
-        self.engine.load_cell.get_control_force = lambda: 1.2
+        readings = iter([1.2, 1.25, 1.22, 1.21, 1.24])
+        self.engine.load_cell.get_control_force = lambda: next(readings)
         self.engine.actuator.move_up(fast=True, speed_percent=80)
 
         keep_running = self.engine._run_auto_preload_pulse(True, self._pulse_stage(), time.monotonic() + 1.0)
 
         self.assertFalse(keep_running)
-        self.assertEqual(self.engine.state["current_load"], 1.2)
+        self.assertEqual(self.engine.state["current_load"], 1.22)
         self.assertEqual(self.engine.actuator.last_command, "neutral")
-        self.assertIn("exceeded 1.0 lb at 1.2 lb", self.engine.state["auto_preload_message"])
+        self.assertEqual(self.engine.state["auto_preload_message"], "Check tension")
+        self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "pulse_abort")
+
+    def test_auto_preload_reads_control_load_once_after_pulse(self):
+        engine_module.PRELOAD_AUTO_DIRECT_LOAD_READ = True
+        self.engine.state["current_load"] = -1.1
+        calls = []
+
+        def read_control_load():
+            calls.append(time.monotonic())
+            return -1.0
+
+        self.engine.load_cell.get_control_force = read_control_load
+        self.engine.actuator.move_up(fast=True, speed_percent=80)
+
+        keep_running = self.engine._run_auto_preload_pulse(True, self._pulse_stage(0.05), time.monotonic() + 1.0)
+
+        self.assertTrue(keep_running)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "pulse_complete")
+
+    def test_auto_preload_confirms_and_rejects_single_control_spike(self):
+        engine_module.PRELOAD_AUTO_DIRECT_LOAD_READ = True
+        self.engine.state["current_load"] = -7.85
+        readings = iter([185.0, -7.82, -7.88, -7.83, -7.86, -7.84, -7.85, -7.83, -7.86, -7.84])
+        self.engine.load_cell.get_control_force = lambda: next(readings)
+
+        load = self.engine._refresh_auto_preload_load()
+
+        self.assertAlmostEqual(load, -7.84)
+        self.assertAlmostEqual(self.engine.state["current_load"], -7.84)
+        self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "control_load_confirmed")
+        self.assertEqual(self.engine.auto_preload_trace[-1]["first_load"], 185.0)
+
+    def test_auto_preload_confirms_real_high_control_load(self):
+        engine_module.PRELOAD_AUTO_DIRECT_LOAD_READ = True
+        self.engine.state["current_load"] = -7.85
+        readings = iter([185.0, 180.0, 181.0, 182.0, 183.0])
+        self.engine.load_cell.get_control_force = lambda: next(readings)
+
+        load = self.engine._refresh_auto_preload_load()
+
+        self.assertEqual(load, 182.0)
+        self.assertEqual(self.engine.state["current_load"], 182.0)
+
+    def test_auto_preload_rejects_inconsistent_hard_spike_after_retry(self):
+        engine_module.PRELOAD_AUTO_DIRECT_LOAD_READ = True
+        self.engine.state["current_load"] = -7.85
+        readings = iter([415.0, -7.8, 220.0, -7.9, 42.0, 415.0, -7.8, 220.0, -7.9, 42.0])
+        self.engine.load_cell.get_control_force = lambda: next(readings)
+
+        load = self.engine._refresh_auto_preload_load()
+
+        self.assertEqual(load, -7.85)
+        self.assertTrue(self.engine.state["auto_preload_sensor_fault"])
+        self.assertEqual(self.engine.state["auto_preload_message"], "Check tension")
+        self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "control_load_rejected")
+
+    def test_auto_preload_pulse_stops_on_inconsistent_sensor_spike(self):
+        engine_module.PRELOAD_AUTO_DIRECT_LOAD_READ = True
+        self.engine.state["current_load"] = -7.85
+        readings = iter([415.0, -7.8, 220.0, -7.9, 42.0, 415.0, -7.8, 220.0, -7.9, 42.0])
+        self.engine.load_cell.get_control_force = lambda: next(readings)
+        self.engine.actuator.move_up(fast=True, speed_percent=80)
+
+        keep_running = self.engine._run_auto_preload_pulse(True, self._pulse_stage(), time.monotonic() + 1.0)
+
+        self.assertFalse(keep_running)
+        self.assertTrue(self.engine.state["auto_preload_sensor_fault"])
+        self.assertEqual(self.engine.state["auto_preload_message"], "Check tension")
+        self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "pulse_sensor_fault")
 
     def test_auto_preload_pulse_stops_on_predicted_overshoot(self):
         self.engine.state["current_load"] = -0.6
@@ -273,7 +347,7 @@ class ControlGateTests(unittest.TestCase):
 
         self.assertTrue(keep_running)
         self.assertEqual(self.engine.actuator.last_command, "neutral")
-        self.assertIn("predicted overshoot", self.engine.state["auto_preload_message"])
+        self.assertEqual(self.engine.state["auto_preload_message"], "Settling")
         self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "pulse_stop_predicted")
 
     def test_auto_preload_pulse_stops_after_large_load_change(self):
@@ -296,7 +370,7 @@ class ControlGateTests(unittest.TestCase):
 
         self.assertTrue(keep_running)
         self.assertEqual(self.engine.actuator.last_command, "neutral")
-        self.assertIn("load changed quickly", self.engine.state["auto_preload_message"])
+        self.assertEqual(self.engine.state["auto_preload_message"], "Settling")
         self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "pulse_stop_delta")
 
     def test_auto_preload_stops_when_force_rises_quickly_near_target(self):
@@ -312,7 +386,7 @@ class ControlGateTests(unittest.TestCase):
 
         self.assertTrue(keep_running)
         self.assertEqual(self.engine.actuator.last_command, "neutral")
-        self.assertIn("force is rising quickly", self.engine.state["auto_preload_message"])
+        self.assertEqual(self.engine.state["auto_preload_message"], "Settling")
         self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "pulse_stop_fast_rise")
 
     def test_auto_preload_adapts_stage_after_learning_coast(self):

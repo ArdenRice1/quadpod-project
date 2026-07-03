@@ -148,10 +148,10 @@
       .then((data) => {
         liveLoad.textContent = data.current_load.toFixed(2);
         const autoMessage = data.auto_preload_message || "";
-        const needsAction = autoMessage.includes("stopped") || autoMessage.includes("timed out") || autoMessage.includes("cancelled") || autoMessage.includes("exceeded");
+        const needsAction = autoMessage === "Check tension";
         if (data.auto_preload_running || needsAction) {
           preloadStatus.className = needsAction ? "status bad" : "status warn";
-          preloadStatus.textContent = autoMessage || "Auto tension running.";
+          preloadStatus.textContent = needsAction ? "Check tension." : (autoMessage || "Auto Tension.");
           return;
         }
         if (data.preload_ready && data.auto_preload_short_stable && data.auto_preload_drift_stable) {
@@ -159,7 +159,7 @@
           preloadStatus.textContent = "Ready.";
         } else if (data.preload_ready) {
           preloadStatus.className = "status warn";
-          preloadStatus.textContent = "Waiting for tension to settle.";
+          preloadStatus.textContent = "Settling.";
         } else {
           preloadStatus.className = "status warn";
           preloadStatus.textContent = "Use Auto Tension.";

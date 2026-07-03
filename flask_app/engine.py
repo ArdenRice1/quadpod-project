@@ -31,6 +31,11 @@ from config import (
     PRELOAD_AUTO_APPROACH_DISTANCE_LBS,
     PRELOAD_AUTO_COAST_MARGIN_SCALE,
     PRELOAD_AUTO_COARSE_MAX_DELTA_LBS,
+    PRELOAD_AUTO_CONTROL_CONFIRM_MAX_RANGE_LBS,
+    PRELOAD_AUTO_CONTROL_CONFIRM_SAMPLES,
+    PRELOAD_AUTO_CONTROL_HARD_SPIKE_LBS,
+    PRELOAD_AUTO_CONTROL_SPIKE_RETRY_SECONDS,
+    PRELOAD_AUTO_CONTROL_SPIKE_DELTA_LBS,
     PRELOAD_AUTO_DIRECT_LOAD_READ,
     PRELOAD_AUTO_FINAL_MAX_DELTA_LBS,
     PRELOAD_AUTO_MAX_RISE_RATE_LBS_PER_SECOND,
@@ -38,7 +43,6 @@ from config import (
     PRELOAD_AUTO_MIN_STOP_MARGIN_LBS,
     PRELOAD_AUTO_PULSE_SECONDS,
     PRELOAD_AUTO_PULSE_CHECK_SECONDS,
-    PRELOAD_AUTO_STOP_DURING_LOAD_READ,
     PRELOAD_AUTO_PREDICT_LOOKAHEAD_SECONDS,
     PRELOAD_AUTO_PREDICT_STOP_LBS,
     PRELOAD_AUTO_RATE_WINDOW_SECONDS,
@@ -104,6 +108,7 @@ class QuadpodEngine:
             "auto_preload_drift_stable": False,
             "auto_preload_drift_drop_lbs": 0.0,
             "auto_preload_drift_window_s": 0.0,
+            "auto_preload_sensor_fault": False,
         }
 
     def start(self):
@@ -163,7 +168,8 @@ class QuadpodEngine:
             if self.load_cell.use_mock or self.load_cell.gpio is not None:
                 self.load_cell.reset_hardware()
             self.state["auto_preload_running"] = True
-            self.state["auto_preload_message"] = "Auto tension started."
+            self.state["auto_preload_message"] = "Auto Tension"
+            self.state["auto_preload_sensor_fault"] = False
             self._record_auto_preload_trace_locked(
                 "start",
                 load=self.state.get("current_load"),
@@ -399,8 +405,17 @@ class QuadpodEngine:
                 pulse_seconds = 0.0
                 self._refresh_auto_preload_load()
                 with self.lock:
+                    if self.state.get("auto_preload_sensor_fault"):
+                        self.actuator.stop()
+                        self.state["actuator_command"] = self.actuator.last_command
+                        self.state["auto_preload_message"] = "Check tension"
+                        self._record_auto_preload_trace_locked(
+                            "sensor_fault_stop",
+                            load=self.state.get("current_load"),
+                        )
+                        break
                     if self.state["test_running"]:
-                        self.state["auto_preload_message"] = "Auto tension cancelled because a pull test started."
+                        self.state["auto_preload_message"] = "Check tension"
                         self._record_auto_preload_trace_locked("cancelled", load=self.state.get("current_load"))
                         break
 
@@ -408,9 +423,7 @@ class QuadpodEngine:
                     if load > PRELOAD_AUTO_ABORT_LBS:
                         self.actuator.stop()
                         self.state["actuator_command"] = self.actuator.last_command
-                        self.state["auto_preload_message"] = (
-                            f"Auto tension exceeded {PRELOAD_AUTO_ABORT_LBS:.1f} lb at {load:.1f} lb. Reset before testing."
-                        )
+                        self.state["auto_preload_message"] = "Check tension"
                         self._record_auto_preload_trace_locked("abort", load=load, abort_lbs=PRELOAD_AUTO_ABORT_LBS)
                         break
 
@@ -425,9 +438,7 @@ class QuadpodEngine:
                             if stable_since is None:
                                 stable_since = now
                             if now - stable_since >= PRELOAD_STABILITY_SECONDS:
-                                self.state["auto_preload_message"] = (
-                                    f"Tension stable at {load:.1f} lb. Ready to test."
-                                )
+                                self.state["auto_preload_message"] = "Ready"
                                 self._record_auto_preload_trace_locked(
                                     "ready",
                                     load=load,
@@ -442,22 +453,18 @@ class QuadpodEngine:
                                 if in_band_since is None:
                                     in_band_since = now
                                 if now - in_band_since >= PRELOAD_AUTO_DRIFT_WARN_SECONDS:
-                                    self.state["auto_preload_message"] = (
-                                        "Tension is still settling. Check attachment if it keeps drifting."
-                                    )
+                                    self.state["auto_preload_message"] = "Settling"
                                 else:
-                                    self.state["auto_preload_message"] = "Waiting for tension to settle."
+                                    self.state["auto_preload_message"] = "Settling"
                             else:
                                 in_band_since = None
-                                self.state["auto_preload_message"] = "Waiting for tension to stabilize."
+                                self.state["auto_preload_message"] = "Settling"
                     elif not self._auto_preload_coarse_active_locked(load, direction) and not self._auto_preload_load_stable_locked():
                         direction = None
                         stable_since = None
                         self.actuator.stop()
                         self.state["actuator_command"] = self.actuator.last_command
-                        self.state["auto_preload_message"] = (
-                            "Waiting for load cell to stabilize before the next tension pulse."
-                        )
+                        self.state["auto_preload_message"] = "Settling"
                         self._record_auto_preload_trace_locked(
                             "waiting_load_stable",
                             load=load,
@@ -486,7 +493,7 @@ class QuadpodEngine:
                 with self.lock:
                     self.actuator.stop()
                     self.state["actuator_command"] = self.actuator.last_command
-                    self.state["auto_preload_message"] = "Auto tension timed out. Use jog controls and try again."
+                    self.state["auto_preload_message"] = "Check tension"
                     self._record_auto_preload_trace_locked(
                         "timeout",
                         load=self.state.get("current_load"),
@@ -497,7 +504,7 @@ class QuadpodEngine:
                 self.actuator.stop()
                 self.state["actuator_command"] = self.actuator.last_command
                 self.state["auto_preload_running"] = False
-                if self.state.get("auto_preload_message", "").startswith("Tension stable"):
+                if self.state.get("auto_preload_message", "") == "Ready":
                     self.state["auto_preload_message"] = ""
                 self._record_auto_preload_trace_locked(
                     "finish",
@@ -519,7 +526,7 @@ class QuadpodEngine:
                 "max_delta_lbs": PRELOAD_AUTO_FINAL_MAX_DELTA_LBS,
                 "speed_percent": PRELOAD_AUTO_SPEED_PERCENT,
                 "pulse_seconds": self._auto_preload_down_pulse_seconds(),
-                "message": "Auto tension easing down; waiting for load cell.",
+                "message": "Auto Tension",
             }
 
         for threshold, speed_percent, pulse_seconds in PRELOAD_AUTO_TENSION_STAGES:
@@ -530,7 +537,7 @@ class QuadpodEngine:
                     "max_delta_lbs": self._auto_preload_max_delta_lbs(load, coarse),
                     "speed_percent": speed_percent,
                     "pulse_seconds": self._auto_preload_configured_pulse_seconds(pulse_seconds),
-                    "message": "Auto tensioning; waiting for load cell.",
+                    "message": "Auto Tension",
                 }
 
         return {
@@ -538,7 +545,7 @@ class QuadpodEngine:
             "max_delta_lbs": PRELOAD_AUTO_FINAL_MAX_DELTA_LBS,
             "speed_percent": PRELOAD_AUTO_SPEED_PERCENT,
             "pulse_seconds": self._auto_preload_pulse_seconds(),
-            "message": "Final auto tension tap; waiting for load cell.",
+            "message": "Auto Tension",
         }
 
     def _auto_preload_coarse_active_locked(self, load, increase):
@@ -584,7 +591,7 @@ class QuadpodEngine:
         adjusted["adapted"] = True
         adjusted["stop_margin_lbs"] = stop_margin
         adjusted["rate_lbs_per_s"] = rate
-        adjusted["message"] = "Auto tensioning carefully; waiting for load cell."
+        adjusted["message"] = "Auto Tension"
         self._record_auto_preload_trace_locked(
             "stage_adapted",
             load=load,
@@ -631,106 +638,99 @@ class QuadpodEngine:
             )
         try:
             while time.monotonic() < end_time:
-                time.sleep(min(check_interval, max(0.0, end_time - time.monotonic())))
-                if PRELOAD_AUTO_STOP_DURING_LOAD_READ:
-                    with self.lock:
-                        self.actuator.stop()
-                        self.state["actuator_command"] = self.actuator.last_command
-                self._refresh_auto_preload_load()
                 with self.lock:
-                    load = float(self.state.get("current_load") or 0.0)
-                    rate = self._auto_preload_load_rate_locked()
-                    stop_margin = self._auto_preload_stop_margin_locked() if increase else 0.0
-                    predicted_load = load + max(0.0, rate) * PRELOAD_AUTO_PREDICT_LOOKAHEAD_SECONDS + stop_margin
                     if self.state.get("test_running"):
-                        self.state["auto_preload_message"] = "Auto tension cancelled because a pull test started."
-                        self._record_auto_preload_trace_locked("pulse_cancelled", load=load)
-                        return False
-                    if load > PRELOAD_AUTO_ABORT_LBS:
-                        self.actuator.stop()
-                        self.state["actuator_command"] = self.actuator.last_command
-                        self.state["auto_preload_message"] = (
-                            f"Auto tension exceeded {PRELOAD_AUTO_ABORT_LBS:.1f} lb at {load:.1f} lb. Reset before testing."
-                        )
+                        self.state["auto_preload_message"] = "Check tension"
                         self._record_auto_preload_trace_locked(
-                            "pulse_abort",
-                            load=load,
-                            abort_lbs=PRELOAD_AUTO_ABORT_LBS,
+                            "pulse_cancelled",
+                            load=self.state.get("current_load"),
                         )
                         return False
-                    if increase:
-                        if load > PRELOAD_MAX_LBS:
-                            self.actuator.stop()
-                            self.state["actuator_command"] = self.actuator.last_command
-                            self.state["auto_preload_message"] = "Auto tension paused above the allowed band."
-                            self._record_auto_preload_trace_locked(
-                                "pulse_stop_above_band",
-                                load=load,
-                                max_lbs=PRELOAD_MAX_LBS,
-                                rate_lbs_per_s=rate,
-                                predicted_load=predicted_load,
-                            )
-                            self._remember_auto_preload_stop_locked(load, increase)
-                            return True
-                        if load >= PRELOAD_MIN_LBS:
-                            self.actuator.stop()
-                            self.state["actuator_command"] = self.actuator.last_command
-                            self.state["auto_preload_message"] = "Auto tension paused inside the allowed band."
-                            self._record_auto_preload_trace_locked(
-                                "pulse_stop_allowed_band",
-                                load=load,
-                                min_lbs=PRELOAD_MIN_LBS,
-                                max_lbs=PRELOAD_MAX_LBS,
-                                rate_lbs_per_s=rate,
-                                predicted_load=predicted_load,
-                            )
-                            self._remember_auto_preload_stop_locked(load, increase)
-                            return True
-                        if predicted_load >= PRELOAD_AUTO_PREDICT_STOP_LBS:
-                            self.actuator.stop()
-                            self.state["actuator_command"] = self.actuator.last_command
-                            self.state["auto_preload_message"] = "Auto tension paused before predicted overshoot."
-                            self._record_auto_preload_trace_locked(
-                                "pulse_stop_predicted",
-                                load=load,
-                                rate_lbs_per_s=rate,
-                                predicted_load=predicted_load,
-                                predict_stop_lbs=PRELOAD_AUTO_PREDICT_STOP_LBS,
-                            )
-                            self._remember_auto_preload_stop_locked(load, increase)
-                            return True
-                        if not stage.get("coarse") and rate >= PRELOAD_AUTO_MAX_RISE_RATE_LBS_PER_SECOND:
-                            self.actuator.stop()
-                            self.state["actuator_command"] = self.actuator.last_command
-                            self.state["auto_preload_message"] = "Auto tension paused because force is rising quickly."
-                            self._record_auto_preload_trace_locked(
-                                "pulse_stop_fast_rise",
-                                load=load,
-                                rate_lbs_per_s=rate,
-                                stop_margin_lbs=stop_margin,
-                                predicted_load=predicted_load,
-                            )
-                            self._remember_auto_preload_stop_locked(load, increase)
-                            return True
-                        if max_delta_lbs and load - start_load >= max_delta_lbs:
-                            self.actuator.stop()
-                            self.state["actuator_command"] = self.actuator.last_command
-                            self.state["auto_preload_message"] = "Auto tension paused after load changed quickly."
-                            self._record_auto_preload_trace_locked(
-                                "pulse_stop_delta",
-                                load=load,
-                                start_load=start_load,
-                                delta_lbs=load - start_load,
-                                max_delta_lbs=max_delta_lbs,
-                            )
-                            self._remember_auto_preload_stop_locked(load, increase)
-                            return True
-                    if time.monotonic() < end_time:
-                        self._move_preload_direction_locked(
-                            increase=increase, speed_percent=stage["speed_percent"]
-                        )
-                        self.state["actuator_command"] = self.actuator.last_command
+                time.sleep(min(check_interval, max(0.0, end_time - time.monotonic())))
+
             with self.lock:
+                self.actuator.stop()
+                self.state["actuator_command"] = self.actuator.last_command
+            self._refresh_auto_preload_load()
+
+            with self.lock:
+                if self.state.get("auto_preload_sensor_fault"):
+                    self.state["auto_preload_message"] = "Check tension"
+                    self._record_auto_preload_trace_locked(
+                        "pulse_sensor_fault",
+                        load=self.state.get("current_load"),
+                    )
+                    return False
+                load = float(self.state.get("current_load") or 0.0)
+                rate = self._auto_preload_load_rate_locked()
+                stop_margin = self._auto_preload_stop_margin_locked() if increase else 0.0
+                predicted_load = load + max(0.0, rate) * PRELOAD_AUTO_PREDICT_LOOKAHEAD_SECONDS + stop_margin
+                if load > PRELOAD_AUTO_ABORT_LBS:
+                    self.state["auto_preload_message"] = "Check tension"
+                    self._record_auto_preload_trace_locked(
+                        "pulse_abort",
+                        load=load,
+                        abort_lbs=PRELOAD_AUTO_ABORT_LBS,
+                    )
+                    return False
+                if increase:
+                    if load > PRELOAD_MAX_LBS:
+                        self.state["auto_preload_message"] = "Settling"
+                        self._record_auto_preload_trace_locked(
+                            "pulse_stop_above_band",
+                            load=load,
+                            max_lbs=PRELOAD_MAX_LBS,
+                            rate_lbs_per_s=rate,
+                            predicted_load=predicted_load,
+                        )
+                        self._remember_auto_preload_stop_locked(load, increase)
+                        return True
+                    if load >= PRELOAD_MIN_LBS:
+                        self.state["auto_preload_message"] = "Settling"
+                        self._record_auto_preload_trace_locked(
+                            "pulse_stop_allowed_band",
+                            load=load,
+                            min_lbs=PRELOAD_MIN_LBS,
+                            max_lbs=PRELOAD_MAX_LBS,
+                            rate_lbs_per_s=rate,
+                            predicted_load=predicted_load,
+                        )
+                        self._remember_auto_preload_stop_locked(load, increase)
+                        return True
+                    if predicted_load >= PRELOAD_AUTO_PREDICT_STOP_LBS:
+                        self.state["auto_preload_message"] = "Settling"
+                        self._record_auto_preload_trace_locked(
+                            "pulse_stop_predicted",
+                            load=load,
+                            rate_lbs_per_s=rate,
+                            predicted_load=predicted_load,
+                            predict_stop_lbs=PRELOAD_AUTO_PREDICT_STOP_LBS,
+                        )
+                        self._remember_auto_preload_stop_locked(load, increase)
+                        return True
+                    if not stage.get("coarse") and rate >= PRELOAD_AUTO_MAX_RISE_RATE_LBS_PER_SECOND:
+                        self.state["auto_preload_message"] = "Settling"
+                        self._record_auto_preload_trace_locked(
+                            "pulse_stop_fast_rise",
+                            load=load,
+                            rate_lbs_per_s=rate,
+                            stop_margin_lbs=stop_margin,
+                            predicted_load=predicted_load,
+                        )
+                        self._remember_auto_preload_stop_locked(load, increase)
+                        return True
+                    if max_delta_lbs and load - start_load >= max_delta_lbs:
+                        self.state["auto_preload_message"] = "Settling"
+                        self._record_auto_preload_trace_locked(
+                            "pulse_stop_delta",
+                            load=load,
+                            start_load=start_load,
+                            delta_lbs=load - start_load,
+                            max_delta_lbs=max_delta_lbs,
+                        )
+                        self._remember_auto_preload_stop_locked(load, increase)
+                        return True
+
                 self._record_auto_preload_trace_locked(
                     "pulse_complete",
                     load=self.state.get("current_load"),
@@ -748,17 +748,83 @@ class QuadpodEngine:
             with self.lock:
                 return float(self.state.get("current_load") or 0.0)
 
-        load = self.load_cell.get_control_force()
+        with self.lock:
+            previous_load = float(self.state.get("current_load") or 0.0)
+
+        load, samples, needs_confirmation, rejected = self._read_auto_preload_control_load(previous_load)
+
         raw_counts = getattr(self.load_cell, "last_raw_counts", None)
         if raw_counts is None:
             raw_counts = getattr(self.load_cell, "last_raw_lbs", load)
         with self.lock:
+            self.state["auto_preload_sensor_fault"] = bool(rejected)
+            if needs_confirmation:
+                self._record_auto_preload_trace_locked(
+                    "control_load_rejected" if rejected else "control_load_confirmed",
+                    previous_load=previous_load,
+                    first_load=samples[0],
+                    load=load,
+                    sample_count=len(samples),
+                    sample_min=min(samples),
+                    sample_max=max(samples),
+                )
+            if rejected:
+                self.state["auto_preload_message"] = "Check tension"
             self.state["current_load"] = load
             self.state["raw_load"] = raw_counts
             self._record_load_locked(load)
             self.state["preload_ready"] = PRELOAD_MIN_LBS <= load <= PRELOAD_MAX_LBS
             self.state["preload_stable"] = self.state["preload_ready"] and self._load_stable_locked()
         return load
+
+    def _read_auto_preload_control_load(self, previous_load):
+        samples = [self.load_cell.get_control_force()]
+        needs_confirmation = self._auto_preload_read_needs_confirmation(previous_load, samples[0])
+        if not needs_confirmation:
+            return samples[0], samples, False, False
+
+        samples.extend(
+            self.load_cell.get_control_force()
+            for _ in range(max(0, int(PRELOAD_AUTO_CONTROL_CONFIRM_SAMPLES) - 1))
+        )
+        load = self._median(samples)
+        if self._auto_preload_control_samples_are_trustworthy(previous_load, samples, load):
+            return load, samples, True, False
+
+        self.load_cell.reset_hardware()
+        if PRELOAD_AUTO_CONTROL_SPIKE_RETRY_SECONDS > 0:
+            time.sleep(PRELOAD_AUTO_CONTROL_SPIKE_RETRY_SECONDS)
+
+        retry_samples = [
+            self.load_cell.get_control_force()
+            for _ in range(max(1, int(PRELOAD_AUTO_CONTROL_CONFIRM_SAMPLES)))
+        ]
+        retry_load = self._median(retry_samples)
+        all_samples = samples + retry_samples
+        if self._auto_preload_control_samples_are_trustworthy(previous_load, retry_samples, retry_load):
+            return retry_load, all_samples, True, False
+        return previous_load, all_samples, True, True
+
+    def _auto_preload_read_needs_confirmation(self, previous_load, load):
+        return (
+            abs(load - previous_load) >= PRELOAD_AUTO_CONTROL_SPIKE_DELTA_LBS
+            or abs(load) >= PRELOAD_AUTO_CONTROL_HARD_SPIKE_LBS
+            or (load > PRELOAD_AUTO_ABORT_LBS and previous_load <= PRELOAD_AUTO_ABORT_LBS)
+        )
+
+    def _auto_preload_control_samples_are_trustworthy(self, previous_load, samples, load):
+        sample_range = max(samples) - min(samples)
+        if sample_range > PRELOAD_AUTO_CONTROL_CONFIRM_MAX_RANGE_LBS:
+            return False
+        if load > PRELOAD_AUTO_ABORT_LBS:
+            return True
+        if abs(load - previous_load) >= PRELOAD_AUTO_CONTROL_SPIKE_DELTA_LBS:
+            return False
+        return True
+
+    def _median(self, values):
+        ordered = sorted(values)
+        return ordered[len(ordered) // 2]
 
     def _wait_for_auto_preload_settle(self, deadline, coarse=False):
         settle_seconds = PRELOAD_AUTO_COARSE_SETTLE_SECONDS if coarse else PRELOAD_AUTO_SETTLE_SECONDS
@@ -937,7 +1003,7 @@ class QuadpodEngine:
         self.state["actuator_command"] = self.actuator.last_command
         self.state["stop_pending"] = True
         self.state["stop_pending_started_at"] = time.monotonic()
-        self.state["stop_reason"] = f"{reason}; logging until load stabilizes"
+        self.state["stop_reason"] = reason
 
     def _finish_stop_locked(self, reason):
         self.actuator.stop()
