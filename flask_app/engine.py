@@ -42,6 +42,7 @@ from config import (
     PRELOAD_AUTO_CONTACT_SPEED_PERCENT,
     PRELOAD_AUTO_DIRECT_LOAD_READ,
     PRELOAD_AUTO_FINAL_MAX_DELTA_LBS,
+    PRELOAD_AUTO_IN_BAND_END_SECONDS,
     PRELOAD_AUTO_MAX_RISE_RATE_LBS_PER_SECOND,
     PRELOAD_AUTO_MAX_STOP_MARGIN_LBS,
     PRELOAD_AUTO_MIN_STOP_MARGIN_LBS,
@@ -170,11 +171,9 @@ class QuadpodEngine:
                 return False, "Cannot auto tension while a pull test is running."
             if self.state["auto_preload_running"]:
                 return True, "Auto tension is already running."
+            self._reset_test_session_locked()
             self.auto_preload_trace.clear()
-            self.auto_preload_coast_lbs = 0.0
-            self.auto_preload_last_stop_load = None
-            self.auto_preload_last_stop_increase = None
-            self.auto_preload_contact_detected = False
+            self._reset_auto_preload_control_locked()
             if self.load_cell.use_mock or self.load_cell.gpio is not None:
                 self.load_cell.reset_hardware()
             self.state["auto_preload_running"] = True
@@ -218,6 +217,8 @@ class QuadpodEngine:
         with self.lock:
             if self.state["test_running"]:
                 return False, "A pull test is already running."
+            if self.state["auto_preload_running"]:
+                return False, "Wait for Auto Tension to finish before starting the pull."
             test = storage.get_test(test_id)
             if not test:
                 return False, "Test record not found."
@@ -229,6 +230,7 @@ class QuadpodEngine:
 
             self.failure_drop_samples = 0
             self.load_history.clear()
+            self._reset_auto_preload_control_locked()
             self.state.update(
                 {
                     "peak_load": max(load, 0.0),
@@ -242,10 +244,9 @@ class QuadpodEngine:
                     "stop_pending": False,
                     "stop_pending_started_at": None,
                     "last_error": "",
-                    "auto_preload_running": False,
-                    "auto_preload_message": "",
                 }
             )
+            self._clear_auto_preload_status_locked()
             self.last_client_poll = time.monotonic()
             storage.update_test(
                 test_id,
@@ -408,7 +409,6 @@ class QuadpodEngine:
     def _auto_preload_loop(self):
         deadline = time.monotonic() + PRELOAD_AUTO_TIMEOUT_SECONDS
         stable_since = None
-        in_band_since = None
         try:
             while time.monotonic() < deadline:
                 direction = None
@@ -444,31 +444,25 @@ class QuadpodEngine:
                         now = time.monotonic()
                         in_band = PRELOAD_MIN_LBS <= load <= PRELOAD_MAX_LBS
                         ready = in_band and self._auto_preload_ready_locked()
-                        if ready:
+                        if in_band:
                             if stable_since is None:
                                 stable_since = now
-                            if now - stable_since >= PRELOAD_STABILITY_SECONDS:
-                                self.state["auto_preload_message"] = "Ready"
+                            if now - stable_since >= PRELOAD_AUTO_IN_BAND_END_SECONDS:
+                                self.state["auto_preload_message"] = "Ready" if ready else ""
                                 self._record_auto_preload_trace_locked(
-                                    "ready",
+                                    "in_band_complete",
                                     load=load,
+                                    seconds=now - stable_since,
+                                    ready=ready,
                                     short_stable=self.state.get("auto_preload_short_stable"),
                                     drift_stable=self.state.get("auto_preload_drift_stable"),
                                     drift_drop_lbs=self.state.get("auto_preload_drift_drop_lbs"),
                                 )
                                 break
+                            self.state["auto_preload_message"] = "Settling"
                         else:
                             stable_since = None
-                            if in_band:
-                                if in_band_since is None:
-                                    in_band_since = now
-                                if now - in_band_since >= PRELOAD_AUTO_DRIFT_WARN_SECONDS:
-                                    self.state["auto_preload_message"] = "Settling"
-                                else:
-                                    self.state["auto_preload_message"] = "Settling"
-                            else:
-                                in_band_since = None
-                                self.state["auto_preload_message"] = "Settling"
+                            self.state["auto_preload_message"] = "Settling"
                     elif not self._auto_preload_coarse_active_locked(load, direction) and not self._auto_preload_load_stable_locked():
                         direction = None
                         stable_since = None
@@ -489,7 +483,6 @@ class QuadpodEngine:
                         )
                         self.state["actuator_command"] = self.actuator.last_command
                         stable_since = None
-                        in_band_since = None
                         self.state["auto_preload_message"] = stage["message"]
 
                 if direction is None:
@@ -521,6 +514,33 @@ class QuadpodEngine:
                     load=self.state.get("current_load"),
                     message=self.state.get("auto_preload_message"),
                 )
+
+    def _reset_auto_preload_control_locked(self):
+        self.auto_preload_coast_lbs = 0.0
+        self.auto_preload_last_stop_load = None
+        self.auto_preload_last_stop_increase = None
+        self.auto_preload_contact_detected = False
+
+    def _clear_auto_preload_status_locked(self):
+        self.state["auto_preload_running"] = False
+        self.state["auto_preload_message"] = ""
+        self.state["auto_preload_sensor_fault"] = False
+        self.state["auto_preload_short_stable"] = False
+        self.state["auto_preload_drift_stable"] = False
+        self.state["auto_preload_drift_drop_lbs"] = 0.0
+        self.state["auto_preload_drift_window_s"] = 0.0
+
+    def _reset_test_session_locked(self):
+        self.failure_drop_samples = 0
+        self.state["test_running"] = False
+        self.state["test_complete"] = False
+        self.state["active_test_id"] = None
+        self.state["started_at_monotonic"] = None
+        self.state["elapsed_s"] = 0.0
+        self.state["sample_count"] = 0
+        self.state["stop_reason"] = ""
+        self.state["stop_pending"] = False
+        self.state["stop_pending_started_at"] = None
 
     def _auto_preload_direction_for_load(self, load):
         if load < PRELOAD_MIN_LBS:
@@ -1055,8 +1075,8 @@ class QuadpodEngine:
         self.state["stop_pending"] = False
         self.state["stop_pending_started_at"] = None
         self.state["stop_reason"] = reason
-        self.state["auto_preload_running"] = False
-        self.state["auto_preload_message"] = ""
+        self._clear_auto_preload_status_locked()
+        self._reset_auto_preload_control_locked()
 
         if test_id and was_running:
             storage.update_test(

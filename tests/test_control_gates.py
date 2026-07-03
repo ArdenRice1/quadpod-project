@@ -27,6 +27,7 @@ class ControlGateTests(unittest.TestCase):
         self.original_coarse_settle = engine_module.PRELOAD_AUTO_COARSE_SETTLE_SECONDS
         self.original_coarse_settle_max = engine_module.PRELOAD_AUTO_COARSE_SETTLE_MAX_SECONDS
         self.original_direct_load_read = engine_module.PRELOAD_AUTO_DIRECT_LOAD_READ
+        self.original_in_band_end = engine_module.PRELOAD_AUTO_IN_BAND_END_SECONDS
         engine_module.PRELOAD_AUTO_DRIFT_WINDOW_SECONDS = 5.0
         engine_module.PRELOAD_AUTO_DIRECT_LOAD_READ = False
         self.job_id = storage.create_job(self._job_form())
@@ -38,6 +39,7 @@ class ControlGateTests(unittest.TestCase):
         engine_module.PRELOAD_AUTO_COARSE_SETTLE_SECONDS = self.original_coarse_settle
         engine_module.PRELOAD_AUTO_COARSE_SETTLE_MAX_SECONDS = self.original_coarse_settle_max
         engine_module.PRELOAD_AUTO_DIRECT_LOAD_READ = self.original_direct_load_read
+        engine_module.PRELOAD_AUTO_IN_BAND_END_SECONDS = self.original_in_band_end
         self.tempdir.cleanup()
 
     def _job_form(self, **updates):
@@ -221,6 +223,18 @@ class ControlGateTests(unittest.TestCase):
         self.assertFalse(self.engine.state["auto_preload_running"])
         self.assertEqual(self.engine.state["auto_preload_message"], "Check tension")
         self.assertEqual(self.engine.auto_preload_trace[-2]["event"], "abort")
+
+    def test_auto_preload_finishes_after_short_in_band_dwell(self):
+        engine_module.PRELOAD_AUTO_IN_BAND_END_SECONDS = 0.01
+        self.engine.state["auto_preload_running"] = True
+        self._set_load(0.0)
+
+        self.engine._auto_preload_loop()
+
+        self.assertFalse(self.engine.state["auto_preload_running"])
+        self.assertEqual(self.engine.actuator.last_command, "neutral")
+        self.assertIn("in_band_complete", [entry["event"] for entry in self.engine.auto_preload_trace])
+        self.assertNotEqual(self.engine.state["auto_preload_message"], "Check tension")
 
     def test_auto_preload_pulses_only_outside_safe_band(self):
         self.assertTrue(self.engine._auto_preload_direction_for_load(-0.6))
@@ -516,6 +530,34 @@ class ControlGateTests(unittest.TestCase):
         self.assertTrue(ok, message)
         self.assertTrue(self.engine.state["test_running"])
 
+    def test_start_pull_rejects_while_auto_preload_running(self):
+        self._set_load(0.0)
+        self.engine.state["auto_preload_running"] = True
+
+        ok, message = self.engine.start_pull(self.test_id)
+
+        self.assertFalse(ok)
+        self.assertIn("Auto Tension", message)
+        self.assertTrue(self.engine.state["auto_preload_running"])
+        self.assertFalse(self.engine.state["test_running"])
+
+    def test_start_pull_clears_finished_auto_preload_state(self):
+        self._set_load(0.0)
+        self.engine.state["auto_preload_message"] = "Check tension"
+        self.engine.state["auto_preload_sensor_fault"] = True
+        self.engine.state["auto_preload_short_stable"] = True
+        self.engine.state["auto_preload_drift_stable"] = True
+        self.engine.auto_preload_contact_detected = True
+
+        ok, message = self.engine.start_pull(self.test_id)
+
+        self.assertTrue(ok, message)
+        self.assertTrue(self.engine.state["test_running"])
+        self.assertEqual(self.engine.state["auto_preload_message"], "")
+        self.assertFalse(self.engine.state["auto_preload_sensor_fault"])
+        self.assertFalse(self.engine.state["auto_preload_short_stable"])
+        self.assertFalse(self.engine.state["auto_preload_drift_stable"])
+        self.assertFalse(self.engine.auto_preload_contact_detected)
 
     def test_start_pull_ignores_jog_speed_slider(self):
         self.engine.actuator.pull_direction = "up"
