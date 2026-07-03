@@ -26,7 +26,9 @@ class ControlGateTests(unittest.TestCase):
         self.original_drift_window = engine_module.PRELOAD_AUTO_DRIFT_WINDOW_SECONDS
         self.original_coarse_settle = engine_module.PRELOAD_AUTO_COARSE_SETTLE_SECONDS
         self.original_coarse_settle_max = engine_module.PRELOAD_AUTO_COARSE_SETTLE_MAX_SECONDS
+        self.original_direct_load_read = engine_module.PRELOAD_AUTO_DIRECT_LOAD_READ
         engine_module.PRELOAD_AUTO_DRIFT_WINDOW_SECONDS = 5.0
+        engine_module.PRELOAD_AUTO_DIRECT_LOAD_READ = False
         self.job_id = storage.create_job(self._job_form())
         self.test_id = storage.create_test(self.job_id, self._test_form())
 
@@ -35,6 +37,7 @@ class ControlGateTests(unittest.TestCase):
         engine_module.PRELOAD_AUTO_DRIFT_WINDOW_SECONDS = self.original_drift_window
         engine_module.PRELOAD_AUTO_COARSE_SETTLE_SECONDS = self.original_coarse_settle
         engine_module.PRELOAD_AUTO_COARSE_SETTLE_MAX_SECONDS = self.original_coarse_settle_max
+        engine_module.PRELOAD_AUTO_DIRECT_LOAD_READ = self.original_direct_load_read
         self.tempdir.cleanup()
 
     def _job_form(self, **updates):
@@ -243,6 +246,19 @@ class ControlGateTests(unittest.TestCase):
         self.assertFalse(keep_running)
         self.assertEqual(self.engine.actuator.last_command, "neutral")
         self.assertIn("exceeded 1.0 lb at 1.1 lb", self.engine.state["auto_preload_message"])
+
+    def test_auto_preload_pulse_uses_fresh_control_load(self):
+        engine_module.PRELOAD_AUTO_DIRECT_LOAD_READ = True
+        self.engine.state["current_load"] = -4.0
+        self.engine.load_cell.get_control_force = lambda: 1.2
+        self.engine.actuator.move_up(fast=True, speed_percent=80)
+
+        keep_running = self.engine._run_auto_preload_pulse(True, self._pulse_stage(), time.monotonic() + 1.0)
+
+        self.assertFalse(keep_running)
+        self.assertEqual(self.engine.state["current_load"], 1.2)
+        self.assertEqual(self.engine.actuator.last_command, "neutral")
+        self.assertIn("exceeded 1.0 lb at 1.2 lb", self.engine.state["auto_preload_message"])
 
     def test_auto_preload_pulse_stops_on_predicted_overshoot(self):
         self.engine.state["current_load"] = -0.6

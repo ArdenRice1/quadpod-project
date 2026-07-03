@@ -95,6 +95,20 @@ class LoadCellHardwareCompatibilityTests(unittest.TestCase):
         self.assertEqual(load_cell._read_raw_counts(), 1005.0)
         self.assertEqual(load_cell.last_raw_range_counts, 49005.0)
 
+    def test_control_force_uses_control_sample_count_without_filtering(self):
+        FakeGPIO.reset(self._bits_for_raw(3900) + self._bits_for_raw(4050))
+        load_cell = LoadCell(
+            use_mock=False,
+            average_samples=1,
+            control_samples=1,
+            filter_window=5,
+            reference_unit=10.0,
+        )
+
+        self.assertTrue(load_cell.tare())
+        self.assertEqual(load_cell.get_control_force(), 15.0)
+        self.assertEqual(len(load_cell.samples), 0)
+
     def test_reset_hardware_pulses_clock_high_then_low(self):
         load_cell = LoadCell(use_mock=False, reset_seconds=0.0001)
 

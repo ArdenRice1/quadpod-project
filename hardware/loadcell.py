@@ -4,6 +4,7 @@ from collections import deque
 
 from config import (
     LOADCELL_AVERAGE_SAMPLES,
+    LOADCELL_CONTROL_SAMPLES,
     LOADCELL_DOUT_PIN,
     LOADCELL_FILTER_WINDOW,
     LOADCELL_PD_SCK_PIN,
@@ -24,6 +25,7 @@ class LoadCell:
         pd_sck_pin=LOADCELL_PD_SCK_PIN,
         reference_unit=LOADCELL_REFERENCE_UNIT,
         average_samples=LOADCELL_AVERAGE_SAMPLES,
+        control_samples=LOADCELL_CONTROL_SAMPLES,
         filter_window=LOADCELL_FILTER_WINDOW,
         trim_extremes=LOADCELL_TRIM_EXTREMES,
         reset_seconds=LOADCELL_RESET_SECONDS,
@@ -35,6 +37,7 @@ class LoadCell:
         self.pd_sck_pin = pd_sck_pin
         self.reference_unit = float(reference_unit)
         self.average_samples = max(1, int(average_samples))
+        self.control_samples = max(1, int(control_samples))
         self.filter_window = max(1, int(filter_window))
         self.trim_extremes = bool(trim_extremes)
         self.reset_seconds = max(0.0001, float(reset_seconds))
@@ -93,9 +96,10 @@ class LoadCell:
         value ^= 0x800000
         return value - 0x800000
 
-    def _read_raw_counts(self):
+    def _read_raw_counts(self, samples=None):
+        sample_count = max(1, int(samples or self.average_samples))
         values = []
-        for _ in range(self.average_samples):
+        for _ in range(sample_count):
             raw = self._read_raw_counts_once()
             # Drop impossible single-sample rail glitches without hiding real faults.
             if raw in (-8388608, 8388607, 4194303, -4194304):
@@ -165,7 +169,10 @@ class LoadCell:
     def get_reading(self):
         return self.get_force()
 
-    def _read_force(self):
+    def get_control_force(self):
+        return round(self._read_force(samples=self.control_samples), 3)
+
+    def _read_force(self, samples=None):
         if self.use_mock:
             noise = random.uniform(-0.08, 0.08)
             self.last_raw_lbs = max(0.0, self._mock_force - self._mock_zero + noise)
@@ -176,7 +183,7 @@ class LoadCell:
             return self.last_raw_lbs
 
         try:
-            raw_counts = self._read_raw_counts()
+            raw_counts = self._read_raw_counts(samples=samples)
             self.last_raw_counts = raw_counts
             self.last_raw_lbs = (raw_counts - self._zero_counts) / self.reference_unit
             self.last_error = ""
@@ -193,6 +200,7 @@ class LoadCell:
             "ok": not self.last_error,
             "last_error": self.last_error,
             "reference_unit": self.reference_unit,
+            "control_samples": self.control_samples,
             "filter_window": self.filter_window,
             "trim_extremes": self.trim_extremes,
             "hardware_ready": self.hardware_ready,
