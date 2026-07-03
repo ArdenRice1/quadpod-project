@@ -114,6 +114,67 @@ class StorageExportTests(unittest.TestCase):
         self.assertIn("Timestamp,Elapsed Seconds,Sample #,Force (lbs)", trace)
         self.assertIn("machine_settings", audit)
 
+    def test_csv_export_sections_cover_all_saved_form_fields(self):
+        job_export_fields = (
+            exporter.JOB_HEADER_FIELDS
+            + exporter.EQUIPMENT_FIELDS
+            + exporter.WEATHER_SAFETY_FIELDS
+            + exporter.CONDITION_FIELDS
+        )
+        test_export_fields = (
+            exporter.TEST_DETAIL_FIELDS
+            + exporter.SITE_CHECK_FIELDS
+            + exporter.RESULT_DETAIL_FIELDS
+            + exporter.DEVIATION_FIELDS
+        )
+
+        self.assertEqual([], [field for field in storage.JOB_FIELDS if field not in job_export_fields])
+        self.assertEqual([], [field for field in storage.TEST_FIELDS if field not in test_export_fields])
+
+    def test_human_csv_exports_include_production_checklist_fields(self):
+        job_id = storage.create_job(
+            {
+                "project_name": "Production Job",
+                "job_number": "P-100",
+                "calibration_verified": "yes",
+                "weather_checked": "yes",
+                "unsafe_wind": "no",
+                "weather_bypass_reason": "Engineer approved gust check",
+                "occupants_notified": "yes",
+                "safety_acknowledged": "yes",
+            }
+        )
+        test_id = storage.create_test(
+            job_id,
+            {
+                "test_number": "3",
+                "photo_reference": "field-photo.jpg",
+                "site_clear_of_hazards": "yes",
+                "site_representative": "Jane Field",
+                "site_free_of_blemishes": "yes",
+                "test_board_visible": "yes",
+                "initial_reading_photo": "yes",
+                "final_reading_photo": "yes",
+                "repair_needed": "no",
+                "repair_completed": "yes",
+                "sample_removed": "no",
+                "maintenance_notified": "yes",
+                "post_test_notes": "Sealant checked after pull",
+            },
+        )
+        storage.add_sample(test_id, 0.0, 1.0)
+
+        job_csv = Path(exporter.export_job_report_csv(job_id)).read_text(encoding="utf-8")
+        trace_csv = Path(exporter.export_test_trace_csv(test_id)).read_text(encoding="utf-8")
+
+        self.assertIn("Weather & Safety", job_csv)
+        self.assertIn("Calibration Verified,yes", job_csv)
+        self.assertIn("Weather Bypass Reason,Engineer approved gust check", job_csv)
+        self.assertIn("Site / Photo Checklist", trace_csv)
+        self.assertIn("Photo Reference,field-photo.jpg", trace_csv)
+        self.assertIn("Site Representative,Jane Field", trace_csv)
+        self.assertIn("Post-Test Notes,Sealant checked after pull", trace_csv)
+
     def test_job_folder_export_uses_same_csv_layout(self):
         job_id = storage.create_job({"project_name": "USB Job", "job_number": "USB-001"})
         test_id = storage.create_test(job_id, {"test_number": "1"})

@@ -57,6 +57,17 @@ FIELD_LABELS = {
     "load_cell_calibration_date": "Load Cell Calibration Date",
     "ir_temp_gun_id": "IR Temp. Gun #",
     "ir_temp_gun_calibration_date": "IR Temp. Gun Calibration Date",
+    "calibration_verified": "Calibration Verified",
+    "weather_checked": "Weather Checked",
+    "unsafe_wind": "Unsafe Wind",
+    "lightning_present": "Lightning Present",
+    "rain_or_moisture": "Rain or Moisture",
+    "heat_or_cold_hazard": "Heat or Cold Hazard",
+    "ice_present": "Ice Present",
+    "weather_bypass_approved": "Weather Bypass Approved",
+    "weather_bypass_reason": "Weather Bypass Reason",
+    "occupants_notified": "Occupants Notified",
+    "safety_acknowledged": "Safety Acknowledged",
     "humidity_percent": "Humidity (%)",
     "barometric_pressure_inhg": "Barometric Pressure (inHg)",
     "weather_notes": "Weather Notes",
@@ -70,6 +81,18 @@ FIELD_LABELS = {
     "shingle_type": "Shingle Type",
     "wind_lift_evidence": "Evidence of Wind Lift",
     "nail_observations": "Nail Size / Placement Notes",
+    "photo_reference": "Photo Reference",
+    "site_clear_of_hazards": "Site Clear of Hazards",
+    "site_representative": "Site Representative",
+    "site_free_of_blemishes": "Site Free of Blemishes",
+    "test_board_visible": "Test Board Visible",
+    "initial_reading_photo": "Initial Reading Photo",
+    "final_reading_photo": "Final Reading Photo",
+    "repair_needed": "Repair Needed",
+    "repair_completed": "Repair Completed",
+    "sample_removed": "Sample Removed",
+    "maintenance_notified": "Maintenance Notified",
+    "post_test_notes": "Post-Test Notes",
     "started_at": "Started At",
     "completed_at": "Completed At",
     "initial_preload_lbs": "Initial Preload (lbs)",
@@ -118,6 +141,20 @@ EQUIPMENT_FIELDS = [
     "load_cell_calibration_date",
     "ir_temp_gun_id",
     "ir_temp_gun_calibration_date",
+    "calibration_verified",
+]
+
+WEATHER_SAFETY_FIELDS = [
+    "weather_checked",
+    "unsafe_wind",
+    "lightning_present",
+    "rain_or_moisture",
+    "heat_or_cold_hazard",
+    "ice_present",
+    "weather_bypass_approved",
+    "weather_bypass_reason",
+    "occupants_notified",
+    "safety_acknowledged",
 ]
 
 CONDITION_FIELDS = [
@@ -137,6 +174,21 @@ TEST_DETAIL_FIELDS = [
     "wind_speed_direction",
     "wind_lift_evidence",
     "nail_observations",
+    "photo_reference",
+]
+
+SITE_CHECK_FIELDS = [
+    "site_clear_of_hazards",
+    "site_representative",
+    "site_free_of_blemishes",
+    "test_board_visible",
+    "initial_reading_photo",
+    "final_reading_photo",
+    "repair_needed",
+    "repair_completed",
+    "sample_removed",
+    "maintenance_notified",
+    "post_test_notes",
 ]
 
 RESULT_DETAIL_FIELDS = [
@@ -195,6 +247,7 @@ def export_job_report_csv(job_id):
         writer.writerow([])
         _write_field_section(writer, "Job Information", job["form"], JOB_HEADER_FIELDS)
         _write_field_section(writer, "Equipment", job["form"], EQUIPMENT_FIELDS)
+        _write_field_section(writer, "Weather & Safety", job["form"], WEATHER_SAFETY_FIELDS)
         _write_field_section(writer, "Conditions", job["form"], CONDITION_FIELDS)
         writer.writerow([])
         writer.writerow(["Test Summary"])
@@ -244,8 +297,10 @@ def export_test_trace_csv(test_id):
         writer.writerow([])
         _write_field_section(writer, "Job Information", job["form"], ["project_name", "job_number", "project_address", "date", "building_number", "foreman"])
         _write_field_section(writer, "Equipment", job["form"], EQUIPMENT_FIELDS)
+        _write_field_section(writer, "Weather & Safety", job["form"], WEATHER_SAFETY_FIELDS)
         writer.writerow([])
         _write_field_section(writer, "Test Information", row, TEST_DETAIL_FIELDS)
+        _write_field_section(writer, "Site / Photo Checklist", row, SITE_CHECK_FIELDS)
         _write_field_section(writer, "Results", row, RESULT_DETAIL_FIELDS)
         writer.writerow(["Samples"])
         writer.writerow(["Timestamp", "Elapsed Seconds", "Sample #", "Force (lbs)"])

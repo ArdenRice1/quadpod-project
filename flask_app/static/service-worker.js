@@ -1,4 +1,4 @@
-const CACHE_NAME = "quadpod-v0.2.0";
+const CACHE_NAME = "quadpod-v0.3.0-field-2";
 const ASSETS = [
   "/",
   "/static/quadpod.css"
