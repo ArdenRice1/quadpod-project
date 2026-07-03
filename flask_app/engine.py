@@ -36,6 +36,10 @@ from config import (
     PRELOAD_AUTO_CONTROL_HARD_SPIKE_LBS,
     PRELOAD_AUTO_CONTROL_SPIKE_RETRY_SECONDS,
     PRELOAD_AUTO_CONTROL_SPIKE_DELTA_LBS,
+    PRELOAD_AUTO_CONTACT_DELTA_LBS,
+    PRELOAD_AUTO_CONTACT_MAX_DELTA_LBS,
+    PRELOAD_AUTO_CONTACT_PULSE_SECONDS,
+    PRELOAD_AUTO_CONTACT_SPEED_PERCENT,
     PRELOAD_AUTO_DIRECT_LOAD_READ,
     PRELOAD_AUTO_FINAL_MAX_DELTA_LBS,
     PRELOAD_AUTO_MAX_RISE_RATE_LBS_PER_SECOND,
@@ -83,6 +87,7 @@ class QuadpodEngine:
         self.auto_preload_coast_lbs = 0.0
         self.auto_preload_last_stop_load = None
         self.auto_preload_last_stop_increase = None
+        self.auto_preload_contact_detected = False
         self.auto_preload_thread = None
         self.state = {
             "current_load": 0.0,
@@ -169,6 +174,7 @@ class QuadpodEngine:
             self.auto_preload_coast_lbs = 0.0
             self.auto_preload_last_stop_load = None
             self.auto_preload_last_stop_increase = None
+            self.auto_preload_contact_detected = False
             if self.load_cell.use_mock or self.load_cell.gpio is not None:
                 self.load_cell.reset_hardware()
             self.state["auto_preload_running"] = True
@@ -536,6 +542,18 @@ class QuadpodEngine:
         for threshold, speed_percent, pulse_seconds in PRELOAD_AUTO_TENSION_STAGES:
             if load < threshold:
                 coarse = self._auto_preload_coarse_active_locked(load, increase)
+                if self.auto_preload_contact_detected:
+                    return {
+                        "coarse": False,
+                        "contact": True,
+                        "max_delta_lbs": PRELOAD_AUTO_CONTACT_MAX_DELTA_LBS,
+                        "speed_percent": min(speed_percent, PRELOAD_AUTO_CONTACT_SPEED_PERCENT),
+                        "pulse_seconds": max(
+                            PRELOAD_AUTO_MIN_PULSE_SECONDS,
+                            min(self._auto_preload_configured_pulse_seconds(pulse_seconds), PRELOAD_AUTO_CONTACT_PULSE_SECONDS),
+                        ),
+                        "message": "Auto Tension",
+                    }
                 return {
                     "coarse": coarse,
                     "max_delta_lbs": self._auto_preload_max_delta_lbs(load, coarse),
@@ -553,7 +571,7 @@ class QuadpodEngine:
         }
 
     def _auto_preload_coarse_active_locked(self, load, increase):
-        return bool(increase and load < PRELOAD_AUTO_COARSE_UNTIL_LBS)
+        return bool(increase and not self.auto_preload_contact_detected and load < PRELOAD_AUTO_COARSE_UNTIL_LBS)
 
     def _auto_preload_max_delta_lbs(self, load, coarse):
         if coarse:
@@ -678,6 +696,8 @@ class QuadpodEngine:
                     )
                     return False
                 if increase:
+                    delta_lbs = load - start_load
+                    self._auto_preload_note_contact_locked(delta_lbs, load)
                     if load > PRELOAD_MAX_LBS:
                         self.state["auto_preload_message"] = "Settling"
                         self._record_auto_preload_trace_locked(
@@ -723,13 +743,13 @@ class QuadpodEngine:
                         )
                         self._remember_auto_preload_stop_locked(load, increase)
                         return True
-                    if max_delta_lbs and load - start_load >= max_delta_lbs:
+                    if max_delta_lbs and delta_lbs >= max_delta_lbs:
                         self.state["auto_preload_message"] = "Settling"
                         self._record_auto_preload_trace_locked(
                             "pulse_stop_delta",
                             load=load,
                             start_load=start_load,
-                            delta_lbs=load - start_load,
+                            delta_lbs=delta_lbs,
                             max_delta_lbs=max_delta_lbs,
                         )
                         self._remember_auto_preload_stop_locked(load, increase)
@@ -746,6 +766,16 @@ class QuadpodEngine:
             with self.lock:
                 self.actuator.stop()
                 self.state["actuator_command"] = self.actuator.last_command
+
+    def _auto_preload_note_contact_locked(self, delta_lbs, load):
+        if self.auto_preload_contact_detected or delta_lbs < PRELOAD_AUTO_CONTACT_DELTA_LBS:
+            return
+        self.auto_preload_contact_detected = True
+        self._record_auto_preload_trace_locked(
+            "contact_detected",
+            delta_lbs=delta_lbs,
+            load=load,
+        )
 
     def _refresh_auto_preload_load(self):
         if not PRELOAD_AUTO_DIRECT_LOAD_READ:

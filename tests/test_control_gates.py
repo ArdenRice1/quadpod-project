@@ -177,6 +177,19 @@ class ControlGateTests(unittest.TestCase):
             engine_module.PRELOAD_AUTO_FINAL_MAX_DELTA_LBS,
         )
 
+    def test_auto_preload_contact_mode_shortens_coarse_stage_after_load_moves(self):
+        normal = self.engine._auto_preload_stage_for_load(-6.0, True)
+        self.engine.auto_preload_contact_detected = True
+
+        contact = self.engine._auto_preload_stage_for_load(-6.0, True)
+
+        self.assertTrue(normal["coarse"])
+        self.assertFalse(contact["coarse"])
+        self.assertTrue(contact["contact"])
+        self.assertLess(contact["speed_percent"], normal["speed_percent"])
+        self.assertLess(contact["pulse_seconds"], normal["pulse_seconds"])
+        self.assertEqual(contact["max_delta_lbs"], engine_module.PRELOAD_AUTO_CONTACT_MAX_DELTA_LBS)
+
     def test_auto_preload_coarse_settle_does_not_wait_for_final_stability(self):
         engine_module.PRELOAD_AUTO_COARSE_SETTLE_SECONDS = 0.01
         engine_module.PRELOAD_AUTO_COARSE_SETTLE_MAX_SECONDS = 0.03
@@ -383,6 +396,7 @@ class ControlGateTests(unittest.TestCase):
         self.assertTrue(keep_running)
         self.assertEqual(self.engine.actuator.last_command, "neutral")
         self.assertEqual(self.engine.state["auto_preload_message"], "Settling")
+        self.assertTrue(self.engine.auto_preload_contact_detected)
         self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "pulse_stop_delta")
 
     def test_auto_preload_stops_when_force_rises_quickly_near_target(self):
