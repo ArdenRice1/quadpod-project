@@ -211,9 +211,12 @@ class AppApiTests(unittest.TestCase):
             "preload_max_lbs",
             "preload_target_lbs",
             "auto_preload_drift_drop_lbs",
+            "auto_preload_short_stable",
+            "auto_preload_drift_stable",
             "last_pulse_us",
         ]:
             self.assertNotIn(hidden, combined)
+        self.assertNotIn("Settling.", combined)
         self.assertNotIn(" us)", combined)
 
     def test_wifi_switch_returns_transition_before_scheduling_command(self):

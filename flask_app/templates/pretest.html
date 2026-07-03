@@ -154,12 +154,9 @@
           preloadStatus.textContent = needsAction ? "Check tension." : (autoMessage || "Auto Tension.");
           return;
         }
-        if (data.preload_ready && data.auto_preload_short_stable && data.auto_preload_drift_stable) {
+        if (data.preload_ready) {
           preloadStatus.className = "status good";
           preloadStatus.textContent = "Ready.";
-        } else if (data.preload_ready) {
-          preloadStatus.className = "status warn";
-          preloadStatus.textContent = "Settling.";
         } else {
           preloadStatus.className = "status warn";
           preloadStatus.textContent = "Use Auto Tension.";
