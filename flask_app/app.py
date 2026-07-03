@@ -375,6 +375,11 @@ def api_status():
     return jsonify(quadpod_engine.snapshot())
 
 
+@app.route("/api/auto-tension/trace")
+def api_auto_tension_trace():
+    return jsonify({"trace": quadpod_engine.auto_preload_trace_snapshot()})
+
+
 @app.route("/api/jog", methods=["POST"])
 def api_jog():
     guard = _require_command_token()

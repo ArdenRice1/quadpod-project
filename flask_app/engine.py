@@ -132,6 +132,10 @@ class QuadpodEngine:
             self.last_client_poll = time.monotonic()
             return status
 
+    def auto_preload_trace_snapshot(self):
+        with self.lock:
+            return list(self.auto_preload_trace)
+
     def jog(self, action, speed_percent=None):
         with self.lock:
             if self.state["test_running"]:
@@ -751,7 +755,7 @@ class QuadpodEngine:
         with self.lock:
             previous_load = float(self.state.get("current_load") or 0.0)
 
-        load, samples, needs_confirmation, rejected = self._read_auto_preload_control_load(previous_load)
+        load, samples, needs_confirmation, rejected, trace_event = self._read_auto_preload_control_load(previous_load)
 
         raw_counts = getattr(self.load_cell, "last_raw_counts", None)
         if raw_counts is None:
@@ -760,7 +764,7 @@ class QuadpodEngine:
             self.state["auto_preload_sensor_fault"] = bool(rejected)
             if needs_confirmation:
                 self._record_auto_preload_trace_locked(
-                    "control_load_rejected" if rejected else "control_load_confirmed",
+                    trace_event,
                     previous_load=previous_load,
                     first_load=samples[0],
                     load=load,
@@ -781,7 +785,7 @@ class QuadpodEngine:
         samples = [self.load_cell.get_control_force()]
         needs_confirmation = self._auto_preload_read_needs_confirmation(previous_load, samples[0])
         if not needs_confirmation:
-            return samples[0], samples, False, False
+            return samples[0], samples, False, False, "control_load_read"
 
         samples.extend(
             self.load_cell.get_control_force()
@@ -789,7 +793,7 @@ class QuadpodEngine:
         )
         load = self._median(samples)
         if self._auto_preload_control_samples_are_trustworthy(previous_load, samples, load):
-            return load, samples, True, False
+            return load, samples, True, False, "control_load_confirmed"
 
         self.load_cell.reset_hardware()
         if PRELOAD_AUTO_CONTROL_SPIKE_RETRY_SECONDS > 0:
@@ -802,8 +806,10 @@ class QuadpodEngine:
         retry_load = self._median(retry_samples)
         all_samples = samples + retry_samples
         if self._auto_preload_control_samples_are_trustworthy(previous_load, retry_samples, retry_load):
-            return retry_load, all_samples, True, False
-        return previous_load, all_samples, True, True
+            return retry_load, all_samples, True, False, "control_load_confirmed"
+        if PRELOAD_MIN_LBS <= previous_load <= PRELOAD_MAX_LBS:
+            return previous_load, all_samples, True, False, "control_load_spike_ignored_in_band"
+        return previous_load, all_samples, True, True, "control_load_rejected"
 
     def _auto_preload_read_needs_confirmation(self, previous_load, load):
         return (
