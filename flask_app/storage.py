@@ -456,6 +456,38 @@ def write_csv(path, rows, fieldnames):
     return path
 
 
+def set_setting(key, value):
+    now = utc_now()
+    with db() as conn:
+        conn.execute(
+            """
+            INSERT INTO settings (key, value, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at
+            """,
+            (str(key), str(value), now),
+        )
+
+
+def get_setting(key, default=""):
+    with db() as conn:
+        row = conn.execute("SELECT value FROM settings WHERE key=?", (str(key),)).fetchone()
+    if not row:
+        return default
+    return row["value"]
+
+
+def get_settings(keys):
+    if not keys:
+        return {}
+    with db() as conn:
+        rows = conn.execute(
+            f"SELECT key, value FROM settings WHERE key IN ({','.join('?' for _ in keys)})",
+            [str(key) for key in keys],
+        ).fetchall()
+    return {row["key"]: row["value"] for row in rows}
+
+
 def queue_email(job_id, recipient, subject, body, attachment_path):
     now = utc_now()
     with db() as conn:

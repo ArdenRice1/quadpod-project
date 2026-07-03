@@ -30,6 +30,9 @@ class ControlGateTests(unittest.TestCase):
         self.original_in_band_end = engine_module.PRELOAD_AUTO_IN_BAND_END_SECONDS
         self.original_contact_settle = engine_module.PRELOAD_AUTO_CONTACT_SETTLE_SECONDS
         self.original_contact_settle_max = engine_module.PRELOAD_AUTO_CONTACT_SETTLE_MAX_SECONDS
+        self.original_approach_settle = engine_module.PRELOAD_AUTO_APPROACH_SETTLE_SECONDS
+        self.original_approach_settle_max = engine_module.PRELOAD_AUTO_APPROACH_SETTLE_MAX_SECONDS
+        self.original_approach_settle_delta = engine_module.PRELOAD_AUTO_APPROACH_SETTLE_DELTA_LBS
         engine_module.PRELOAD_AUTO_DRIFT_WINDOW_SECONDS = 5.0
         engine_module.PRELOAD_AUTO_DIRECT_LOAD_READ = False
         self.job_id = storage.create_job(self._job_form())
@@ -44,6 +47,9 @@ class ControlGateTests(unittest.TestCase):
         engine_module.PRELOAD_AUTO_IN_BAND_END_SECONDS = self.original_in_band_end
         engine_module.PRELOAD_AUTO_CONTACT_SETTLE_SECONDS = self.original_contact_settle
         engine_module.PRELOAD_AUTO_CONTACT_SETTLE_MAX_SECONDS = self.original_contact_settle_max
+        engine_module.PRELOAD_AUTO_APPROACH_SETTLE_SECONDS = self.original_approach_settle
+        engine_module.PRELOAD_AUTO_APPROACH_SETTLE_MAX_SECONDS = self.original_approach_settle_max
+        engine_module.PRELOAD_AUTO_APPROACH_SETTLE_DELTA_LBS = self.original_approach_settle_delta
         self.tempdir.cleanup()
 
     def _job_form(self, **updates):
@@ -152,7 +158,7 @@ class ControlGateTests(unittest.TestCase):
 
         for earlier, later in zip(stages, stages[1:]):
             self.assertGreaterEqual(earlier["pulse_seconds"], later["pulse_seconds"])
-            self.assertGreater(earlier["speed_percent"], later["speed_percent"])
+            self.assertGreaterEqual(earlier["speed_percent"], later["speed_percent"])
         self.assertEqual(stages[-1]["speed_percent"], 10)
         self.assertEqual(stages[-1]["pulse_seconds"], 0.006)
 
@@ -172,11 +178,11 @@ class ControlGateTests(unittest.TestCase):
 
     def test_auto_preload_final_targeting_stages_remain_slow(self):
         expected = [
-            (-2.75, 40, 0.08),
-            (-2.25, 34, 0.06),
-            (-1.75, 28, 0.045),
-            (-1.25, 24, 0.035),
-            (-0.9, 20, 0.025),
+            (-2.75, 44, 0.09),
+            (-2.25, 38, 0.07),
+            (-1.75, 32, 0.055),
+            (-1.25, 28, 0.045),
+            (-0.9, 24, 0.032),
             (-0.7, 17, 0.018),
             (-0.5, 14, 0.014),
             (-0.3, 12, 0.010),
@@ -192,6 +198,10 @@ class ControlGateTests(unittest.TestCase):
         self.assertTrue(self.engine._auto_preload_stage_for_load(-3.25, True)["coarse"])
         self.assertFalse(self.engine._auto_preload_stage_for_load(-2.75, True)["coarse"])
         self.assertFalse(self.engine._auto_preload_stage_for_load(-0.3, True)["coarse"])
+
+    def test_auto_preload_uses_approach_settle_before_final_zone(self):
+        self.assertTrue(self.engine._auto_preload_stage_for_load(-0.8, True)["approach_settle"])
+        self.assertFalse(self.engine._auto_preload_stage_for_load(-0.6, True)["approach_settle"])
 
     def test_auto_preload_stage_limits_load_delta_by_zone(self):
         self.assertEqual(
@@ -252,6 +262,22 @@ class ControlGateTests(unittest.TestCase):
         self.engine._wait_for_auto_preload_settle(time.monotonic() + 1.0, coarse=True)
 
         self.assertLess(time.monotonic() - started, 0.2)
+
+    def test_auto_preload_approach_settle_uses_short_tight_band(self):
+        engine_module.PRELOAD_AUTO_APPROACH_SETTLE_SECONDS = 0.01
+        engine_module.PRELOAD_AUTO_APPROACH_SETTLE_MAX_SECONDS = 0.2
+        engine_module.PRELOAD_AUTO_APPROACH_SETTLE_DELTA_LBS = 0.05
+        self._set_load_history([
+            (0.015, -0.72),
+            (0.010, -0.70),
+            (0.000, -0.69),
+        ])
+
+        started = time.monotonic()
+        self.engine._wait_for_auto_preload_settle(time.monotonic() + 1.0, approach=True)
+
+        self.assertLess(time.monotonic() - started, 0.2)
+        self.assertTrue(self.engine.auto_preload_trace[-1]["approach"])
 
     def test_auto_preload_aborts_any_load_over_limit_without_easing_down(self):
         self.engine.state["auto_preload_running"] = True

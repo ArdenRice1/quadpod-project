@@ -110,6 +110,31 @@ class AppApiTests(unittest.TestCase):
         self.assertEqual(len(jobs), 1)
         self.assertEqual(jobs[0]["form"]["project_name"], "Updated Project")
 
+    def test_home_remembers_equipment_defaults_for_new_jobs(self):
+        first = {
+            "project_name": "Equipment Project",
+            "project_address": "1 Main",
+            "date": "2026-06-06",
+            "job_number": "J-1",
+            "foreman": "Foreman",
+            "load_cell_id": "LC-200",
+            "load_cell_calibration_date": "2026-01-02",
+            "ir_temp_gun_id": "IR-77",
+            "ir_temp_gun_calibration_date": "2026-02-03",
+        }
+        self.client.post("/", data=first)
+        with self.client.session_transaction() as session:
+            session.pop("job_id", None)
+            session.pop("test_id", None)
+
+        response = self.client.get("/")
+        text = response.get_data(as_text=True)
+
+        self.assertIn('name="load_cell_id" value="LC-200"', text)
+        self.assertIn('name="load_cell_calibration_date" type="date" value="2026-01-02"', text)
+        self.assertIn('name="ir_temp_gun_id" value="IR-77"', text)
+        self.assertIn('name="ir_temp_gun_calibration_date" type="date" value="2026-02-03"', text)
+
     def test_pretest_post_updates_current_unstarted_test(self):
         job_id = storage.create_job(
             {

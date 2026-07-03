@@ -16,6 +16,10 @@ from config import (
     LOAD_STABLE_WINDOW_SECONDS,
     POST_STOP_LOG_MAX_SECONDS,
     PRELOAD_AUTO_ABORT_LBS,
+    PRELOAD_AUTO_APPROACH_SETTLE_DELTA_LBS,
+    PRELOAD_AUTO_APPROACH_SETTLE_MAX_SECONDS,
+    PRELOAD_AUTO_APPROACH_SETTLE_SECONDS,
+    PRELOAD_AUTO_APPROACH_SETTLE_UNTIL_LBS,
     PRELOAD_AUTO_COARSE_SETTLE_MAX_SECONDS,
     PRELOAD_AUTO_COARSE_SETTLE_SECONDS,
     PRELOAD_AUTO_COARSE_UNTIL_LBS,
@@ -500,6 +504,7 @@ class QuadpodEngine:
                 self._wait_for_auto_preload_settle(
                     deadline,
                     coarse=stage.get("coarse", False),
+                    approach=stage.get("approach_settle", False),
                     fast_contact=stage.get("fast_settle", False),
                 )
             else:
@@ -577,6 +582,7 @@ class QuadpodEngine:
                         "coarse": False,
                         "contact": True,
                         "fast_settle": load < PRELOAD_AUTO_COARSE_UNTIL_LBS,
+                        "approach_settle": load < PRELOAD_AUTO_APPROACH_SETTLE_UNTIL_LBS,
                         "max_delta_lbs": PRELOAD_AUTO_CONTACT_MAX_DELTA_LBS,
                         "speed_percent": min(speed_percent, PRELOAD_AUTO_CONTACT_SPEED_PERCENT),
                         "pulse_seconds": max(
@@ -587,6 +593,7 @@ class QuadpodEngine:
                     }
                 return {
                     "coarse": coarse,
+                    "approach_settle": load < PRELOAD_AUTO_APPROACH_SETTLE_UNTIL_LBS,
                     "max_delta_lbs": self._auto_preload_max_delta_lbs(load, coarse),
                     "speed_percent": speed_percent,
                     "pulse_seconds": self._auto_preload_configured_pulse_seconds(pulse_seconds),
@@ -595,6 +602,7 @@ class QuadpodEngine:
 
         return {
             "coarse": False,
+            "approach_settle": False,
             "max_delta_lbs": PRELOAD_AUTO_FINAL_MAX_DELTA_LBS,
             "speed_percent": PRELOAD_AUTO_SPEED_PERCENT,
             "pulse_seconds": self._auto_preload_pulse_seconds(),
@@ -893,30 +901,40 @@ class QuadpodEngine:
         ordered = sorted(values)
         return ordered[len(ordered) // 2]
 
-    def _wait_for_auto_preload_settle(self, deadline, coarse=False, fast_contact=False):
+    def _wait_for_auto_preload_settle(self, deadline, coarse=False, approach=False, fast_contact=False):
         if coarse:
             settle_seconds = PRELOAD_AUTO_COARSE_SETTLE_SECONDS
             max_seconds = PRELOAD_AUTO_COARSE_SETTLE_MAX_SECONDS
+            settle_delta = PRELOAD_AUTO_STABLE_DELTA_LBS
+        elif approach:
+            settle_seconds = PRELOAD_AUTO_APPROACH_SETTLE_SECONDS
+            max_seconds = PRELOAD_AUTO_APPROACH_SETTLE_MAX_SECONDS
+            settle_delta = PRELOAD_AUTO_APPROACH_SETTLE_DELTA_LBS
         elif fast_contact:
             settle_seconds = PRELOAD_AUTO_CONTACT_SETTLE_SECONDS
             max_seconds = PRELOAD_AUTO_CONTACT_SETTLE_MAX_SECONDS
+            settle_delta = PRELOAD_AUTO_STABLE_DELTA_LBS
         else:
             settle_seconds = PRELOAD_AUTO_SETTLE_SECONDS
             max_seconds = PRELOAD_AUTO_SETTLE_MAX_SECONDS
+            settle_delta = PRELOAD_AUTO_STABLE_DELTA_LBS
         started = time.monotonic()
         with self.lock:
             self._record_auto_preload_trace_locked(
                 "settle_start",
                 load=self.state.get("current_load"),
                 coarse=coarse,
+                approach=approach,
                 fast_contact=fast_contact,
                 settle_seconds=settle_seconds,
                 max_seconds=max_seconds,
+                settle_delta_lbs=settle_delta,
             )
         while time.monotonic() < deadline:
             elapsed = time.monotonic() - started
             with self.lock:
-                stable = self._auto_preload_load_stable_locked()
+                stable_window = settle_seconds if approach else None
+                stable = self._auto_preload_load_stable_locked(delta_lbs=settle_delta, window_seconds=stable_window)
                 rate = self._auto_preload_load_rate_locked()
             if (coarse or fast_contact) and elapsed >= max(0.0, settle_seconds):
                 if rate <= PRELOAD_AUTO_MAX_RISE_RATE_LBS_PER_SECOND:
@@ -926,6 +944,7 @@ class QuadpodEngine:
                             "settle_done",
                             load=self.state.get("current_load"),
                             coarse=coarse,
+                            approach=approach,
                             fast_contact=fast_contact,
                             elapsed_s=elapsed,
                             stable=stable,
@@ -940,6 +959,7 @@ class QuadpodEngine:
                         "settle_done",
                         load=self.state.get("current_load"),
                         coarse=coarse,
+                        approach=approach,
                         fast_contact=fast_contact,
                         elapsed_s=elapsed,
                         stable=stable,
@@ -954,6 +974,7 @@ class QuadpodEngine:
                         "settle_done",
                         load=self.state.get("current_load"),
                         coarse=coarse,
+                        approach=approach,
                         fast_contact=fast_contact,
                         elapsed_s=elapsed,
                         stable=stable,
@@ -1026,13 +1047,15 @@ class QuadpodEngine:
         values = [value for _, value in self.load_history]
         return max(values) - min(values) <= LOAD_STABLE_DELTA_LBS
 
-    def _auto_preload_load_stable_locked(self):
+    def _auto_preload_load_stable_locked(self, delta_lbs=None, window_seconds=None):
         now = time.monotonic()
-        cutoff = now - max(0.2, PRELOAD_AUTO_STABLE_WINDOW_SECONDS)
+        stable_window = PRELOAD_AUTO_STABLE_WINDOW_SECONDS if window_seconds is None else float(window_seconds)
+        cutoff = now - max(0.2, stable_window)
         values = [value for sample_time, value in self.load_history if sample_time >= cutoff]
         if len(values) < 3:
             return False
-        return max(values) - min(values) <= PRELOAD_AUTO_STABLE_DELTA_LBS
+        allowed_delta = PRELOAD_AUTO_STABLE_DELTA_LBS if delta_lbs is None else float(delta_lbs)
+        return max(values) - min(values) <= allowed_delta
 
     def _auto_preload_load_rate_locked(self):
         now = time.monotonic()

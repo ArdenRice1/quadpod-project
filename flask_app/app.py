@@ -52,6 +52,13 @@ RESULT_CHECKBOX_FIELDS = [
     "deviation_from_standard",
 ]
 
+EQUIPMENT_DEFAULT_FIELDS = [
+    "load_cell_id",
+    "load_cell_calibration_date",
+    "ir_temp_gun_id",
+    "ir_temp_gun_calibration_date",
+]
+
 NETWORK_COMMAND_LOCKOUT_SECONDS = 45
 _network_command_lock = threading.Lock()
 _network_command_until = 0.0
@@ -75,6 +82,7 @@ def inject_globals():
 def home():
     if request.method == "POST":
         form = _form_payload(storage.JOB_FIELDS)
+        _save_equipment_defaults(form)
         job_id = session.get("job_id")
         if job_id and storage.get_job(job_id):
             storage.update_job(job_id, form=form, status="active")
@@ -86,7 +94,11 @@ def home():
 
     today = dt.date.today().isoformat()
     active = storage.get_job(session.get("job_id")) if session.get("job_id") else None
-    defaults = dict(active["form"]) if active else {"date": today}
+    defaults = _equipment_defaults()
+    if active:
+        defaults.update(active["form"])
+    else:
+        defaults["date"] = today
     defaults.setdefault("date", today)
     return render_template("home.html", defaults=defaults)
 
@@ -474,6 +486,20 @@ def _form_payload(fields, checkbox_fields=None):
         if checkbox in fields:
             payload[checkbox] = "yes" if checkbox in request.form else "no"
     return payload
+
+
+def _equipment_defaults():
+    values = storage.get_settings([f"equipment_default.{field}" for field in EQUIPMENT_DEFAULT_FIELDS])
+    return {
+        field: values.get(f"equipment_default.{field}", "")
+        for field in EQUIPMENT_DEFAULT_FIELDS
+    }
+
+
+def _save_equipment_defaults(form):
+    for field in EQUIPMENT_DEFAULT_FIELDS:
+        if field in form:
+            storage.set_setting(f"equipment_default.{field}", form.get(field, ""))
 
 
 def _csrf_token():
