@@ -42,6 +42,7 @@ from config import (
     PRELOAD_AUTO_CONTROL_SPIKE_DELTA_LBS,
     PRELOAD_AUTO_CONTACT_DELTA_LBS,
     PRELOAD_AUTO_CONTACT_MAX_DELTA_LBS,
+    PRELOAD_AUTO_CONTACT_MODE_START_LBS,
     PRELOAD_AUTO_CONTACT_PULSE_SECONDS,
     PRELOAD_AUTO_CONTACT_SETTLE_MAX_SECONDS,
     PRELOAD_AUTO_CONTACT_SETTLE_SECONDS,
@@ -577,7 +578,7 @@ class QuadpodEngine:
         for threshold, speed_percent, pulse_seconds in PRELOAD_AUTO_TENSION_STAGES:
             if load < threshold:
                 coarse = self._auto_preload_coarse_active_locked(load, increase)
-                if self.auto_preload_contact_detected:
+                if self._auto_preload_contact_mode_active_locked(load):
                     return {
                         "coarse": False,
                         "contact": True,
@@ -610,7 +611,10 @@ class QuadpodEngine:
         }
 
     def _auto_preload_coarse_active_locked(self, load, increase):
-        return bool(increase and not self.auto_preload_contact_detected and load < PRELOAD_AUTO_COARSE_UNTIL_LBS)
+        return bool(increase and load < PRELOAD_AUTO_COARSE_UNTIL_LBS)
+
+    def _auto_preload_contact_mode_active_locked(self, load):
+        return bool(self.auto_preload_contact_detected and load >= PRELOAD_AUTO_CONTACT_MODE_START_LBS)
 
     def _auto_preload_max_delta_lbs(self, load, coarse):
         if coarse:

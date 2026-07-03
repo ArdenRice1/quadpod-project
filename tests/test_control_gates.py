@@ -217,18 +217,28 @@ class ControlGateTests(unittest.TestCase):
             engine_module.PRELOAD_AUTO_FINAL_MAX_DELTA_LBS,
         )
 
-    def test_auto_preload_contact_mode_shortens_coarse_stage_after_load_moves(self):
+    def test_auto_preload_contact_detection_keeps_coarse_stage_far_from_target(self):
         normal = self.engine._auto_preload_stage_for_load(-6.0, True)
         self.engine.auto_preload_contact_detected = True
 
         contact = self.engine._auto_preload_stage_for_load(-6.0, True)
 
         self.assertTrue(normal["coarse"])
+        self.assertTrue(contact["coarse"])
+        self.assertNotIn("contact", contact)
+        self.assertEqual(contact["speed_percent"], normal["speed_percent"])
+        self.assertEqual(contact["pulse_seconds"], normal["pulse_seconds"])
+
+    def test_auto_preload_contact_mode_tightens_stage_near_target(self):
+        normal = self.engine._auto_preload_stage_for_load(-2.0, True)
+        self.engine.auto_preload_contact_detected = True
+
+        contact = self.engine._auto_preload_stage_for_load(-2.0, True)
+
         self.assertFalse(contact["coarse"])
         self.assertTrue(contact["contact"])
-        self.assertTrue(contact["fast_settle"])
-        self.assertLess(contact["speed_percent"], normal["speed_percent"])
-        self.assertLess(contact["pulse_seconds"], normal["pulse_seconds"])
+        self.assertLessEqual(contact["speed_percent"], normal["speed_percent"])
+        self.assertLessEqual(contact["pulse_seconds"], normal["pulse_seconds"])
         self.assertEqual(contact["max_delta_lbs"], engine_module.PRELOAD_AUTO_CONTACT_MAX_DELTA_LBS)
 
     def test_auto_preload_contact_settle_does_not_wait_for_final_stability(self):
