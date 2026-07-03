@@ -28,6 +28,8 @@ class ControlGateTests(unittest.TestCase):
         self.original_coarse_settle_max = engine_module.PRELOAD_AUTO_COARSE_SETTLE_MAX_SECONDS
         self.original_direct_load_read = engine_module.PRELOAD_AUTO_DIRECT_LOAD_READ
         self.original_in_band_end = engine_module.PRELOAD_AUTO_IN_BAND_END_SECONDS
+        self.original_contact_settle = engine_module.PRELOAD_AUTO_CONTACT_SETTLE_SECONDS
+        self.original_contact_settle_max = engine_module.PRELOAD_AUTO_CONTACT_SETTLE_MAX_SECONDS
         engine_module.PRELOAD_AUTO_DRIFT_WINDOW_SECONDS = 5.0
         engine_module.PRELOAD_AUTO_DIRECT_LOAD_READ = False
         self.job_id = storage.create_job(self._job_form())
@@ -40,6 +42,8 @@ class ControlGateTests(unittest.TestCase):
         engine_module.PRELOAD_AUTO_COARSE_SETTLE_MAX_SECONDS = self.original_coarse_settle_max
         engine_module.PRELOAD_AUTO_DIRECT_LOAD_READ = self.original_direct_load_read
         engine_module.PRELOAD_AUTO_IN_BAND_END_SECONDS = self.original_in_band_end
+        engine_module.PRELOAD_AUTO_CONTACT_SETTLE_SECONDS = self.original_contact_settle
+        engine_module.PRELOAD_AUTO_CONTACT_SETTLE_MAX_SECONDS = self.original_contact_settle_max
         self.tempdir.cleanup()
 
     def _job_form(self, **updates):
@@ -188,9 +192,28 @@ class ControlGateTests(unittest.TestCase):
         self.assertTrue(normal["coarse"])
         self.assertFalse(contact["coarse"])
         self.assertTrue(contact["contact"])
+        self.assertTrue(contact["fast_settle"])
         self.assertLess(contact["speed_percent"], normal["speed_percent"])
         self.assertLess(contact["pulse_seconds"], normal["pulse_seconds"])
         self.assertEqual(contact["max_delta_lbs"], engine_module.PRELOAD_AUTO_CONTACT_MAX_DELTA_LBS)
+
+    def test_auto_preload_contact_settle_does_not_wait_for_final_stability(self):
+        engine_module.PRELOAD_AUTO_CONTACT_SETTLE_SECONDS = 0.01
+        engine_module.PRELOAD_AUTO_CONTACT_SETTLE_MAX_SECONDS = 0.03
+        self._set_load_history([
+            (0.10, -7.0),
+            (0.05, -6.9),
+            (0.00, -6.8),
+        ])
+
+        started = time.monotonic()
+        self.engine._wait_for_auto_preload_settle(
+            time.monotonic() + 1.0,
+            fast_contact=True,
+        )
+
+        self.assertLess(time.monotonic() - started, 0.2)
+        self.assertTrue(self.engine.auto_preload_trace[-1]["fast_contact"])
 
     def test_auto_preload_coarse_settle_does_not_wait_for_final_stability(self):
         engine_module.PRELOAD_AUTO_COARSE_SETTLE_SECONDS = 0.01

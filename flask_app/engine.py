@@ -39,6 +39,8 @@ from config import (
     PRELOAD_AUTO_CONTACT_DELTA_LBS,
     PRELOAD_AUTO_CONTACT_MAX_DELTA_LBS,
     PRELOAD_AUTO_CONTACT_PULSE_SECONDS,
+    PRELOAD_AUTO_CONTACT_SETTLE_MAX_SECONDS,
+    PRELOAD_AUTO_CONTACT_SETTLE_SECONDS,
     PRELOAD_AUTO_CONTACT_SPEED_PERCENT,
     PRELOAD_AUTO_DIRECT_LOAD_READ,
     PRELOAD_AUTO_FINAL_MAX_DELTA_LBS,
@@ -491,7 +493,11 @@ class QuadpodEngine:
 
                 if not self._run_auto_preload_pulse(direction, stage, deadline):
                     break
-                self._wait_for_auto_preload_settle(deadline, coarse=stage.get("coarse", False))
+                self._wait_for_auto_preload_settle(
+                    deadline,
+                    coarse=stage.get("coarse", False),
+                    fast_contact=stage.get("fast_settle", False),
+                )
             else:
                 with self.lock:
                     self.actuator.stop()
@@ -566,6 +572,7 @@ class QuadpodEngine:
                     return {
                         "coarse": False,
                         "contact": True,
+                        "fast_settle": load < PRELOAD_AUTO_COARSE_UNTIL_LBS,
                         "max_delta_lbs": PRELOAD_AUTO_CONTACT_MAX_DELTA_LBS,
                         "speed_percent": min(speed_percent, PRELOAD_AUTO_CONTACT_SPEED_PERCENT),
                         "pulse_seconds": max(
@@ -882,15 +889,23 @@ class QuadpodEngine:
         ordered = sorted(values)
         return ordered[len(ordered) // 2]
 
-    def _wait_for_auto_preload_settle(self, deadline, coarse=False):
-        settle_seconds = PRELOAD_AUTO_COARSE_SETTLE_SECONDS if coarse else PRELOAD_AUTO_SETTLE_SECONDS
-        max_seconds = PRELOAD_AUTO_COARSE_SETTLE_MAX_SECONDS if coarse else PRELOAD_AUTO_SETTLE_MAX_SECONDS
+    def _wait_for_auto_preload_settle(self, deadline, coarse=False, fast_contact=False):
+        if coarse:
+            settle_seconds = PRELOAD_AUTO_COARSE_SETTLE_SECONDS
+            max_seconds = PRELOAD_AUTO_COARSE_SETTLE_MAX_SECONDS
+        elif fast_contact:
+            settle_seconds = PRELOAD_AUTO_CONTACT_SETTLE_SECONDS
+            max_seconds = PRELOAD_AUTO_CONTACT_SETTLE_MAX_SECONDS
+        else:
+            settle_seconds = PRELOAD_AUTO_SETTLE_SECONDS
+            max_seconds = PRELOAD_AUTO_SETTLE_MAX_SECONDS
         started = time.monotonic()
         with self.lock:
             self._record_auto_preload_trace_locked(
                 "settle_start",
                 load=self.state.get("current_load"),
                 coarse=coarse,
+                fast_contact=fast_contact,
                 settle_seconds=settle_seconds,
                 max_seconds=max_seconds,
             )
@@ -899,7 +914,7 @@ class QuadpodEngine:
             with self.lock:
                 stable = self._auto_preload_load_stable_locked()
                 rate = self._auto_preload_load_rate_locked()
-            if coarse and elapsed >= max(0.0, settle_seconds):
+            if (coarse or fast_contact) and elapsed >= max(0.0, settle_seconds):
                 if rate <= PRELOAD_AUTO_MAX_RISE_RATE_LBS_PER_SECOND:
                     with self.lock:
                         self._update_auto_preload_coast_locked()
@@ -907,10 +922,11 @@ class QuadpodEngine:
                             "settle_done",
                             load=self.state.get("current_load"),
                             coarse=coarse,
+                            fast_contact=fast_contact,
                             elapsed_s=elapsed,
                             stable=stable,
                             rate_lbs_per_s=rate,
-                            reason="coarse_rate",
+                            reason="fast_rate",
                         )
                     return
             if elapsed >= settle_seconds and stable:
@@ -920,6 +936,7 @@ class QuadpodEngine:
                         "settle_done",
                         load=self.state.get("current_load"),
                         coarse=coarse,
+                        fast_contact=fast_contact,
                         elapsed_s=elapsed,
                         stable=stable,
                         rate_lbs_per_s=rate,
@@ -933,6 +950,7 @@ class QuadpodEngine:
                         "settle_done",
                         load=self.state.get("current_load"),
                         coarse=coarse,
+                        fast_contact=fast_contact,
                         elapsed_s=elapsed,
                         stable=stable,
                         rate_lbs_per_s=rate,
