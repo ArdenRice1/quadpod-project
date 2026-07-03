@@ -2,11 +2,28 @@
 """Print the active non-secret Quadpod field tuning values."""
 
 import sys
+import os
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+
+
+def load_env_file(path):
+    if not path.exists():
+        return False
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        os.environ.setdefault(key.strip(), value.strip())
+    return True
+
+
+ENV_FILE = Path(os.getenv("QUADPOD_ENV_FILE", "/etc/quadpod.env"))
+ENV_FILE_LOADED = load_env_file(ENV_FILE)
 
 import config  # noqa: E402
 
@@ -83,6 +100,7 @@ FIELD_NAMES = [
 def main():
     print("Quadpod runtime field tuning")
     print("============================")
+    print(f"env_file={ENV_FILE if ENV_FILE_LOADED else 'not loaded'}")
     for name in FIELD_NAMES:
         print(f"{name}={getattr(config, name)}")
 
