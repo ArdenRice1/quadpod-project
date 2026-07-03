@@ -507,6 +507,35 @@ class ControlGateTests(unittest.TestCase):
         self.assertEqual(self.engine.state["auto_preload_message"], "Settling")
         self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "pulse_stop_predicted")
 
+    def test_auto_preload_waits_when_prediction_reaches_band(self):
+        self.engine.state["current_load"] = -0.6
+        self._set_load_history([
+            (0.60, -1.2),
+            (0.30, -0.9),
+            (0.00, -0.6),
+        ])
+
+        should_wait = self.engine._auto_preload_should_wait_for_settle_locked(-0.6, True)
+
+        self.assertTrue(should_wait)
+        self.assertTrue(self.engine.auto_preload_near_band_seen)
+        self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "predicted_settle_hold")
+        self.assertGreaterEqual(self.engine.auto_preload_trace[-1]["predicted_load"], engine_module.PRELOAD_MIN_LBS)
+
+    def test_auto_preload_does_not_wait_when_prediction_stays_below_band(self):
+        self.engine.state["current_load"] = -1.3
+        self._set_load_history([
+            (0.60, -1.1),
+            (0.30, -1.45),
+            (0.00, -1.3),
+        ])
+
+        should_wait = self.engine._auto_preload_should_wait_for_settle_locked(-1.3, True)
+
+        self.assertFalse(should_wait)
+        self.assertFalse(self.engine.auto_preload_near_band_seen)
+        self.assertEqual(len(self.engine.auto_preload_trace), 0)
+
     def test_auto_preload_pulse_stops_after_large_load_change(self):
         self.engine.state["current_load"] = -8.0
 

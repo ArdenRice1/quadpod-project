@@ -491,7 +491,8 @@ class QuadpodEngine:
                         else:
                             stable_since = None
                             self.state["auto_preload_message"] = "Settling"
-                    elif not self._auto_preload_coarse_active_locked(load, direction) and not self._auto_preload_load_stable_locked():
+                    elif self._auto_preload_should_wait_for_settle_locked(load, direction):
+                        predicted_load = self._auto_preload_predicted_load_locked(load, direction)
                         direction = None
                         stable_since = None
                         self.actuator.stop()
@@ -501,6 +502,7 @@ class QuadpodEngine:
                             "waiting_load_stable",
                             load=load,
                             rate_lbs_per_s=self._auto_preload_load_rate_locked(),
+                            predicted_load=predicted_load,
                         )
                     else:
                         stage = self._auto_preload_stage_for_load(load, direction)
@@ -665,6 +667,37 @@ class QuadpodEngine:
             self.auto_preload_near_band_seen
             and PRELOAD_MIN_LBS - PRELOAD_AUTO_NEAR_BAND_HOLD_MARGIN_LBS <= load < PRELOAD_MIN_LBS
         )
+
+    def _auto_preload_should_wait_for_settle_locked(self, load, increase):
+        if self._auto_preload_coarse_active_locked(load, increase):
+            return False
+        if self._auto_preload_load_stable_locked():
+            return False
+        if not increase:
+            return True
+
+        predicted_load = self._auto_preload_predicted_load_locked(load, increase)
+        if predicted_load >= PRELOAD_MIN_LBS:
+            self.auto_preload_near_band_seen = True
+            self._record_auto_preload_trace_locked(
+                "predicted_settle_hold",
+                load=load,
+                predicted_load=predicted_load,
+                min_lbs=PRELOAD_MIN_LBS,
+                rate_lbs_per_s=self._auto_preload_load_rate_locked(),
+            )
+            return True
+
+        distance_to_band = PRELOAD_MIN_LBS - float(load)
+        return bool(
+            distance_to_band <= PRELOAD_AUTO_APPROACH_DISTANCE_LBS
+            and self._auto_preload_load_rate_locked() >= PRELOAD_AUTO_MAX_RISE_RATE_LBS_PER_SECOND
+        )
+
+    def _auto_preload_predicted_load_locked(self, load, increase=True):
+        rate = self._auto_preload_load_rate_locked()
+        stop_margin = self._auto_preload_stop_margin_locked() if increase else 0.0
+        return float(load) + max(0.0, rate) * PRELOAD_AUTO_PREDICT_LOOKAHEAD_SECONDS + stop_margin
 
     def _auto_preload_max_delta_lbs(self, load, coarse):
         if coarse:
