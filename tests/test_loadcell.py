@@ -86,6 +86,22 @@ class LoadCellHardwareCompatibilityTests(unittest.TestCase):
         self.assertEqual(load_cell.get_force(), 15.0)
         self.assertEqual(load_cell.last_raw_counts, 4050)
 
+    def test_trimmed_mean_drops_high_and_low_raw_samples(self):
+        raw_values = [1000, 1005, 50000, 1010, 995]
+        FakeGPIO.reset([bit for raw in raw_values for bit in self._bits_for_raw(raw)])
+        load_cell = LoadCell(use_mock=False, average_samples=5, reference_unit=10.0, trim_extremes=True)
+        load_cell._init_hardware()
+
+        self.assertEqual(load_cell._read_raw_counts(), 1005.0)
+        self.assertEqual(load_cell.last_raw_range_counts, 49005.0)
+
+    def test_reset_hardware_pulses_clock_high_then_low(self):
+        load_cell = LoadCell(use_mock=False, reset_seconds=0.0001)
+
+        self.assertTrue(load_cell.reset_hardware())
+        self.assertIn(("output", load_cell.pd_sck_pin, True), FakeGPIO.outputs)
+        self.assertEqual(FakeGPIO.outputs[-1], ("output", load_cell.pd_sck_pin, False))
+
 
 if __name__ == "__main__":
     unittest.main()

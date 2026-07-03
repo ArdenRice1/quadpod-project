@@ -26,9 +26,15 @@ from config import (
     PRELOAD_AUTO_DOWN_PULSE_SECONDS,
     PRELOAD_AUTO_MIN_PULSE_SECONDS,
     PRELOAD_AUTO_APPROACH_MAX_DELTA_LBS,
+    PRELOAD_AUTO_ADAPTIVE_PULSE_MIN_SCALE,
+    PRELOAD_AUTO_ADAPTIVE_SPEED_MIN_PERCENT,
+    PRELOAD_AUTO_APPROACH_DISTANCE_LBS,
+    PRELOAD_AUTO_COAST_MARGIN_SCALE,
     PRELOAD_AUTO_COARSE_MAX_DELTA_LBS,
     PRELOAD_AUTO_FINAL_MAX_DELTA_LBS,
     PRELOAD_AUTO_MAX_RISE_RATE_LBS_PER_SECOND,
+    PRELOAD_AUTO_MAX_STOP_MARGIN_LBS,
+    PRELOAD_AUTO_MIN_STOP_MARGIN_LBS,
     PRELOAD_AUTO_PULSE_SECONDS,
     PRELOAD_AUTO_PULSE_CHECK_SECONDS,
     PRELOAD_AUTO_PREDICT_LOOKAHEAD_SECONDS,
@@ -68,6 +74,9 @@ class QuadpodEngine:
         self.failure_drop_samples = 0
         self.load_history = deque()
         self.auto_preload_trace = deque(maxlen=max(1, int(PRELOAD_AUTO_TRACE_MAX_ENTRIES)))
+        self.auto_preload_coast_lbs = 0.0
+        self.auto_preload_last_stop_load = None
+        self.auto_preload_last_stop_increase = None
         self.auto_preload_thread = None
         self.state = {
             "current_load": 0.0,
@@ -146,6 +155,11 @@ class QuadpodEngine:
             if self.state["auto_preload_running"]:
                 return True, "Auto tension is already running."
             self.auto_preload_trace.clear()
+            self.auto_preload_coast_lbs = 0.0
+            self.auto_preload_last_stop_load = None
+            self.auto_preload_last_stop_increase = None
+            if self.load_cell.use_mock or self.load_cell.gpio is not None:
+                self.load_cell.reset_hardware()
             self.state["auto_preload_running"] = True
             self.state["auto_preload_message"] = "Auto tension started."
             self._record_auto_preload_trace_locked(
@@ -448,6 +462,7 @@ class QuadpodEngine:
                         )
                     else:
                         stage = self._auto_preload_stage_for_load(load, direction)
+                        stage = self._auto_preload_adjust_stage_for_slope_locked(stage, load, direction)
                         pulse_seconds = stage["pulse_seconds"]
                         self._move_preload_direction_locked(
                             increase=direction, speed_percent=stage["speed_percent"]
@@ -533,6 +548,59 @@ class QuadpodEngine:
             return PRELOAD_AUTO_APPROACH_MAX_DELTA_LBS
         return PRELOAD_AUTO_FINAL_MAX_DELTA_LBS
 
+    def _auto_preload_adjust_stage_for_slope_locked(self, stage, load, increase):
+        if not increase or stage.get("coarse"):
+            return stage
+
+        rate = max(0.0, self._auto_preload_load_rate_locked())
+        stop_margin = self._auto_preload_stop_margin_locked()
+        distance_to_band = max(0.0, PRELOAD_MIN_LBS - float(load))
+        should_adapt = (
+            rate >= PRELOAD_AUTO_MAX_RISE_RATE_LBS_PER_SECOND
+            or distance_to_band <= PRELOAD_AUTO_APPROACH_DISTANCE_LBS + stop_margin
+            or self.auto_preload_coast_lbs > PRELOAD_AUTO_MIN_STOP_MARGIN_LBS
+        )
+        if not should_adapt:
+            return stage
+
+        adjusted = dict(stage)
+        scale = 1.0
+        if distance_to_band > 0:
+            scale = min(scale, max(PRELOAD_AUTO_ADAPTIVE_PULSE_MIN_SCALE, distance_to_band / (distance_to_band + stop_margin)))
+        if rate >= PRELOAD_AUTO_MAX_RISE_RATE_LBS_PER_SECOND:
+            scale = min(scale, 0.5)
+        if self.auto_preload_coast_lbs > PRELOAD_AUTO_MIN_STOP_MARGIN_LBS:
+            scale = min(scale, max(PRELOAD_AUTO_ADAPTIVE_PULSE_MIN_SCALE, 1.0 - (self.auto_preload_coast_lbs * 0.5)))
+
+        adjusted["pulse_seconds"] = max(PRELOAD_AUTO_MIN_PULSE_SECONDS, float(stage["pulse_seconds"]) * scale)
+        adjusted["speed_percent"] = max(
+            PRELOAD_AUTO_ADAPTIVE_SPEED_MIN_PERCENT,
+            int(round(float(stage["speed_percent"]) * max(0.5, scale))),
+        )
+        adjusted["max_delta_lbs"] = min(float(stage.get("max_delta_lbs") or PRELOAD_AUTO_FINAL_MAX_DELTA_LBS), PRELOAD_AUTO_FINAL_MAX_DELTA_LBS)
+        adjusted["adapted"] = True
+        adjusted["stop_margin_lbs"] = stop_margin
+        adjusted["rate_lbs_per_s"] = rate
+        adjusted["message"] = "Auto tensioning carefully; waiting for load cell."
+        self._record_auto_preload_trace_locked(
+            "stage_adapted",
+            load=load,
+            rate_lbs_per_s=rate,
+            stop_margin_lbs=stop_margin,
+            scale=scale,
+            speed_percent=adjusted["speed_percent"],
+            pulse_seconds=adjusted["pulse_seconds"],
+            coast_lbs=self.auto_preload_coast_lbs,
+        )
+        return adjusted
+
+    def _auto_preload_stop_margin_locked(self):
+        learned_margin = max(0.0, self.auto_preload_coast_lbs) * PRELOAD_AUTO_COAST_MARGIN_SCALE
+        return min(
+            PRELOAD_AUTO_MAX_STOP_MARGIN_LBS,
+            max(PRELOAD_AUTO_MIN_STOP_MARGIN_LBS, learned_margin),
+        )
+
     def _auto_preload_configured_pulse_seconds(self, pulse_seconds):
         return max(PRELOAD_AUTO_MIN_PULSE_SECONDS, float(pulse_seconds))
 
@@ -564,7 +632,8 @@ class QuadpodEngine:
                 with self.lock:
                     load = float(self.state.get("current_load") or 0.0)
                     rate = self._auto_preload_load_rate_locked()
-                    predicted_load = load + max(0.0, rate) * PRELOAD_AUTO_PREDICT_LOOKAHEAD_SECONDS
+                    stop_margin = self._auto_preload_stop_margin_locked() if increase else 0.0
+                    predicted_load = load + max(0.0, rate) * PRELOAD_AUTO_PREDICT_LOOKAHEAD_SECONDS + stop_margin
                     if self.state.get("test_running"):
                         self.state["auto_preload_message"] = "Auto tension cancelled because a pull test started."
                         self._record_auto_preload_trace_locked("pulse_cancelled", load=load)
@@ -593,6 +662,7 @@ class QuadpodEngine:
                                 rate_lbs_per_s=rate,
                                 predicted_load=predicted_load,
                             )
+                            self._remember_auto_preload_stop_locked(load, increase)
                             return True
                         if load >= PRELOAD_MIN_LBS:
                             self.actuator.stop()
@@ -606,6 +676,7 @@ class QuadpodEngine:
                                 rate_lbs_per_s=rate,
                                 predicted_load=predicted_load,
                             )
+                            self._remember_auto_preload_stop_locked(load, increase)
                             return True
                         if predicted_load >= PRELOAD_AUTO_PREDICT_STOP_LBS:
                             self.actuator.stop()
@@ -618,6 +689,20 @@ class QuadpodEngine:
                                 predicted_load=predicted_load,
                                 predict_stop_lbs=PRELOAD_AUTO_PREDICT_STOP_LBS,
                             )
+                            self._remember_auto_preload_stop_locked(load, increase)
+                            return True
+                        if not stage.get("coarse") and rate >= PRELOAD_AUTO_MAX_RISE_RATE_LBS_PER_SECOND:
+                            self.actuator.stop()
+                            self.state["actuator_command"] = self.actuator.last_command
+                            self.state["auto_preload_message"] = "Auto tension paused because force is rising quickly."
+                            self._record_auto_preload_trace_locked(
+                                "pulse_stop_fast_rise",
+                                load=load,
+                                rate_lbs_per_s=rate,
+                                stop_margin_lbs=stop_margin,
+                                predicted_load=predicted_load,
+                            )
+                            self._remember_auto_preload_stop_locked(load, increase)
                             return True
                         if max_delta_lbs and load - start_load >= max_delta_lbs:
                             self.actuator.stop()
@@ -630,6 +715,7 @@ class QuadpodEngine:
                                 delta_lbs=load - start_load,
                                 max_delta_lbs=max_delta_lbs,
                             )
+                            self._remember_auto_preload_stop_locked(load, increase)
                             return True
             with self.lock:
                 self._record_auto_preload_trace_locked(
@@ -664,6 +750,7 @@ class QuadpodEngine:
             if coarse and elapsed >= max(0.0, settle_seconds):
                 if rate <= PRELOAD_AUTO_MAX_RISE_RATE_LBS_PER_SECOND:
                     with self.lock:
+                        self._update_auto_preload_coast_locked()
                         self._record_auto_preload_trace_locked(
                             "settle_done",
                             load=self.state.get("current_load"),
@@ -676,6 +763,7 @@ class QuadpodEngine:
                     return
             if elapsed >= settle_seconds and stable:
                 with self.lock:
+                    self._update_auto_preload_coast_locked()
                     self._record_auto_preload_trace_locked(
                         "settle_done",
                         load=self.state.get("current_load"),
@@ -688,6 +776,7 @@ class QuadpodEngine:
                 return
             if elapsed >= max_seconds:
                 with self.lock:
+                    self._update_auto_preload_coast_locked()
                     self._record_auto_preload_trace_locked(
                         "settle_done",
                         load=self.state.get("current_load"),
@@ -699,6 +788,27 @@ class QuadpodEngine:
                     )
                 return
             time.sleep(0.05)
+
+    def _remember_auto_preload_stop_locked(self, load, increase):
+        self.auto_preload_last_stop_load = float(load)
+        self.auto_preload_last_stop_increase = bool(increase)
+
+    def _update_auto_preload_coast_locked(self):
+        if self.auto_preload_last_stop_load is None or not self.auto_preload_last_stop_increase:
+            return 0.0
+        load = float(self.state.get("current_load") or 0.0)
+        coast = max(0.0, load - self.auto_preload_last_stop_load)
+        self.auto_preload_coast_lbs = (self.auto_preload_coast_lbs * 0.5) + (coast * 0.5)
+        self._record_auto_preload_trace_locked(
+            "coast_measured",
+            stop_load=self.auto_preload_last_stop_load,
+            load=load,
+            coast_lbs=coast,
+            learned_coast_lbs=self.auto_preload_coast_lbs,
+        )
+        self.auto_preload_last_stop_load = None
+        self.auto_preload_last_stop_increase = None
+        return coast
 
     def _move_auto_preload_direction_locked(self, increase):
         return self._move_preload_direction_locked(

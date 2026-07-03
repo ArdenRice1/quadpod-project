@@ -8,6 +8,10 @@ from config import (
     LOADCELL_FILTER_WINDOW,
     LOADCELL_PD_SCK_PIN,
     LOADCELL_REFERENCE_UNIT,
+    LOADCELL_RESET_BEFORE_TARE,
+    LOADCELL_RESET_ON_READ_ERROR,
+    LOADCELL_RESET_SECONDS,
+    LOADCELL_TRIM_EXTREMES,
     USE_MOCK_HARDWARE,
 )
 
@@ -21,6 +25,10 @@ class LoadCell:
         reference_unit=LOADCELL_REFERENCE_UNIT,
         average_samples=LOADCELL_AVERAGE_SAMPLES,
         filter_window=LOADCELL_FILTER_WINDOW,
+        trim_extremes=LOADCELL_TRIM_EXTREMES,
+        reset_seconds=LOADCELL_RESET_SECONDS,
+        reset_before_tare=LOADCELL_RESET_BEFORE_TARE,
+        reset_on_read_error=LOADCELL_RESET_ON_READ_ERROR,
     ):
         self.use_mock = use_mock
         self.dout_pin = dout_pin
@@ -28,9 +36,14 @@ class LoadCell:
         self.reference_unit = float(reference_unit)
         self.average_samples = max(1, int(average_samples))
         self.filter_window = max(1, int(filter_window))
+        self.trim_extremes = bool(trim_extremes)
+        self.reset_seconds = max(0.0001, float(reset_seconds))
+        self.reset_before_tare = bool(reset_before_tare)
+        self.reset_on_read_error = bool(reset_on_read_error)
         self.samples = deque(maxlen=self.filter_window)
         self.last_raw_lbs = 0.0
         self.last_raw_counts = 0.0
+        self.last_raw_range_counts = 0.0
         self.last_error = ""
         self._mock_force = 0.0
         self._mock_zero = 0.0
@@ -91,7 +104,25 @@ class LoadCell:
 
         if not values:
             raise ValueError("HX711 returned only saturated/glitch samples")
+        self.last_raw_range_counts = max(values) - min(values)
+        if self.trim_extremes and len(values) >= 5:
+            values = sorted(values)[1:-1]
         return sum(values) / len(values)
+
+    def reset_hardware(self):
+        if self.use_mock:
+            return True
+        try:
+            self._init_hardware()
+            self.gpio.output(self.pd_sck_pin, True)
+            time.sleep(self.reset_seconds)
+            self.gpio.output(self.pd_sck_pin, False)
+            self.last_error = ""
+            return True
+        except Exception as exc:
+            self.hardware_ready = False
+            self.last_error = f"HX711 reset failed: {exc}"
+            return False
 
     def tare(self):
         self.samples.clear()
@@ -102,6 +133,8 @@ class LoadCell:
 
         try:
             self._init_hardware()
+            if self.reset_before_tare:
+                self.reset_hardware()
             self._zero_counts = self._read_raw_counts()
             self.last_raw_counts = self._zero_counts
             self.last_raw_lbs = 0.0
@@ -149,6 +182,8 @@ class LoadCell:
             self.last_error = ""
             return self.last_raw_lbs
         except Exception as exc:
+            if self.reset_on_read_error:
+                self.reset_hardware()
             self.last_error = f"HX711 read failed: {exc}"
             return self.last_raw_lbs
 
@@ -159,7 +194,9 @@ class LoadCell:
             "last_error": self.last_error,
             "reference_unit": self.reference_unit,
             "filter_window": self.filter_window,
+            "trim_extremes": self.trim_extremes,
             "hardware_ready": self.hardware_ready,
             "last_raw_counts": self.last_raw_counts,
+            "last_raw_range_counts": self.last_raw_range_counts,
             "zero_counts": self._zero_counts,
         }

@@ -283,6 +283,44 @@ class ControlGateTests(unittest.TestCase):
         self.assertIn("load changed quickly", self.engine.state["auto_preload_message"])
         self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "pulse_stop_delta")
 
+    def test_auto_preload_stops_when_force_rises_quickly_near_target(self):
+        self.engine.state["current_load"] = -1.2
+        self._set_load_history([
+            (0.60, -1.8),
+            (0.30, -1.5),
+            (0.00, -1.2),
+        ])
+        self.engine.actuator.move_up(fast=True, speed_percent=80)
+
+        keep_running = self.engine._run_auto_preload_pulse(True, self._pulse_stage(0.2), time.monotonic() + 1.0)
+
+        self.assertTrue(keep_running)
+        self.assertEqual(self.engine.actuator.last_command, "neutral")
+        self.assertIn("force is rising quickly", self.engine.state["auto_preload_message"])
+        self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "pulse_stop_fast_rise")
+
+    def test_auto_preload_adapts_stage_after_learning_coast(self):
+        stage = self.engine._auto_preload_stage_for_load(-0.9, True)
+        self.engine.auto_preload_coast_lbs = 0.3
+
+        adjusted = self.engine._auto_preload_adjust_stage_for_slope_locked(stage, -0.9, True)
+
+        self.assertTrue(adjusted["adapted"])
+        self.assertLess(adjusted["pulse_seconds"], stage["pulse_seconds"])
+        self.assertLess(adjusted["speed_percent"], stage["speed_percent"])
+        self.assertEqual(adjusted["max_delta_lbs"], engine_module.PRELOAD_AUTO_FINAL_MAX_DELTA_LBS)
+
+    def test_auto_preload_settle_learns_coast_after_stop(self):
+        self.engine.auto_preload_last_stop_load = -0.9
+        self.engine.auto_preload_last_stop_increase = True
+        self.engine.state["current_load"] = -0.55
+
+        coast = self.engine._update_auto_preload_coast_locked()
+
+        self.assertAlmostEqual(coast, 0.35)
+        self.assertAlmostEqual(self.engine.auto_preload_coast_lbs, 0.175)
+        self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "coast_measured")
+
     def test_auto_preload_trace_is_internal_and_bounded(self):
         for index in range(engine_module.PRELOAD_AUTO_TRACE_MAX_ENTRIES + 10):
             self.engine._record_auto_preload_trace_locked("sample", index=index, load=-0.1)
