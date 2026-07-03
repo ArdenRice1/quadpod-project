@@ -98,6 +98,30 @@ class ControlGateTests(unittest.TestCase):
                 self.assertTrue(ok, message)
                 self.assertTrue(self.engine.state["test_running"])
 
+    def test_start_pull_clears_samples_when_restarting_test_record(self):
+        storage.add_sample(self.test_id, 0.0, 10.0)
+        storage.add_sample(self.test_id, 0.5, 12.0)
+        storage.update_test(
+            self.test_id,
+            status="complete",
+            started_at="2026-07-03T17:00:00Z",
+            completed_at="2026-07-03T17:01:00Z",
+            peak_load_lbs=12.0,
+            stop_reason="previous run",
+            sample_count=2,
+        )
+
+        self._set_load(0.0)
+        ok, message = self.engine.start_pull(self.test_id)
+
+        self.assertTrue(ok, message)
+        self.assertEqual(storage.list_samples(self.test_id), [])
+        test = storage.get_test(self.test_id)
+        self.assertEqual(test["status"], "running")
+        self.assertIsNone(test["completed_at"])
+        self.assertEqual(test["sample_count"], 0)
+        self.assertEqual(test["stop_reason"], "")
+
     def test_auto_preload_uses_configured_pull_direction_to_increase_load(self):
         self.engine.actuator.pull_direction = "up"
         self.engine.state["jog_speed_percent"] = 1

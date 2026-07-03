@@ -383,6 +383,12 @@ def add_sample(test_id, elapsed_s, force_lbs, raw_lbs=None):
     return row["n"]
 
 
+def clear_samples(test_id):
+    with db() as conn:
+        conn.execute("DELETE FROM force_samples WHERE test_id=?", (test_id,))
+    return True
+
+
 def list_samples(test_id):
     with db() as conn:
         rows = conn.execute(
@@ -390,7 +396,7 @@ def list_samples(test_id):
             SELECT timestamp, elapsed_s, force_lbs, raw_lbs
             FROM force_samples
             WHERE test_id=?
-            ORDER BY elapsed_s, id
+            ORDER BY id
             """,
             (test_id,),
         ).fetchall()

@@ -230,6 +230,7 @@ class QuadpodEngine:
             if gate_errors:
                 return False, "Cannot start pull: " + "; ".join(gate_errors)
 
+            storage.clear_samples(test_id)
             self.failure_drop_samples = 0
             self.load_history.clear()
             self._reset_auto_preload_control_locked()
@@ -254,8 +255,11 @@ class QuadpodEngine:
                 test_id,
                 status="running",
                 started_at=storage.utc_now(),
+                completed_at=None,
                 initial_preload_lbs=round(load, 3),
                 peak_load_lbs=round(load, 3),
+                stop_reason="",
+                sample_count=0,
                 software_version=APP_VERSION,
             )
             self.actuator.stop()
