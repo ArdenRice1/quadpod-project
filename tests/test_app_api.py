@@ -186,6 +186,36 @@ class AppApiTests(unittest.TestCase):
         self.assertNotIn('id="networkPanel" open', text)
         self.assertNotIn('id="calibrationPanel" open', text)
 
+    def test_operator_pages_hide_internal_tension_config(self):
+        job_id = storage.create_job(
+            {
+                "project_name": "UI Gate Job",
+                "job_number": "UI-1",
+                "load_cell_id": "LC-1",
+                "load_cell_calibration_date": "2024-01-01",
+                "ir_temp_gun_id": "IR-1",
+                "ir_temp_gun_calibration_date": "2024-01-01",
+            }
+        )
+        test_id = storage.create_test(job_id, {"test_number": "1", "angle_degrees": "90"})
+        with self.client.session_transaction() as session:
+            session["job_id"] = job_id
+            session["test_id"] = test_id
+
+        pretest_text = self.client.get("/pretest").get_data(as_text=True)
+        test_text = self.client.get("/test").get_data(as_text=True)
+        combined = pretest_text + test_text
+
+        for hidden in [
+            "preload_min_lbs",
+            "preload_max_lbs",
+            "preload_target_lbs",
+            "auto_preload_drift_drop_lbs",
+            "last_pulse_us",
+        ]:
+            self.assertNotIn(hidden, combined)
+        self.assertNotIn(" us)", combined)
+
     def test_wifi_switch_returns_transition_before_scheduling_command(self):
         with self.client.session_transaction() as session:
             session["csrf_token"] = "network-test-token"

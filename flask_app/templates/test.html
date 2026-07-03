@@ -18,7 +18,6 @@
     <div class="item"><strong>Peak:</strong> <span id="peakForce">0.00</span> lbs</div>
     <div class="item"><strong>Elapsed:</strong> <span id="elapsed">0.0</span> s</div>
     <div class="item"><strong>Samples:</strong> <span id="samples">0</span></div>
-    <div class="item"><strong>Actuator:</strong> <span id="actuator">neutral</span></div>
     <div class="item"><strong>Stop:</strong> <span id="stopReason">--</span></div>
   </div>
 </section>
@@ -38,7 +37,6 @@
   const peakForce = document.getElementById("peakForce");
   const elapsed = document.getElementById("elapsed");
   const samples = document.getElementById("samples");
-  const actuator = document.getElementById("actuator");
   const stopReason = document.getElementById("stopReason");
   const systemStatus = document.getElementById("systemStatus");
   const startBtn = document.getElementById("startBtn");
@@ -96,7 +94,6 @@
         peakForce.textContent = data.peak_load.toFixed(2);
         elapsed.textContent = data.elapsed_s.toFixed(1);
         samples.textContent = data.sample_count;
-        actuator.textContent = `${data.actuator_command} (${data.actuator.last_pulse_us} us)`;
         stopReason.textContent = data.stop_reason || "--";
         stopBtn.disabled = false;
         if (data.last_error) {

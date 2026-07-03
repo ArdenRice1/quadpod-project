@@ -614,6 +614,19 @@ class ControlGateTests(unittest.TestCase):
         self.assertTrue(self.engine.state["auto_preload_running"])
         self.assertFalse(self.engine.state["test_running"])
 
+    def test_auto_preload_rejects_while_pull_running(self):
+        self.engine.state["test_running"] = True
+        self.engine.state["active_test_id"] = self.test_id
+        self.engine.state["auto_preload_running"] = False
+
+        ok, message = self.engine.auto_preload()
+
+        self.assertFalse(ok)
+        self.assertIn("pull test", message)
+        self.assertTrue(self.engine.state["test_running"])
+        self.assertEqual(self.engine.state["active_test_id"], self.test_id)
+        self.assertFalse(self.engine.state["auto_preload_running"])
+
     def test_start_pull_clears_finished_auto_preload_state(self):
         self._set_load(0.0)
         self.engine.state["auto_preload_message"] = "Check tension"
