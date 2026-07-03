@@ -332,7 +332,7 @@ class ControlGateTests(unittest.TestCase):
         self.engine.auto_preload_near_band_seen = True
 
         self.assertIsNone(self.engine._auto_preload_direction_for_load(-0.74))
-        self.assertTrue(self.engine._auto_preload_direction_for_load(-1.26))
+        self.assertTrue(self.engine._auto_preload_direction_for_load(-0.76))
 
     def test_auto_preload_marks_near_band_after_predicted_stop(self):
         self.engine.state["current_load"] = -0.6
@@ -353,7 +353,7 @@ class ControlGateTests(unittest.TestCase):
         engine_module.PRELOAD_AUTO_DIRECT_LOAD_READ = True
         self.engine.auto_preload_near_band_seen = True
         self.engine.state["current_load"] = -0.7
-        readings = iter([-3.8, -3.7, -3.9, -3.8, -3.75, -3.8, -3.7, -3.9, -3.8, -3.75])
+        readings = iter([-0.9, -0.88, -0.91, -0.89, -0.9, -0.9, -0.88, -0.91, -0.89, -0.9])
         self.engine.load_cell.get_control_force = lambda: next(readings)
 
         load = self.engine._refresh_auto_preload_load()
