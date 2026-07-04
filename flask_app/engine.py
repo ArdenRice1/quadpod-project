@@ -38,8 +38,17 @@ from config import (
     PRELOAD_AUTO_CONTROL_CONFIRM_MAX_RANGE_LBS,
     PRELOAD_AUTO_CONTROL_CONFIRM_SAMPLES,
     PRELOAD_AUTO_CONTROL_HARD_SPIKE_LBS,
+    PRELOAD_AUTO_CONTROL_MAX_TRANSIENT_REJECTS,
     PRELOAD_AUTO_CONTROL_SPIKE_RETRY_SECONDS,
     PRELOAD_AUTO_CONTROL_SPIKE_DELTA_LBS,
+    PRELOAD_AUTO_CONTINUOUS_BRAKE_MARGIN_LBS,
+    PRELOAD_AUTO_CONTINUOUS_INTERVAL_SECONDS,
+    PRELOAD_AUTO_CONTINUOUS_KD,
+    PRELOAD_AUTO_CONTINUOUS_KP,
+    PRELOAD_AUTO_CONTINUOUS_MAX_SPEED_PERCENT,
+    PRELOAD_AUTO_CONTINUOUS_MAX_UP_RATE_LBS_PER_SECOND,
+    PRELOAD_AUTO_CONTINUOUS_MIN_SPEED_PERCENT,
+    PRELOAD_AUTO_CONTINUOUS_RAMP_PERCENT_PER_SECOND,
     PRELOAD_AUTO_CONTACT_COARSE_MAX_DELTA_LBS,
     PRELOAD_AUTO_CONTACT_COARSE_PULSE_SECONDS,
     PRELOAD_AUTO_CONTACT_COARSE_SPEED_PERCENT,
@@ -56,6 +65,7 @@ from config import (
     PRELOAD_AUTO_MAX_RISE_RATE_LBS_PER_SECOND,
     PRELOAD_AUTO_MAX_STOP_MARGIN_LBS,
     PRELOAD_AUTO_MIN_STOP_MARGIN_LBS,
+    PRELOAD_AUTO_MODE,
     PRELOAD_AUTO_NEAR_BAND_HOLD_MARGIN_LBS,
     PRELOAD_AUTO_NEGATIVE_JUMP_DELTA_LBS,
     PRELOAD_AUTO_NEGATIVE_JUMP_GUARD_START_LBS,
@@ -103,6 +113,7 @@ class QuadpodEngine:
         self.auto_preload_last_stop_increase = None
         self.auto_preload_contact_detected = False
         self.auto_preload_near_band_seen = False
+        self.auto_preload_control_rejects = 0
         self.auto_preload_thread = None
         self.state = {
             "current_load": 0.0,
@@ -425,6 +436,145 @@ class QuadpodEngine:
         return ""
 
     def _auto_preload_loop(self):
+        if PRELOAD_AUTO_MODE == "continuous":
+            self._auto_preload_continuous_loop()
+            return
+        self._auto_preload_pulse_loop()
+
+    def _auto_preload_continuous_loop(self):
+        deadline = time.monotonic() + PRELOAD_AUTO_TIMEOUT_SECONDS
+        stable_since = None
+        current_speed = 0.0
+        last_speed_command = None
+        last_update = time.monotonic()
+        try:
+            while time.monotonic() < deadline:
+                self._refresh_auto_preload_load()
+                now = time.monotonic()
+                direction = None
+                with self.lock:
+                    if self.state.get("auto_preload_sensor_fault"):
+                        self.actuator.stop()
+                        self.state["actuator_command"] = self.actuator.last_command
+                        self.state["auto_preload_message"] = "Check tension"
+                        self._record_auto_preload_trace_locked(
+                            "sensor_fault_stop",
+                            load=self.state.get("current_load"),
+                        )
+                        break
+                    if self.state["test_running"]:
+                        self.state["auto_preload_message"] = "Check tension"
+                        self._record_auto_preload_trace_locked("cancelled", load=self.state.get("current_load"))
+                        break
+
+                    load = float(self.state.get("current_load") or 0.0)
+                    rate = self._auto_preload_load_rate_locked()
+                    if load > PRELOAD_AUTO_ABORT_LBS:
+                        self.actuator.stop()
+                        self.state["actuator_command"] = self.actuator.last_command
+                        self.state["auto_preload_message"] = "Check tension"
+                        self._record_auto_preload_trace_locked("abort", load=load, abort_lbs=PRELOAD_AUTO_ABORT_LBS)
+                        break
+
+                    in_band = PRELOAD_MIN_LBS <= load <= PRELOAD_MAX_LBS
+                    if in_band:
+                        self.auto_preload_near_band_seen = True
+                        self.actuator.stop()
+                        self.state["actuator_command"] = self.actuator.last_command
+                        current_speed = 0.0
+                        last_speed_command = None
+                        if stable_since is None:
+                            stable_since = now
+                            self._record_auto_preload_trace_locked(
+                                "continuous_in_band",
+                                load=load,
+                                rate_lbs_per_s=rate,
+                                min_lbs=PRELOAD_MIN_LBS,
+                                max_lbs=PRELOAD_MAX_LBS,
+                            )
+                        ready = self._auto_preload_ready_locked()
+                        if now - stable_since >= PRELOAD_AUTO_IN_BAND_END_SECONDS:
+                            self.state["auto_preload_message"] = "Ready" if ready else ""
+                            self._record_auto_preload_trace_locked(
+                                "in_band_complete",
+                                load=load,
+                                seconds=now - stable_since,
+                                ready=ready,
+                                short_stable=self.state.get("auto_preload_short_stable"),
+                                drift_stable=self.state.get("auto_preload_drift_stable"),
+                                drift_drop_lbs=self.state.get("auto_preload_drift_drop_lbs"),
+                            )
+                            break
+                        self.state["auto_preload_message"] = "Settling"
+                    else:
+                        stable_since = None
+                        predicted_load = self._auto_preload_continuous_predicted_load_locked(load, rate, current_speed)
+                        if load < PRELOAD_MIN_LBS:
+                            if self._auto_preload_continuous_should_brake_locked(load, rate, predicted_load):
+                                self.actuator.stop()
+                                self.state["actuator_command"] = self.actuator.last_command
+                                current_speed = 0.0
+                                last_speed_command = None
+                                self.state["auto_preload_message"] = "Settling"
+                                self._record_auto_preload_trace_locked(
+                                    "continuous_brake",
+                                    load=load,
+                                    predicted_load=predicted_load,
+                                    rate_lbs_per_s=rate,
+                                )
+                            else:
+                                direction = True
+                        elif load > PRELOAD_MAX_LBS:
+                            direction = False
+
+                        if direction is not None:
+                            desired_speed = self._auto_preload_continuous_speed_locked(load, rate, direction)
+                            current_speed = self._auto_preload_slew_speed(
+                                current_speed,
+                                desired_speed,
+                                now - last_update,
+                            )
+                            command_speed = max(1, min(100, int(round(current_speed))))
+                            self._move_preload_direction_locked(direction, command_speed)
+                            self.state["actuator_command"] = self.actuator.last_command
+                            self.state["auto_preload_message"] = "Auto Tension"
+                            if last_speed_command != command_speed:
+                                self._record_auto_preload_trace_locked(
+                                    "continuous_speed",
+                                    load=load,
+                                    rate_lbs_per_s=rate,
+                                    predicted_load=predicted_load,
+                                    increase=direction,
+                                    desired_speed=desired_speed,
+                                    speed_percent=command_speed,
+                                )
+                                last_speed_command = command_speed
+                last_update = now
+                time.sleep(max(0.01, PRELOAD_AUTO_CONTINUOUS_INTERVAL_SECONDS))
+            else:
+                with self.lock:
+                    self.actuator.stop()
+                    self.state["actuator_command"] = self.actuator.last_command
+                    self.state["auto_preload_message"] = "Check tension"
+                    self._record_auto_preload_trace_locked(
+                        "timeout",
+                        load=self.state.get("current_load"),
+                        seconds=PRELOAD_AUTO_TIMEOUT_SECONDS,
+                    )
+        finally:
+            with self.lock:
+                self.actuator.stop()
+                self.state["actuator_command"] = self.actuator.last_command
+                self.state["auto_preload_running"] = False
+                if self.state.get("auto_preload_message", "") == "Ready":
+                    self.state["auto_preload_message"] = ""
+                self._record_auto_preload_trace_locked(
+                    "finish",
+                    load=self.state.get("current_load"),
+                    message=self.state.get("auto_preload_message"),
+                )
+
+    def _auto_preload_pulse_loop(self):
         deadline = time.monotonic() + PRELOAD_AUTO_TIMEOUT_SECONDS
         stable_since = None
         try:
@@ -558,6 +708,7 @@ class QuadpodEngine:
         self.auto_preload_last_stop_increase = None
         self.auto_preload_contact_detected = False
         self.auto_preload_near_band_seen = False
+        self.auto_preload_control_rejects = 0
 
     def _clear_auto_preload_status_locked(self):
         self.state["auto_preload_running"] = False
@@ -702,6 +853,43 @@ class QuadpodEngine:
         rate = self._auto_preload_load_rate_locked()
         stop_margin = self._auto_preload_stop_margin_locked() if increase else 0.0
         return float(load) + max(0.0, rate) * PRELOAD_AUTO_PREDICT_LOOKAHEAD_SECONDS + stop_margin
+
+    def _auto_preload_continuous_predicted_load_locked(self, load, rate, speed_percent):
+        speed_margin = (max(0.0, float(speed_percent)) / 100.0) * PRELOAD_AUTO_CONTINUOUS_BRAKE_MARGIN_LBS
+        return float(load) + max(0.0, float(rate)) * PRELOAD_AUTO_PREDICT_LOOKAHEAD_SECONDS + speed_margin
+
+    def _auto_preload_continuous_should_brake_locked(self, load, rate, predicted_load):
+        if predicted_load >= PRELOAD_MIN_LBS:
+            self.auto_preload_near_band_seen = True
+            return True
+        if (
+            load >= PRELOAD_MIN_LBS - PRELOAD_AUTO_APPROACH_DISTANCE_LBS
+            and rate >= PRELOAD_AUTO_CONTINUOUS_MAX_UP_RATE_LBS_PER_SECOND
+        ):
+            return True
+        return False
+
+    def _auto_preload_continuous_speed_locked(self, load, rate, increase):
+        if increase:
+            error_lbs = max(0.0, PRELOAD_TARGET_LBS - float(load))
+            damping = max(0.0, float(rate)) * PRELOAD_AUTO_CONTINUOUS_KD
+            raw_speed = (error_lbs * PRELOAD_AUTO_CONTINUOUS_KP) - damping
+        else:
+            error_lbs = max(0.0, float(load) - PRELOAD_TARGET_LBS)
+            raw_speed = error_lbs * (PRELOAD_AUTO_CONTINUOUS_KP * 0.5)
+
+        min_speed = max(1.0, float(PRELOAD_AUTO_CONTINUOUS_MIN_SPEED_PERCENT))
+        max_speed = max(min_speed, float(PRELOAD_AUTO_CONTINUOUS_MAX_SPEED_PERCENT))
+        return max(min_speed, min(max_speed, raw_speed))
+
+    def _auto_preload_slew_speed(self, current_speed, desired_speed, elapsed_s):
+        max_step = max(0.0, PRELOAD_AUTO_CONTINUOUS_RAMP_PERCENT_PER_SECOND) * max(0.0, float(elapsed_s))
+        if max_step <= 0:
+            return float(desired_speed)
+        delta = float(desired_speed) - float(current_speed)
+        if abs(delta) <= max_step:
+            return float(desired_speed)
+        return float(current_speed) + (max_step if delta > 0 else -max_step)
 
     def _auto_preload_negative_jump_hold_locked(self, load):
         now = time.monotonic()
@@ -985,6 +1173,7 @@ class QuadpodEngine:
         )
         load = self._median(samples)
         if self._auto_preload_control_samples_are_trustworthy(previous_load, samples, load):
+            self.auto_preload_control_rejects = 0
             if self._auto_preload_should_ignore_drop_after_near_band(previous_load, load):
                 return previous_load, samples, True, False, "control_load_drop_ignored_after_near_band"
             return load, samples, True, False, "control_load_confirmed"
@@ -1000,11 +1189,16 @@ class QuadpodEngine:
         retry_load = self._median(retry_samples)
         all_samples = samples + retry_samples
         if self._auto_preload_control_samples_are_trustworthy(previous_load, retry_samples, retry_load):
+            self.auto_preload_control_rejects = 0
             if self._auto_preload_should_ignore_drop_after_near_band(previous_load, retry_load):
                 return previous_load, all_samples, True, False, "control_load_drop_ignored_after_near_band"
             return retry_load, all_samples, True, False, "control_load_confirmed"
         if PRELOAD_MIN_LBS <= previous_load <= PRELOAD_MAX_LBS:
+            self.auto_preload_control_rejects = 0
             return previous_load, all_samples, True, False, "control_load_spike_ignored_in_band"
+        self.auto_preload_control_rejects += 1
+        if self.auto_preload_control_rejects <= PRELOAD_AUTO_CONTROL_MAX_TRANSIENT_REJECTS:
+            return previous_load, all_samples, True, False, "control_load_discarded"
         return previous_load, all_samples, True, True, "control_load_rejected"
 
     def _auto_preload_read_needs_confirmation(self, previous_load, load):
