@@ -254,6 +254,44 @@ class ControlGateTests(unittest.TestCase):
         self.assertTrue(should_brake)
         self.assertTrue(self.engine.auto_preload_near_band_seen)
 
+    def test_preload_hold_trim_increases_only_in_lower_half_while_dropping(self):
+        self.engine.state["current_load"] = -0.1
+        self._set_load_history([
+            (0.50, -0.05),
+            (0.25, -0.08),
+            (0.00, -0.10),
+        ])
+
+        self.engine._preload_hold_update_locked()
+
+        self.assertEqual(self.engine.preload_hold_trim_us, 1)
+        self.assertEqual(self.engine.actuator.last_pulse_us, engine_module.VICTOR_NEUTRAL_US + 1)
+        self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "hold_trim")
+
+    def test_preload_hold_trim_does_not_increase_below_allowed_band(self):
+        self.engine.preload_hold_trim_us = 3
+        self.engine.state["current_load"] = engine_module.PRELOAD_MIN_LBS - 0.01
+
+        self.engine._preload_hold_update_locked()
+
+        self.assertEqual(self.engine.preload_hold_trim_us, 0)
+        self.assertEqual(self.engine.actuator.last_command, "neutral")
+        self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "hold_out_of_band")
+
+    def test_preload_hold_trim_moves_back_to_neutral_at_or_above_zero(self):
+        self.engine.preload_hold_trim_us = 3
+        self.engine.state["current_load"] = 0.0
+        self._set_load_history([
+            (0.50, -0.02),
+            (0.25, -0.01),
+            (0.00, 0.00),
+        ])
+
+        self.engine._preload_hold_update_locked()
+
+        self.assertEqual(self.engine.preload_hold_trim_us, 2)
+        self.assertEqual(self.engine.actuator.last_pulse_us, engine_module.VICTOR_NEUTRAL_US + 2)
+
     def test_auto_preload_contact_detection_keeps_coarse_stage_far_from_target(self):
         normal = self.engine._auto_preload_stage_for_load(-6.0, True)
         self.engine.auto_preload_contact_detected = True
@@ -815,6 +853,19 @@ class ControlGateTests(unittest.TestCase):
         self.assertEqual(self.engine.actuator.last_command, "up_pull")
         self.assertEqual(self.engine.actuator.last_pulse_us, self.engine.actuator._mirror(VICTOR_PULL_US))
         self.assertEqual(self.engine.state["jog_speed_percent"], 1)
+
+    def test_start_pull_cancels_preload_hold_trim(self):
+        self.engine.preload_hold_active = True
+        self.engine.preload_hold_trim_us = 5
+        self.engine.actuator.set_pulse_us(engine_module.VICTOR_NEUTRAL_US + 5, command="hold_trim")
+        self._set_load(0.0)
+
+        ok, message = self.engine.start_pull(self.test_id)
+
+        self.assertTrue(ok, message)
+        self.assertFalse(self.engine.preload_hold_active)
+        self.assertEqual(self.engine.preload_hold_trim_us, 0)
+        self.assertIn(self.engine.actuator.last_command, {"up_pull", "down_pull"})
 
     def test_start_rejects_angle_outside_allowed_range(self):
         storage.update_test(self.test_id, form={"angle_degrees": "101"})

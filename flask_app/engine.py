@@ -82,6 +82,11 @@ from config import (
     PRELOAD_AUTO_TIMEOUT_SECONDS,
     PRELOAD_AUTO_TENSION_STAGES,
     PRELOAD_AUTO_TRACE_MAX_ENTRIES,
+    PRELOAD_HOLD_TRIM_DROP_RATE_LBS_PER_SECOND,
+    PRELOAD_HOLD_TRIM_ENABLED,
+    PRELOAD_HOLD_TRIM_INTERVAL_SECONDS,
+    PRELOAD_HOLD_TRIM_MAX_US,
+    PRELOAD_HOLD_TRIM_STEP_US,
     PRELOAD_MAX_LBS,
     PRELOAD_MIN_LBS,
     PRELOAD_STABILITY_SECONDS,
@@ -90,6 +95,7 @@ from config import (
     PULL_TARGET_IN_PER_MIN,
     SAMPLE_RATE_HZ,
     USE_MOCK_HARDWARE,
+    VICTOR_NEUTRAL_US,
 )
 from hardware.actuator import Actuator
 from hardware.loadcell import LoadCell
@@ -115,6 +121,9 @@ class QuadpodEngine:
         self.auto_preload_near_band_seen = False
         self.auto_preload_control_rejects = 0
         self.auto_preload_thread = None
+        self.preload_hold_thread = None
+        self.preload_hold_active = False
+        self.preload_hold_trim_us = 0
         self.state = {
             "current_load": 0.0,
             "raw_load": 0.0,
@@ -171,6 +180,7 @@ class QuadpodEngine:
         with self.lock:
             if self.state["test_running"]:
                 return False, "Cannot jog while a pull test is running."
+            self._stop_preload_hold_locked()
             if speed_percent is not None:
                 self.state["jog_speed_percent"] = max(1, min(100, int(float(speed_percent))))
             speed = self.state["jog_speed_percent"]
@@ -196,6 +206,7 @@ class QuadpodEngine:
                 return False, "Cannot auto tension while a pull test is running."
             if self.state["auto_preload_running"]:
                 return True, "Auto tension is already running."
+            self._stop_preload_hold_locked()
             self._reset_test_session_locked()
             self.auto_preload_trace.clear()
             self._reset_auto_preload_control_locked()
@@ -219,6 +230,7 @@ class QuadpodEngine:
         with self.lock:
             if self.state["test_running"]:
                 return False, "Cannot tare while a pull test is running."
+            self._stop_preload_hold_locked()
             ok = self.load_cell.tare()
             return ok, self.load_cell.last_error
 
@@ -226,6 +238,7 @@ class QuadpodEngine:
         with self.lock:
             if self.state["test_running"]:
                 return False, "Cannot calibrate while a pull test is running."
+            self._stop_preload_hold_locked()
             if known_lbs <= 0:
                 return False, "Known weight must be greater than zero."
             self.load_cell.get_force()
@@ -253,6 +266,7 @@ class QuadpodEngine:
             if gate_errors:
                 return False, "Cannot start pull: " + "; ".join(gate_errors)
 
+            self._stop_preload_hold_locked()
             storage.clear_samples(test_id)
             self.failure_drop_samples = 0
             self.load_history.clear()
@@ -447,6 +461,7 @@ class QuadpodEngine:
         current_speed = 0.0
         last_speed_command = None
         last_update = time.monotonic()
+        hold_should_start = False
         try:
             while time.monotonic() < deadline:
                 self._refresh_auto_preload_load()
@@ -504,6 +519,7 @@ class QuadpodEngine:
                                 drift_stable=self.state.get("auto_preload_drift_stable"),
                                 drift_drop_lbs=self.state.get("auto_preload_drift_drop_lbs"),
                             )
+                            hold_should_start = True
                             break
                         self.state["auto_preload_message"] = "Settling"
                     else:
@@ -568,6 +584,8 @@ class QuadpodEngine:
                 self.state["auto_preload_running"] = False
                 if self.state.get("auto_preload_message", "") == "Ready":
                     self.state["auto_preload_message"] = ""
+                if hold_should_start:
+                    self._start_preload_hold_locked()
                 self._record_auto_preload_trace_locked(
                     "finish",
                     load=self.state.get("current_load"),
@@ -577,6 +595,7 @@ class QuadpodEngine:
     def _auto_preload_pulse_loop(self):
         deadline = time.monotonic() + PRELOAD_AUTO_TIMEOUT_SECONDS
         stable_since = None
+        hold_should_start = False
         try:
             while time.monotonic() < deadline:
                 direction = None
@@ -629,6 +648,7 @@ class QuadpodEngine:
                                     drift_stable=self.state.get("auto_preload_drift_stable"),
                                     drift_drop_lbs=self.state.get("auto_preload_drift_drop_lbs"),
                                 )
+                                hold_should_start = True
                                 break
                             self.state["auto_preload_message"] = "Settling"
                         elif near_band_hold:
@@ -696,6 +716,8 @@ class QuadpodEngine:
                 self.state["auto_preload_running"] = False
                 if self.state.get("auto_preload_message", "") == "Ready":
                     self.state["auto_preload_message"] = ""
+                if hold_should_start:
+                    self._start_preload_hold_locked()
                 self._record_auto_preload_trace_locked(
                     "finish",
                     load=self.state.get("current_load"),
@@ -718,6 +740,88 @@ class QuadpodEngine:
         self.state["auto_preload_drift_stable"] = False
         self.state["auto_preload_drift_drop_lbs"] = 0.0
         self.state["auto_preload_drift_window_s"] = 0.0
+
+    def _start_preload_hold_locked(self):
+        if not PRELOAD_HOLD_TRIM_ENABLED or self.state.get("test_running"):
+            return
+        if self.preload_hold_active:
+            return
+        self.preload_hold_active = True
+        self.preload_hold_trim_us = 0
+        self.preload_hold_thread = threading.Thread(target=self._preload_hold_loop, daemon=True)
+        self.preload_hold_thread.start()
+        self._record_auto_preload_trace_locked(
+            "hold_start",
+            load=self.state.get("current_load"),
+            neutral_us=VICTOR_NEUTRAL_US,
+        )
+
+    def _stop_preload_hold_locked(self):
+        if self.preload_hold_active:
+            self._record_auto_preload_trace_locked(
+                "hold_stop",
+                load=self.state.get("current_load"),
+                trim_us=self.preload_hold_trim_us,
+            )
+        self.preload_hold_active = False
+        self.preload_hold_trim_us = 0
+        self.actuator.stop()
+        self.state["actuator_command"] = self.actuator.last_command
+
+    def _preload_hold_loop(self):
+        while True:
+            time.sleep(max(0.05, PRELOAD_HOLD_TRIM_INTERVAL_SECONDS))
+            self._refresh_auto_preload_load()
+            with self.lock:
+                if (
+                    not self.preload_hold_active
+                    or self.state.get("test_running")
+                    or self.state.get("auto_preload_running")
+                    or self.state.get("auto_preload_sensor_fault")
+                ):
+                    self.actuator.stop()
+                    self.state["actuator_command"] = self.actuator.last_command
+                    self.preload_hold_active = False
+                    return
+                self._preload_hold_update_locked()
+
+    def _preload_hold_update_locked(self):
+        load = float(self.state.get("current_load") or 0.0)
+        rate = self._auto_preload_load_rate_locked()
+        if load < PRELOAD_MIN_LBS or load > PRELOAD_MAX_LBS:
+            self.preload_hold_trim_us = 0
+            self.actuator.stop()
+            self.state["actuator_command"] = self.actuator.last_command
+            self._record_auto_preload_trace_locked(
+                "hold_out_of_band",
+                load=load,
+            )
+            return
+
+        previous_trim = self.preload_hold_trim_us
+        if PRELOAD_MIN_LBS <= load < PRELOAD_TARGET_LBS:
+            if rate <= -PRELOAD_HOLD_TRIM_DROP_RATE_LBS_PER_SECOND or self.preload_hold_trim_us > 0:
+                self.preload_hold_trim_us = min(
+                    max(0, int(PRELOAD_HOLD_TRIM_MAX_US)),
+                    self.preload_hold_trim_us + max(1, int(PRELOAD_HOLD_TRIM_STEP_US)),
+                )
+        else:
+            self.preload_hold_trim_us = max(
+                0,
+                self.preload_hold_trim_us - max(1, int(PRELOAD_HOLD_TRIM_STEP_US)),
+            )
+
+        hold_us = VICTOR_NEUTRAL_US + self.preload_hold_trim_us
+        self.actuator.set_pulse_us(hold_us, command="hold_trim" if self.preload_hold_trim_us else "neutral")
+        self.state["actuator_command"] = self.actuator.last_command
+        if self.preload_hold_trim_us != previous_trim:
+            self._record_auto_preload_trace_locked(
+                "hold_trim",
+                load=load,
+                rate_lbs_per_s=rate,
+                trim_us=self.preload_hold_trim_us,
+                pulse_us=hold_us,
+            )
 
     def _reset_test_session_locked(self):
         self.failure_drop_samples = 0
@@ -1436,6 +1540,7 @@ class QuadpodEngine:
         self.state["stop_reason"] = reason
 
     def _finish_stop_locked(self, reason):
+        self._stop_preload_hold_locked()
         self.actuator.stop()
         self.state["actuator_command"] = self.actuator.last_command
         test_id = self.state.get("active_test_id")
