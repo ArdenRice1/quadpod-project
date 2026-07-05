@@ -4,7 +4,7 @@
 {% block content %}
 <h1 class="page-title">Live Pull - Test {{ test.form.test_number or test.id }}</h1>
 
-<div id="systemStatus" class="status warn">Ready. Stand clear before starting the pull.</div>
+<div id="systemStatus" class="status warn">Ready</div>
 
 <section class="metric">
   <div class="label">Live Tension</div>
@@ -59,11 +59,11 @@
   startBtn.addEventListener("click", () => {
     startBtn.disabled = true;
     reviewLink.hidden = true;
-    setStatus("warn", "Starting pull. Stand clear.");
+    setStatus("warn", "Starting");
     postJson("{{ url_for('api_start_pull') }}", { test_id: {{ test.id }} })
       .then((data) => {
         if (data.ok) {
-          setStatus("warn", data.message || "Pull running. Stand clear.");
+          setStatus("warn", "Running");
         } else {
           startBtn.disabled = false;
           setStatus("bad", data.message || "Pull did not start.");
@@ -77,9 +77,9 @@
 
   stopBtn.addEventListener("click", () => {
     stopBtn.disabled = true;
-    setStatus("warn", "Stopping actuator...");
+    setStatus("warn", "Stopping");
     postJson("{{ url_for('api_stop') }}", { reason: "operator stop" })
-      .then(() => setStatus("good", "Stopped by operator."))
+      .then(() => setStatus("good", "Stopped"))
       .catch((err) => {
         stopBtn.disabled = false;
         setStatus("bad", `Stop command failed: ${err}`);
@@ -103,14 +103,14 @@
           startBtn.disabled = true;
           reviewLink.hidden = true;
           if (data.stop_pending) {
-            setStatus("warn", "Stopping.");
+            setStatus("warn", "Stopping");
           } else {
-            setStatus("warn", "Test running.");
+            setStatus("warn", "Running");
           }
         } else if (data.test_complete && data.active_test_id === {{ test.id }}) {
           startBtn.disabled = false;
           reviewLink.hidden = false;
-          setStatus("good", "Test complete.");
+          setStatus("good", "Complete");
         } else {
           startBtn.disabled = false;
         }

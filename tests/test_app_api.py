@@ -239,6 +239,30 @@ class AppApiTests(unittest.TestCase):
         self.assertIn("switch_network.py", command[1])
         self.assertEqual(command[-5:], ["wifi", "--ssid", "Office WiFi", "--password", "secret-password"])
 
+    def test_network_status_includes_saved_wifi_profiles(self):
+        def fake_run(command, **kwargs):
+            joined = " ".join(command)
+            if "connection show --active" in joined:
+                return SimpleNamespace(returncode=0, stdout="Office WiFi:802-11-wireless:wlan0\n", stderr="")
+            if "connection show" in joined:
+                return SimpleNamespace(
+                    returncode=0,
+                    stdout="Office WiFi:802-11-wireless\nquadpod-hotspot:802-11-wireless\n",
+                    stderr="",
+                )
+            if "dev wifi list" in joined:
+                return SimpleNamespace(returncode=0, stdout="Office WiFi:88:WPA2\nGuest:55:WPA2\n", stderr="")
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+        with patch.object(app_module.subprocess, "run", side_effect=fake_run):
+            status = app_module._network_status()
+
+        self.assertEqual(status["saved_wifi"], [{"ssid": "Office WiFi"}])
+        office = next(wifi for wifi in status["wifi"] if wifi["ssid"] == "Office WiFi")
+        guest = next(wifi for wifi in status["wifi"] if wifi["ssid"] == "Guest")
+        self.assertTrue(office["saved"])
+        self.assertFalse(guest["saved"])
+
     def test_hotspot_switch_returns_transition_before_scheduling_command(self):
         with self.client.session_transaction() as session:
             session["csrf_token"] = "network-test-token"

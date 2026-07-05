@@ -21,14 +21,15 @@
   <div class="tool-panel-body">
     <div class="grid">
       <div class="item"><strong>App URL:</strong><br>{{ public_url }}<br><span class="muted small">Fallback http://{{ hotspot_ip }}</span></div>
-      <div class="item"><strong>Internet:</strong><br><span id="internetStatus">Open panel to check</span></div>
-      <div class="item full"><strong>Active Connection:</strong><br><span id="activeConnection">Open panel to check</span></div>
+      <div class="item"><strong>Internet:</strong><br><span id="internetStatus">Not checked</span></div>
+      <div class="item full"><strong>Active Connection:</strong><br><span id="activeConnection">Not checked</span></div>
     </div>
     <form class="network-switch-form" method="POST" action="{{ url_for('setup_network') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <div class="grid">
-        <div class="field"><label>Wi-Fi SSID</label><input name="ssid" list="wifiNetworks" placeholder="Network name" required></div>
-        <div class="field"><label>Password</label><input name="password" type="password" placeholder="Wi-Fi password"></div>
+        <div class="field"><label>Saved Network</label><select id="savedWifi"><option value="">Select saved network</option></select></div>
+        <div class="field"><label>Wi-Fi SSID</label><input id="wifiSsid" name="ssid" list="wifiNetworks" placeholder="Network name" required></div>
+        <div class="field"><label>Password</label><input id="wifiPassword" name="password" type="password" placeholder="Leave blank for saved network"></div>
       </div>
       <datalist id="wifiNetworks"></datalist>
       <button class="full-width secondary" type="submit">Switch to Wi-Fi</button>
@@ -52,7 +53,7 @@
       <div class="value"><span id="liveLoad">0.00</span></div>
       <div class="unit">lbs</div>
     </div>
-    <div id="calibrationStatus" class="status">Tare with no load, place a known weight, then apply runtime calibration.</div>
+    <div id="calibrationStatus" class="status">Ready</div>
     <div class="btnrow">
       <button class="warn" type="button" id="tareBtn">Tare</button>
     </div>
@@ -101,7 +102,7 @@
       body: JSON.stringify({ known_lbs: known })
     })
       .then((res) => res.json())
-      .then((data) => setCalibrationStatus(data.ok ? "good" : "bad", data.message || "Calibration command finished."));
+      .then((data) => setCalibrationStatus(data.ok ? "good" : "bad", data.ok ? "Calibration updated" : (data.message || "Calibration failed")));
   });
 
   function pollLoad() {
@@ -131,10 +132,16 @@
         document.getElementById("internetStatus").textContent = data.internet;
         document.getElementById("activeConnection").textContent = data.active;
         const list = document.getElementById("wifiNetworks");
+        const saved = document.getElementById("savedWifi");
+        list.replaceChildren();
+        saved.replaceChildren(new Option("Select saved network", ""));
+        (data.saved_wifi || []).forEach((profile) => {
+          saved.appendChild(new Option(profile.ssid, profile.ssid));
+        });
         data.wifi.forEach((wifi) => {
           const option = document.createElement("option");
           option.value = wifi.ssid;
-          option.label = `${wifi.ssid} ${wifi.signal}% ${wifi.security}`;
+          option.label = `${wifi.ssid} ${wifi.signal}% ${wifi.saved ? "saved" : wifi.security}`;
           list.appendChild(option);
         });
         if (data.message) {
@@ -149,8 +156,14 @@
         const message = document.getElementById("networkMessage");
         message.hidden = false;
         message.className = "status bad";
-        message.textContent = `Network status failed: ${error}`;
+        message.textContent = "Network status failed.";
       });
+  });
+
+  document.getElementById("savedWifi").addEventListener("change", (event) => {
+    if (!event.target.value) return;
+    document.getElementById("wifiSsid").value = event.target.value;
+    document.getElementById("wifiPassword").value = "";
   });
 
   document.querySelectorAll(".network-switch-form").forEach((form) => {
@@ -161,7 +174,7 @@
       const message = document.getElementById("networkMessage");
       message.hidden = false;
       message.className = "status warn";
-      message.textContent = "Network change started. Wait for Quadpod before tapping again.";
+      message.textContent = "Network change started.";
     });
   });
 </script>

@@ -6,6 +6,7 @@ import time
 
 
 HOTSPOT_PROFILES = ["quadpod-hotspot", "QUADPOD_WAP"]
+WIFI_CONNECT_ATTEMPTS = 3
 
 
 def run(command, check=True):
@@ -58,6 +59,21 @@ def wifi_connect_command(ssid, password):
     return command
 
 
+def bring_up_wifi_profile(ssid):
+    last_error = None
+    for attempt in range(1, WIFI_CONNECT_ATTEMPTS + 1):
+        try:
+            run(["nmcli", "connection", "up", ssid, "ifname", "wlan0"])
+            return
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+            last_error = exc
+            run(["nmcli", "radio", "wifi", "on"], check=False)
+            set_radio_powersave_off()
+            time.sleep(min(1.5 * attempt, 4.0))
+    if last_error:
+        raise last_error
+
+
 def malformed_wifi_profile(exc):
     text = f"{getattr(exc, 'stdout', '')}\n{getattr(exc, 'stderr', '')}"
     return "802-11-wireless-security.key-mgmt" in text or "wifi-sec.key-mgmt" in text
@@ -85,7 +101,7 @@ def switch_to_wifi(ssid, password):
                     run(["nmcli", "connection", "modify", ssid, "wifi-sec.key-mgmt", "wpa-psk"])
                     run(["nmcli", "connection", "modify", ssid, "wifi-sec.psk", password])
                 disable_wifi_powersave(ssid)
-                run(["nmcli", "connection", "up", ssid, "ifname", "wlan0"])
+                bring_up_wifi_profile(ssid)
             except subprocess.CalledProcessError as exc:
                 if not malformed_wifi_profile(exc):
                     raise
@@ -95,6 +111,7 @@ def switch_to_wifi(ssid, password):
             disable_wifi_powersave(ssid)
         run(["nmcli", "connection", "modify", ssid, "connection.autoconnect", "yes"])
         run(["nmcli", "connection", "modify", ssid, "connection.autoconnect-priority", "100"])
+        run(["nmcli", "connection", "modify", ssid, "connection.permissions", ""], check=False)
         set_radio_powersave_off()
         restart_discovery()
         print(f"Connected to Wi-Fi profile: {ssid}")

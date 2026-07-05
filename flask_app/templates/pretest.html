@@ -6,7 +6,7 @@
 
 <section class="section">
   <h2>Rig Positioning</h2>
-  <div id="preloadStatus" class="status warn">Reading load cell...</div>
+  <div id="preloadStatus" class="status warn">Auto Tension</div>
   <div class="metric">
     <div class="label">Current Load</div>
     <div class="value"><span id="liveLoad">0.00</span></div>
@@ -132,7 +132,7 @@
       .then((res) => res.json())
       .then((data) => {
         preloadStatus.className = data.ok ? "status warn" : "status bad";
-        preloadStatus.textContent = data.message || "Auto tension command sent.";
+        preloadStatus.textContent = data.ok ? "Auto Tension" : "Check tension";
       });
   });
 
@@ -151,15 +151,15 @@
         const needsAction = autoMessage === "Check tension";
         if (data.auto_preload_running || needsAction) {
           preloadStatus.className = needsAction ? "status bad" : "status warn";
-          preloadStatus.textContent = needsAction ? "Check tension." : (autoMessage || "Auto Tension.");
+          preloadStatus.textContent = needsAction ? "Check tension" : "Auto Tension";
           return;
         }
         if (data.preload_ready) {
           preloadStatus.className = "status good";
-          preloadStatus.textContent = "Ready.";
+          preloadStatus.textContent = "Ready";
         } else {
           preloadStatus.className = "status warn";
-          preloadStatus.textContent = "Use Auto Tension.";
+          preloadStatus.textContent = "Auto Tension";
         }
       });
   }, 250);

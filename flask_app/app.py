@@ -548,6 +548,7 @@ def _network_status():
         "active": "Unavailable",
         "internet": "Unknown",
         "wifi": [],
+        "saved_wifi": [],
         "message": "",
     }
     try:
@@ -562,6 +563,8 @@ def _network_status():
             status["active"] = active.stdout.strip() or "No active connection"
         else:
             status["message"] = active.stderr.strip() or "NetworkManager status unavailable"
+
+        saved_wifi = _saved_wifi_profiles()
 
         wifi = subprocess.run(
             ["nmcli", "-t", "-f", "SSID,SIGNAL,SECURITY", "dev", "wifi", "list", "--rescan", "no"],
@@ -580,7 +583,9 @@ def _network_status():
                 seen.add(ssid)
                 signal = parts[1].strip() if len(parts) > 1 else ""
                 security = parts[2].strip() if len(parts) > 2 else ""
-                status["wifi"].append({"ssid": ssid, "signal": signal, "security": security})
+                status["wifi"].append({"ssid": ssid, "signal": signal, "security": security, "saved": ssid in saved_wifi})
+        for ssid in sorted(saved_wifi):
+            status["saved_wifi"].append({"ssid": ssid})
     except (OSError, subprocess.SubprocessError) as exc:
         status["message"] = f"Network tools unavailable: {exc}"
 
@@ -596,6 +601,28 @@ def _network_status():
     except (OSError, subprocess.SubprocessError):
         status["internet"] = "Unknown"
     return status
+
+
+def _saved_wifi_profiles():
+    saved = set()
+    result = subprocess.run(
+        ["nmcli", "-t", "-f", "NAME,TYPE", "connection", "show"],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=5,
+    )
+    if result.returncode != 0:
+        return saved
+    for line in result.stdout.splitlines():
+        parts = line.split(":")
+        if len(parts) < 2:
+            continue
+        name = parts[0].strip()
+        kind = parts[1].strip()
+        if kind == "802-11-wireless" and name and name not in {"quadpod-hotspot", "QUADPOD_WAP"}:
+            saved.add(name)
+    return saved
 
 
 def _power_status():
