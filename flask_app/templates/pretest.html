@@ -98,6 +98,7 @@
   const liveLoad = document.getElementById("liveLoad");
   const preloadStatus = document.getElementById("preloadStatus");
   const jogSpeed = document.getElementById("jogSpeed");
+  const tareBtn = document.getElementById("tareBtn");
 
   function jog(action) {
     return fetch("{{ url_for('api_jog') }}", {
@@ -136,7 +137,7 @@
       });
   });
 
-  document.getElementById("tareBtn").addEventListener("click", () => {
+  tareBtn.addEventListener("click", () => {
     fetch("{{ url_for('api_tare') }}", { method: "POST", headers: quadpodJsonHeaders() });
   });
 
@@ -147,6 +148,7 @@
       .then((res) => res.json())
       .then((data) => {
         liveLoad.textContent = data.current_load.toFixed(2);
+        tareBtn.disabled = Boolean(data.auto_preload_running || data.test_running);
         const autoMessage = data.auto_preload_message || "";
         const needsAction = autoMessage === "Check tension";
         if (data.auto_preload_running || needsAction) {

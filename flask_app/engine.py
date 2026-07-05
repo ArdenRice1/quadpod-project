@@ -230,6 +230,8 @@ class QuadpodEngine:
         with self.lock:
             if self.state["test_running"]:
                 return False, "Cannot tare while a pull test is running."
+            if self.state["auto_preload_running"]:
+                return False, "Cannot tare while Auto Tension is running."
             self._stop_preload_hold_locked()
             ok = self.load_cell.tare()
             return ok, self.load_cell.last_error
@@ -238,6 +240,8 @@ class QuadpodEngine:
         with self.lock:
             if self.state["test_running"]:
                 return False, "Cannot calibrate while a pull test is running."
+            if self.state["auto_preload_running"]:
+                return False, "Cannot calibrate while Auto Tension is running."
             self._stop_preload_hold_locked()
             if known_lbs <= 0:
                 return False, "Known weight must be greater than zero."

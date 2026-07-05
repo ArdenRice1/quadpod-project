@@ -106,6 +106,18 @@ class ControlGateTests(unittest.TestCase):
                 self.assertTrue(ok, message)
                 self.assertTrue(self.engine.state["test_running"])
 
+    def test_tare_rejects_while_auto_preload_running(self):
+        self.engine.state["auto_preload_running"] = True
+        ok, message = self.engine.tare()
+        self.assertFalse(ok)
+        self.assertIn("Auto Tension", message)
+
+    def test_calibrate_rejects_while_auto_preload_running(self):
+        self.engine.state["auto_preload_running"] = True
+        ok, message = self.engine.calibrate_load_cell(10.0)
+        self.assertFalse(ok)
+        self.assertIn("Auto Tension", message)
+
     def test_start_pull_clears_samples_when_restarting_test_record(self):
         storage.add_sample(self.test_id, 0.0, 10.0)
         storage.add_sample(self.test_id, 0.5, 12.0)
