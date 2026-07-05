@@ -1,6 +1,7 @@
 import datetime as dt
 import os
 import secrets
+import shutil
 import subprocess
 import sys
 import threading
@@ -364,6 +365,20 @@ def copy_job_usb(job_id):
     except Exception as exc:
         storage.add_event("USB/export copy failed", level="error", job_id=job_id, data={"error": str(exc)})
         return redirect(url_for("archive", copy_status="error", copy_error=str(exc)), code=303)
+
+
+@app.route("/job/<int:job_id>/delete", methods=["POST"])
+def delete_job(job_id):
+    if request.form.get("confirm", "") != "yes":
+        return redirect(url_for("archive"), code=303)
+    if not storage.get_job(job_id):
+        return redirect(url_for("archive"), code=303)
+    _delete_job_artifacts(job_id)
+    storage.delete_job(job_id)
+    if session.get("job_id") == job_id:
+        session.pop("job_id", None)
+        session.pop("test_id", None)
+    return redirect(url_for("archive"), code=303)
 
 
 @app.route("/job/<int:job_id>/email", methods=["POST"])
@@ -771,6 +786,27 @@ def _run_network_command(command, label, event_data):
 def _network_switch_command(mode, *extra):
     script = Path(__file__).resolve().parents[1] / "scripts" / "switch_network.py"
     return [sys.executable, str(script), "--delay", "0", mode, *extra]
+
+
+def _delete_job_artifacts(job_id):
+    photo_dir = Path(PHOTO_DIR)
+    if photo_dir.exists():
+        for path in photo_dir.glob(f"job_{job_id}_*"):
+            if path.is_file():
+                path.unlink(missing_ok=True)
+
+    export_dir = Path(EXPORT_DIR)
+    if not export_dir.exists():
+        return
+    audit_path = export_dir / f"job_{job_id}_audit.json"
+    if audit_path.is_file():
+        audit_path.unlink(missing_ok=True)
+    job = storage.get_job(job_id)
+    if not job:
+        return
+    local_copy_folder = export_dir / "usb_copy" / exporter._job_folder_name(job)
+    if local_copy_folder.exists() and local_copy_folder.is_dir():
+        shutil.rmtree(local_copy_folder)
 
 
 def _save_photo(job_id, test_number, file_storage):

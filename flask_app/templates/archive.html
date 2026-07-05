@@ -55,6 +55,17 @@
         <form method="POST" action="{{ url_for('copy_job_usb', job_id=job.id) }}">
           <button class="full-width secondary" type="submit">Copy Job Folder to USB/Exports</button>
         </form>
+        <button class="full-width danger deleteJobOpen" type="button">Delete Job From Pi</button>
+        <div class="status warn deleteJobConfirm" hidden>
+          <div>Don't forget to save or export files before deleting this job.</div>
+          <div class="btnrow">
+            <form method="POST" action="{{ url_for('delete_job', job_id=job.id) }}">
+              <input type="hidden" name="confirm" value="yes">
+              <button class="danger" type="submit">Yes</button>
+            </form>
+            <button class="secondary deleteJobCancel" type="button">Cancel</button>
+          </div>
+        </div>
       </div>
     {% else %}
       <div class="status warn">No jobs found.</div>
@@ -99,5 +110,19 @@
     });
   });
 
+  document.querySelectorAll(".deleteJobOpen").forEach((button) => {
+    button.addEventListener("click", () => {
+      const panel = button.parentElement.querySelector(".deleteJobConfirm");
+      panel.hidden = false;
+      button.hidden = true;
+    });
+  });
+  document.querySelectorAll(".deleteJobCancel").forEach((button) => {
+    button.addEventListener("click", () => {
+      const panel = button.closest(".deleteJobConfirm");
+      panel.hidden = true;
+      panel.parentElement.querySelector(".deleteJobOpen").hidden = false;
+    });
+  });
 </script>
 {% endblock %}

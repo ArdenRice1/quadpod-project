@@ -256,6 +256,33 @@ class AppApiTests(unittest.TestCase):
         text = final.get_data(as_text=True)
         self.assertIn("Job folder copied to", text)
 
+    def test_delete_job_requires_confirmation_and_removes_job(self):
+        job_id = storage.create_job({"project_name": "Delete Job", "job_number": "DEL-1"})
+        test_id = storage.create_test(job_id, {"test_number": "1"})
+        storage.add_sample(test_id, 0.0, 10.0)
+        with self.client.session_transaction() as session:
+            session["job_id"] = job_id
+            session["test_id"] = test_id
+
+        archive_text = self.client.get("/archive").get_data(as_text=True)
+        self.assertIn("Don't forget to save or export files before deleting this job.", archive_text)
+        self.assertIn(">Yes<", archive_text)
+        self.assertIn(">Cancel<", archive_text)
+
+        rejected = self.client.post(f"/job/{job_id}/delete", data={}, follow_redirects=False)
+        self.assertEqual(rejected.status_code, 303)
+        self.assertIsNotNone(storage.get_job(job_id))
+
+        response = self.client.post(f"/job/{job_id}/delete", data={"confirm": "yes"}, follow_redirects=False)
+
+        self.assertEqual(response.status_code, 303)
+        self.assertIsNone(storage.get_job(job_id))
+        self.assertEqual(storage.list_tests(job_id), [])
+        self.assertEqual(storage.list_samples(test_id), [])
+        with self.client.session_transaction() as session:
+            self.assertNotIn("job_id", session)
+            self.assertNotIn("test_id", session)
+
     def test_wifi_switch_returns_transition_before_scheduling_command(self):
         with self.client.session_transaction() as session:
             session["csrf_token"] = "network-test-token"

@@ -244,6 +244,21 @@ def get_job(job_id):
     return _job_from_row(row)
 
 
+def delete_job(job_id):
+    tests = list_tests(job_id)
+    test_ids = [test["id"] for test in tests]
+    with db() as conn:
+        if test_ids:
+            placeholders = ",".join("?" for _ in test_ids)
+            conn.execute(f"DELETE FROM force_samples WHERE test_id IN ({placeholders})", test_ids)
+            conn.execute(f"DELETE FROM events WHERE test_id IN ({placeholders})", test_ids)
+        conn.execute("DELETE FROM events WHERE job_id=?", (job_id,))
+        conn.execute("DELETE FROM email_queue WHERE job_id=?", (job_id,))
+        conn.execute("DELETE FROM tests WHERE job_id=?", (job_id,))
+        cur = conn.execute("DELETE FROM jobs WHERE id=?", (job_id,))
+    return cur.rowcount > 0
+
+
 def list_jobs():
     with db() as conn:
         rows = conn.execute("SELECT * FROM jobs ORDER BY id DESC").fetchall()

@@ -188,6 +188,18 @@ class StorageExportTests(unittest.TestCase):
         self.assertTrue((Path(folder) / "tests" / "USB_Job_USB-001_Test-1.csv").exists())
         self.assertTrue((Path(folder) / "tests" / "USB_Job_USB-001_Test-1_force_time.svg").exists())
 
+    def test_job_folder_export_replaces_previous_same_named_folder(self):
+        job_id = storage.create_job({"project_name": "Overwrite Job", "job_number": "OW-1"})
+        storage.create_test(job_id, {"test_number": "1"})
+        folder = Path(exporter.export_job_folder(job_id, self.root / "usb"))
+        stale_file = folder / "tests" / "stale.csv"
+        stale_file.write_text("old", encoding="utf-8")
+
+        folder = Path(exporter.export_job_folder(job_id, self.root / "usb"))
+
+        self.assertFalse(stale_file.exists())
+        self.assertTrue((folder / "Overwrite_Job_OW-1_ALL.csv").exists())
+
     def test_usb_root_auto_mounts_before_falling_back_to_local_exports(self):
         mounted = self.root / "mounted-usb"
 

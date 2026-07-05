@@ -393,6 +393,8 @@ def export_job_folder(job_id, root_dir):
         raise ValueError("Job not found")
     root = Path(root_dir)
     folder = root / _job_folder_name(job)
+    if folder.exists():
+        shutil.rmtree(folder)
     tests_dir = folder / "tests"
     photos_dir = folder / "photos"
     tests_dir.mkdir(parents=True, exist_ok=True)
