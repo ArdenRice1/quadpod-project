@@ -36,6 +36,9 @@ class ControlGateTests(unittest.TestCase):
         self.original_control_max_transient_rejects = engine_module.PRELOAD_AUTO_CONTROL_MAX_TRANSIENT_REJECTS
         self.original_stop_during_load_read = engine_module.PRELOAD_AUTO_STOP_DURING_LOAD_READ
         self.original_discard_settle = engine_module.PRELOAD_AUTO_CONTROL_DISCARD_SETTLE_SECONDS
+        self.original_plausibility_enabled = engine_module.PRELOAD_AUTO_PLAUSIBILITY_ENABLED
+        self.original_plausibility_base = engine_module.PRELOAD_AUTO_PLAUSIBILITY_BASE_DELTA_LBS
+        self.original_plausibility_rate = engine_module.PRELOAD_AUTO_PLAUSIBILITY_LBS_PER_SECOND_AT_100
         engine_module.PRELOAD_AUTO_DRIFT_WINDOW_SECONDS = 5.0
         engine_module.PRELOAD_AUTO_DIRECT_LOAD_READ = False
         self.job_id = storage.create_job(self._job_form())
@@ -56,6 +59,9 @@ class ControlGateTests(unittest.TestCase):
         engine_module.PRELOAD_AUTO_CONTROL_MAX_TRANSIENT_REJECTS = self.original_control_max_transient_rejects
         engine_module.PRELOAD_AUTO_STOP_DURING_LOAD_READ = self.original_stop_during_load_read
         engine_module.PRELOAD_AUTO_CONTROL_DISCARD_SETTLE_SECONDS = self.original_discard_settle
+        engine_module.PRELOAD_AUTO_PLAUSIBILITY_ENABLED = self.original_plausibility_enabled
+        engine_module.PRELOAD_AUTO_PLAUSIBILITY_BASE_DELTA_LBS = self.original_plausibility_base
+        engine_module.PRELOAD_AUTO_PLAUSIBILITY_LBS_PER_SECOND_AT_100 = self.original_plausibility_rate
         self.tempdir.cleanup()
 
     def _job_form(self, **updates):
@@ -724,6 +730,46 @@ class ControlGateTests(unittest.TestCase):
         load = self.engine._refresh_auto_preload_load()
 
         self.assertLess(load, engine_module.PRELOAD_MIN_LBS)
+        self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "control_load_confirmed")
+
+    def test_auto_preload_plausibility_gate_rejects_impossible_control_jump(self):
+        engine_module.PRELOAD_AUTO_DIRECT_LOAD_READ = True
+        engine_module.PRELOAD_AUTO_PLAUSIBILITY_ENABLED = True
+        engine_module.PRELOAD_AUTO_PLAUSIBILITY_BASE_DELTA_LBS = 0.35
+        engine_module.PRELOAD_AUTO_PLAUSIBILITY_LBS_PER_SECOND_AT_100 = 18.0
+        self.engine.auto_preload_control_last_load = -6.768
+        self.engine.auto_preload_control_last_time = time.monotonic() - 0.2
+        self.engine.state["current_load"] = -6.768
+        readings = iter([-1.0, -1.0, -1.0, -1.0, -1.0])
+        self.engine.load_cell.get_control_force = lambda: next(readings)
+
+        load = self.engine._refresh_auto_preload_load(
+            control_speed_percent=15,
+            control_direction=True,
+        )
+
+        self.assertEqual(load, -6.768)
+        self.assertEqual(self.engine.state["current_load"], -6.768)
+        self.assertGreater(self.engine.auto_preload_control_hold_until, time.monotonic())
+        self.assertIn("control_load_implausible", [entry["event"] for entry in self.engine.auto_preload_trace])
+
+    def test_auto_preload_plausibility_gate_accepts_possible_control_change(self):
+        engine_module.PRELOAD_AUTO_DIRECT_LOAD_READ = True
+        engine_module.PRELOAD_AUTO_PLAUSIBILITY_ENABLED = True
+        engine_module.PRELOAD_AUTO_PLAUSIBILITY_BASE_DELTA_LBS = 0.35
+        engine_module.PRELOAD_AUTO_PLAUSIBILITY_LBS_PER_SECOND_AT_100 = 18.0
+        self.engine.auto_preload_control_last_load = -2.765
+        self.engine.auto_preload_control_last_time = time.monotonic() - 0.6
+        self.engine.state["current_load"] = -2.765
+        readings = iter([-1.0, -1.0, -1.0, -1.0, -1.0])
+        self.engine.load_cell.get_control_force = lambda: next(readings)
+
+        load = self.engine._refresh_auto_preload_load(
+            control_speed_percent=15,
+            control_direction=True,
+        )
+
+        self.assertAlmostEqual(load, -1.0, places=2)
         self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "control_load_confirmed")
 
     def test_auto_preload_pulse_stops_on_inconsistent_sensor_spike(self):
