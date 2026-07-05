@@ -1080,7 +1080,7 @@ class QuadpodEngine:
         return float(load) + max(0.0, float(rate)) * PRELOAD_AUTO_PREDICT_LOOKAHEAD_SECONDS + speed_margin
 
     def _auto_preload_continuous_should_brake_locked(self, load, rate, predicted_load):
-        target_lbs = min(PRELOAD_AUTO_PREDICT_STOP_LBS, PRELOAD_AUTO_TARGET_LBS)
+        target_lbs = min(PRELOAD_AUTO_PREDICT_STOP_LBS, PRELOAD_AUTO_TARGET_LBS, PRELOAD_MIN_LBS)
         if predicted_load >= target_lbs:
             self.auto_preload_near_band_seen = True
             return True

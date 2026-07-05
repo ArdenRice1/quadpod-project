@@ -345,6 +345,15 @@ class ControlGateTests(unittest.TestCase):
         self.assertTrue(should_brake)
         self.assertTrue(self.engine.auto_preload_near_band_seen)
 
+    def test_auto_preload_continuous_brakes_at_bottom_of_allowed_band(self):
+        should_brake = self.engine._auto_preload_continuous_should_brake_locked(
+            engine_module.PRELOAD_MIN_LBS - 0.5,
+            1.0,
+            engine_module.PRELOAD_MIN_LBS + 0.001,
+        )
+
+        self.assertTrue(should_brake)
+
     def test_auto_preload_continuous_does_not_wait_for_zero_to_brake(self):
         should_brake = self.engine._auto_preload_continuous_should_brake_locked(
             engine_module.PRELOAD_AUTO_TARGET_LBS - 0.05,
