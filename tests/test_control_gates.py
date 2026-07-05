@@ -106,6 +106,38 @@ class ControlGateTests(unittest.TestCase):
                 self.assertTrue(ok, message)
                 self.assertTrue(self.engine.state["test_running"])
 
+    def test_start_accepts_small_drift_after_auto_preload_ready_latch(self):
+        self.engine._set_preload_ready_latch_locked(0.0)
+        self._set_load(engine_module.PRELOAD_MIN_LBS - 0.05)
+
+        ok, message = self.engine.start_pull(self.test_id)
+
+        self.assertTrue(ok, message)
+        self.assertTrue(self.engine.state["test_running"])
+
+    def test_start_rejects_drift_outside_ready_latch_margin(self):
+        self.engine._set_preload_ready_latch_locked(0.0)
+        self._set_load(engine_module.PRELOAD_MIN_LBS - engine_module.PRELOAD_READY_LATCH_MARGIN_LBS - 0.01)
+
+        ok, message = self.engine.start_pull(self.test_id)
+
+        self.assertFalse(ok)
+        self.assertIn("tension", message)
+
+    def test_preload_ready_stays_latched_for_small_drift_after_auto_preload(self):
+        self.engine._set_preload_ready_latch_locked(0.0)
+        self.engine._set_load_state_locked(engine_module.PRELOAD_MIN_LBS - 0.05, 123.0)
+
+        self.assertTrue(self.engine.state["preload_ready"])
+        self.assertTrue(self.engine.state["preload_ready_latched"])
+
+    def test_jog_clears_preload_ready_latch(self):
+        self.engine._set_preload_ready_latch_locked(0.0)
+
+        self.engine.jog("up")
+
+        self.assertFalse(self.engine.state["preload_ready_latched"])
+
     def test_tare_rejects_while_auto_preload_running(self):
         self.engine.state["auto_preload_running"] = True
         ok, message = self.engine.tare()

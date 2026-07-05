@@ -91,6 +91,7 @@ from config import (
     PRELOAD_HOLD_TRIM_STEP_US,
     PRELOAD_MAX_LBS,
     PRELOAD_MIN_LBS,
+    PRELOAD_READY_LATCH_MARGIN_LBS,
     PRELOAD_STABILITY_SECONDS,
     PRELOAD_TARGET_LBS,
     PRELOAD_TOLERANCE_LBS,
@@ -133,6 +134,7 @@ class QuadpodEngine:
             "raw_load": 0.0,
             "peak_load": 0.0,
             "preload_ready": False,
+            "preload_ready_latched": False,
             "preload_stable": False,
             "test_running": False,
             "test_complete": False,
@@ -184,6 +186,8 @@ class QuadpodEngine:
         with self.lock:
             if self.state["test_running"]:
                 return False, "Cannot jog while a pull test is running."
+            if action in {"up", "down"}:
+                self._clear_preload_ready_latch_locked()
             self._stop_preload_hold_locked()
             if speed_percent is not None:
                 self.state["jog_speed_percent"] = max(1, min(100, int(float(speed_percent))))
@@ -212,6 +216,7 @@ class QuadpodEngine:
                 return True, "Auto tension is already running."
             self._stop_preload_hold_locked()
             self._reset_test_session_locked()
+            self._clear_preload_ready_latch_locked()
             self.auto_preload_trace.clear()
             self._reset_auto_preload_control_locked()
             self.auto_preload_cancel_requested = False
@@ -237,6 +242,7 @@ class QuadpodEngine:
                 return False, "Cannot tare while a pull test is running."
             if self.state["auto_preload_running"]:
                 return False, "Cannot tare while Auto Tension is running."
+            self._clear_preload_ready_latch_locked()
             self._stop_preload_hold_locked()
             ok = self.load_cell.tare()
             return ok, self.load_cell.last_error
@@ -247,6 +253,7 @@ class QuadpodEngine:
                 return False, "Cannot calibrate while a pull test is running."
             if self.state["auto_preload_running"]:
                 return False, "Cannot calibrate while Auto Tension is running."
+            self._clear_preload_ready_latch_locked()
             self._stop_preload_hold_locked()
             if known_lbs <= 0:
                 return False, "Known weight must be greater than zero."
@@ -276,6 +283,7 @@ class QuadpodEngine:
                 return False, "Cannot start pull: " + "; ".join(gate_errors)
 
             self._stop_preload_hold_locked()
+            self._clear_preload_ready_latch_locked()
             storage.clear_samples(test_id)
             self.failure_drop_samples = 0
             self.load_history.clear()
@@ -330,7 +338,7 @@ class QuadpodEngine:
 
     def _start_gate_errors_locked(self, test, load):
         errors = []
-        if load < PRELOAD_MIN_LBS or load > PRELOAD_MAX_LBS:
+        if not self._preload_start_allowed_locked(load):
             errors.append(f"tension must be {PRELOAD_MIN_LBS:.1f}-{PRELOAD_MAX_LBS:.1f} lb")
 
         load_health = self.load_cell.health()
@@ -532,6 +540,8 @@ class QuadpodEngine:
                         ready = self._auto_preload_ready_locked()
                         if now - stable_since >= PRELOAD_AUTO_IN_BAND_END_SECONDS:
                             self.state["auto_preload_message"] = "Ready" if ready else ""
+                            if ready:
+                                self._set_preload_ready_latch_locked(load)
                             self._record_auto_preload_trace_locked(
                                 "in_band_complete",
                                 load=load,
@@ -667,6 +677,8 @@ class QuadpodEngine:
                                 stable_since = now
                             if now - stable_since >= PRELOAD_AUTO_IN_BAND_END_SECONDS:
                                 self.state["auto_preload_message"] = "Ready" if ready else ""
+                                if ready:
+                                    self._set_preload_ready_latch_locked(load)
                                 self._record_auto_preload_trace_locked(
                                     "in_band_complete",
                                     load=load,
@@ -1491,7 +1503,7 @@ class QuadpodEngine:
         self.state["raw_load"] = raw_counts
         self.state["display_load"] = self._smooth_display_load_locked(load)
         self._record_load_locked(load)
-        self.state["preload_ready"] = PRELOAD_MIN_LBS <= load <= PRELOAD_MAX_LBS
+        self.state["preload_ready"] = self._preload_start_allowed_locked(load)
         self.state["preload_stable"] = self.state["preload_ready"] and self._load_stable_locked()
 
     def _smooth_display_load_locked(self, load):
@@ -1504,6 +1516,31 @@ class QuadpodEngine:
             return round(load, 3)
         alpha = max(0.0, min(1.0, float(LOADCELL_DISPLAY_ALPHA)))
         return round(previous + ((load - previous) * alpha), 3)
+
+    def _preload_start_allowed_locked(self, load):
+        load = float(load)
+        if PRELOAD_MIN_LBS <= load <= PRELOAD_MAX_LBS:
+            return True
+        return self._preload_ready_latch_allows_load_locked(load)
+
+    def _preload_ready_latch_allows_load_locked(self, load):
+        if not self.state.get("preload_ready_latched"):
+            return False
+        margin = max(0.0, float(PRELOAD_READY_LATCH_MARGIN_LBS))
+        return PRELOAD_MIN_LBS - margin <= float(load) <= PRELOAD_MAX_LBS + margin
+
+    def _set_preload_ready_latch_locked(self, load):
+        self.state["preload_ready_latched"] = True
+        self._record_auto_preload_trace_locked(
+            "ready_latched",
+            load=load,
+            min_lbs=PRELOAD_MIN_LBS,
+            max_lbs=PRELOAD_MAX_LBS,
+            margin_lbs=PRELOAD_READY_LATCH_MARGIN_LBS,
+        )
+
+    def _clear_preload_ready_latch_locked(self):
+        self.state["preload_ready_latched"] = False
 
     def _record_auto_preload_trace_locked(self, event, **data):
         entry = {"t": round(time.monotonic(), 4), "event": event}
