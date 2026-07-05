@@ -1820,9 +1820,20 @@ class QuadpodEngine:
         first_time, first_value = samples[0]
         last_time, last_value = samples[-1]
         elapsed = last_time - first_time
-        if elapsed <= 0:
-            return 0.0
-        return (last_value - first_value) / elapsed
+        window_rate = 0.0
+        if elapsed > 0:
+            window_rate = (last_value - first_value) / elapsed
+
+        # Auto Tension is safer when it remembers the fastest recent upward
+        # trend. A short stop can make the broad window look flat while the
+        # actuator/load path is still coasting upward under tension.
+        fastest_rise = window_rate
+        for (prev_time, prev_value), (sample_time, value) in zip(samples, samples[1:]):
+            sample_elapsed = sample_time - prev_time
+            if sample_elapsed <= 0:
+                continue
+            fastest_rise = max(fastest_rise, (value - prev_value) / sample_elapsed)
+        return fastest_rise
 
     def _auto_preload_ready_locked(self):
         short_stable = self._auto_preload_load_stable_locked()

@@ -315,6 +315,18 @@ class ControlGateTests(unittest.TestCase):
 
         self.assertLess(fast_rise_speed, slow_rise_speed)
 
+    def test_auto_preload_rate_uses_fastest_recent_rise(self):
+        self._set_load_history([
+            (0.70, -4.864),
+            (0.60, -4.864),
+            (0.10, -3.385),
+            (0.00, -3.385),
+        ])
+
+        rate = self.engine._auto_preload_load_rate_locked()
+
+        self.assertGreater(rate, 2.0)
+
     def test_auto_preload_continuous_speed_ramp_limits_step_change(self):
         ramped = self.engine._auto_preload_slew_speed(10.0, 50.0, 0.1)
 
