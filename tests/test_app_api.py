@@ -82,7 +82,7 @@ class AppApiTests(unittest.TestCase):
         response = self.client.post(
             "/result",
             data={
-                "failure_type": "Operator stop",
+                "failure_type": "Nail fasteners",
                 "operator_notes": "Saved result notes",
             },
             follow_redirects=False,
@@ -90,8 +90,18 @@ class AppApiTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 302)
         form = storage.get_test(test_id)["form"]
-        self.assertEqual(form["failure_type"], "Operator stop")
+        self.assertEqual(form["failure_type"], "Nail fasteners")
         self.assertEqual(form["operator_notes"], "Saved result notes")
+
+    def test_result_failure_type_includes_nail_fasteners_option(self):
+        job_id = storage.create_job({"project_name": "Failure Options", "job_number": "FO-1"})
+        test_id = storage.create_test(job_id, {"test_number": "1"})
+        with self.client.session_transaction() as session:
+            session["test_id"] = test_id
+
+        text = self.client.get("/result").get_data(as_text=True)
+
+        self.assertIn('<option value="Nail fasteners"', text)
 
     def test_home_post_updates_active_job_instead_of_creating_new_one(self):
         first = {

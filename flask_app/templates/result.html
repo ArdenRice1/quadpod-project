@@ -31,7 +31,7 @@
         <label>Failure Type</label>
         <select name="failure_type">
           <option value="">Select</option>
-          {% for option in ["Glue gave way", "Shingle tear", "Operator stop", "No failure before limit", "Other"] %}
+          {% for option in ["Nail fasteners", "Glue gave way", "Shingle tear", "Operator stop", "No failure before limit", "Other"] %}
             <option value="{{ option }}" {% if test.form.failure_type == option %}selected{% endif %}>{{ option }}</option>
           {% endfor %}
         </select>
