@@ -48,12 +48,13 @@
     }
     const installPrompt = document.getElementById("installPrompt");
     const standalone = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone;
+    const localInstallHost = ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
     let deferredInstallPrompt = null;
-    if (standalone || localStorage.getItem("quadpod-install-dismissed") === "yes") {
+    if (standalone || localInstallHost || localStorage.getItem("quadpod-install-dismissed") === "yes") {
       installPrompt.hidden = true;
     }
     window.addEventListener("beforeinstallprompt", (event) => {
-      if (standalone) return;
+      if (standalone || localInstallHost) return;
       event.preventDefault();
       deferredInstallPrompt = event;
       installPrompt.hidden = false;
