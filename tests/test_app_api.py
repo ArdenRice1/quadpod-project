@@ -219,6 +219,29 @@ class AppApiTests(unittest.TestCase):
         self.assertNotIn("Settling.", combined)
         self.assertNotIn(" us)", combined)
 
+    def test_archive_hides_email_feature_by_default(self):
+        storage.create_job({"project_name": "No Email Job", "job_number": "NE-1"})
+
+        text = self.client.get("/archive").get_data(as_text=True)
+
+        self.assertNotIn("Email Queue", text)
+        self.assertNotIn("Queue Email", text)
+        self.assertNotIn("Try Sending Now", text)
+
+    def test_copy_job_usb_redirects_with_visible_success(self):
+        job_id = storage.create_job({"project_name": "USB Job", "job_number": "USB-001"})
+        test_id = storage.create_test(job_id, {"test_number": "1"})
+        storage.add_sample(test_id, 0.0, 10.0)
+
+        response = self.client.post(f"/job/{job_id}/copy-usb", follow_redirects=False)
+
+        self.assertEqual(response.status_code, 303)
+        self.assertIn("copy_status=ok", response.headers["Location"])
+
+        final = self.client.get(response.headers["Location"])
+        text = final.get_data(as_text=True)
+        self.assertIn("Job folder copied to", text)
+
     def test_wifi_switch_returns_transition_before_scheduling_command(self):
         with self.client.session_transaction() as session:
             session["csrf_token"] = "network-test-token"

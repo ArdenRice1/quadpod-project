@@ -4,6 +4,12 @@
 {% block content %}
 <h1 class="page-title">Job Archive</h1>
 
+{% if copy_status == "ok" %}
+<div class="status good">Job folder copied to {{ copy_path }}.</div>
+{% elif copy_status == "error" %}
+<div class="status bad">USB/export copy failed. {{ copy_error }}</div>
+{% endif %}
+
 {% if active_job %}
 <section class="section">
   <h2>Active Job</h2>
@@ -49,7 +55,7 @@
         <form method="POST" action="{{ url_for('copy_job_usb', job_id=job.id) }}">
           <button class="full-width secondary" type="submit">Copy Job Folder to USB/Exports</button>
         </form>
-        {% if email_status.configured %}
+        {% if email_feature_visible and email_status.configured %}
           <form method="POST" action="{{ url_for('email_job', job_id=job.id) }}">
             <div class="grid">
               <div class="field full"><label>Email Recipient</label><input name="recipient" value="{{ email_to }}" placeholder="recipient@example.com"></div>
@@ -64,26 +70,28 @@
   </div>
 </section>
 
-<section class="section">
-  <h2>Email Queue</h2>
-  {% if email_status.configured %}
-    <div class="btnrow">
-      <button class="secondary" id="processEmail" type="button">Try Sending Now</button>
-    </div>
-  {% endif %}
-  <div id="emailStatus" class="status {{ 'good' if email_status.configured else 'warn' }}">{{ email_status.message }} Downloads and USB export always work.</div>
-  <div class="list">
-    {% for item in queue %}
-      <div class="item">
-        <strong>{{ item.status }}</strong>
-        <span class="muted">to {{ item.recipient }} - attempts {{ item.attempts }}</span>
-        {% if item.last_error %}<div class="small muted">Email not sent. Check email settings; ZIP and USB export still work.</div>{% endif %}
+{% if email_feature_visible %}
+  <section class="section">
+    <h2>Email Queue</h2>
+    {% if email_status.configured %}
+      <div class="btnrow">
+        <button class="secondary" id="processEmail" type="button">Try Sending Now</button>
       </div>
-    {% else %}
-      <div class="item muted">No email queued.</div>
-    {% endfor %}
-  </div>
-</section>
+    {% endif %}
+    <div id="emailStatus" class="status {{ 'good' if email_status.configured else 'warn' }}">{{ email_status.message }} Downloads and USB export always work.</div>
+    <div class="list">
+      {% for item in queue %}
+        <div class="item">
+          <strong>{{ item.status }}</strong>
+          <span class="muted">to {{ item.recipient }} - attempts {{ item.attempts }}</span>
+          {% if item.last_error %}<div class="small muted">Email not sent. Check email settings; ZIP and USB export still work.</div>{% endif %}
+        </div>
+      {% else %}
+        <div class="item muted">No email queued.</div>
+      {% endfor %}
+    </div>
+  </section>
+{% endif %}
 {% endblock %}
 
 {% block scripts %}

@@ -25,6 +25,7 @@ from config import (
     APP_VERSION,
     DATABASE_PATH,
     EMAIL_ENABLED,
+    EMAIL_FEATURE_VISIBLE,
     EMAIL_TO,
     EXPORT_DIR,
     HOTSPOT_IP,
@@ -63,7 +64,7 @@ NETWORK_COMMAND_LOCKOUT_SECONDS = 45
 _network_command_lock = threading.Lock()
 _network_command_until = 0.0
 
-if EMAIL_ENABLED:
+if EMAIL_ENABLED and EMAIL_FEATURE_VISIBLE:
     email_queue.start_worker()
 
 
@@ -222,13 +223,17 @@ def exports():
 def archive():
     query = request.args.get("q", "")
     jobs = storage.search_jobs(query)
-    queue = storage.list_email_queue()
+    queue = storage.list_email_queue() if EMAIL_FEATURE_VISIBLE else []
     return render_template(
         "archive.html",
         jobs=jobs,
         queue=queue,
         email_to=EMAIL_TO,
         email_status=email_queue.configuration_status(),
+        email_feature_visible=EMAIL_FEATURE_VISIBLE,
+        copy_status=request.args.get("copy_status", ""),
+        copy_path=request.args.get("copy_path", ""),
+        copy_error=request.args.get("copy_error", ""),
         query=query,
     )
 
@@ -355,13 +360,17 @@ def copy_job_usb(job_id):
     try:
         folder = exporter.copy_job_to_usb(job_id)
         storage.add_event("Job copied to USB/export folder", job_id=job_id, data={"path": str(folder)})
+        return redirect(url_for("archive", copy_status="ok", copy_path=str(folder)), code=303)
     except Exception as exc:
         storage.add_event("USB/export copy failed", level="error", job_id=job_id, data={"error": str(exc)})
-    return redirect(url_for("exports"))
+        return redirect(url_for("archive", copy_status="error", copy_error=str(exc)), code=303)
 
 
 @app.route("/job/<int:job_id>/email", methods=["POST"])
 def email_job(job_id):
+    if not EMAIL_FEATURE_VISIBLE:
+        storage.add_event("Email request rejected", level="error", job_id=job_id, data={"message": "Email feature hidden"})
+        return redirect(url_for("archive"), code=303)
     email_status = email_queue.configuration_status()
     if not email_status["configured"]:
         storage.add_event("Email request rejected", level="error", job_id=job_id, data=email_status)
@@ -472,6 +481,8 @@ def api_process_email():
     guard = _require_command_token()
     if guard:
         return guard
+    if not EMAIL_FEATURE_VISIBLE:
+        return jsonify({"message": "Email is currently disabled."})
     return jsonify({"message": email_queue.process_once()})
 
 
@@ -773,7 +784,7 @@ def _save_photo(job_id, test_number, file_storage):
     return filename
 
 
-if EMAIL_ENABLED:
+if EMAIL_ENABLED and EMAIL_FEATURE_VISIBLE:
     threading.Thread(target=_startup_power_alert, daemon=True).start()
 
 

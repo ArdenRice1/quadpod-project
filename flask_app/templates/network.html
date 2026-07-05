@@ -7,11 +7,12 @@
 <section class="section">
   <h2>Field Connection</h2>
   <div class="item">
-    <strong>Default Pi hotspot mode</strong>
+    <strong>Connection Addresses</strong>
     <div class="muted small">App URL: {{ public_url }}</div>
     <div class="muted small">Fallback URL: http://{{ hotspot_ip }}</div>
     <div class="muted small">Legacy fallback: http://{{ hotspot_ip }}:5000</div>
   </div>
+  <a class="button full-width secondary" href="{{ url_for('setup_check') }}">Open Network Controls</a>
 </section>
 
 <section class="section">
@@ -22,8 +23,4 @@
   </div>
 </section>
 
-<section class="section">
-  <h2>Email</h2>
-  <div class="status warn">Email sends when internet is available.</div>
-</section>
 {% endblock %}

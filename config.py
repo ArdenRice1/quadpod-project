@@ -221,6 +221,7 @@ HOTSPOT_CIDR = os.getenv("QUADPOD_HOTSPOT_CIDR", "10.42.0.1/24")
 PUBLIC_URL = os.getenv("QUADPOD_PUBLIC_URL", "http://quadpod.local")
 
 # Email queue settings. Downloads always work even when these are unset.
+EMAIL_FEATURE_VISIBLE = env_bool("QUADPOD_EMAIL_FEATURE_VISIBLE", False)
 EMAIL_ENABLED = env_bool("QUADPOD_EMAIL_ENABLED", False)
 EMAIL_TO = os.getenv("QUADPOD_EMAIL_TO", "")
 SMTP_HOST = os.getenv("QUADPOD_SMTP_HOST", "")
