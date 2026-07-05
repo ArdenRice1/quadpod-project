@@ -414,7 +414,9 @@ def export_job_folder(job_id, root_dir):
 
 
 def copy_job_to_usb(job_id):
-    return export_job_folder(job_id, _usb_root())
+    folder = export_job_folder(job_id, _usb_root())
+    _sync_path(folder)
+    return folder
 
 
 def machine_settings():
@@ -487,14 +489,20 @@ def _usb_root():
 
 
 def _mounted_usb_root():
-    candidates = []
     auto_mount_parent = Path("/mnt/quadpod-usb")
-    for base in [Path("/media"), Path("/mnt"), Path("/run/media")]:
-        if not base.exists():
+    candidates = []
+    for source, target, options in _mounted_filesystems():
+        path = Path(target)
+        if path == auto_mount_parent:
             continue
-        candidates.extend(path for path in base.glob("*/*") if path.is_dir())
-        candidates.extend(path for path in base.glob("*") if path.is_dir())
-    candidates = [path for path in candidates if path != auto_mount_parent]
+        if not any(path == base or base in path.parents for base in [Path("/media"), Path("/mnt"), Path("/run/media")]):
+            continue
+        if not (source.startswith("/dev/sd") or source.startswith("/dev/disk/")):
+            continue
+        if "ro" in {option.strip() for option in options.split(",")}:
+            continue
+        if path.is_dir():
+            candidates.append(path)
     writable = [path for path in candidates if _is_writable_dir(path)]
     if writable:
         return writable[0]
@@ -566,6 +574,27 @@ def _is_writable_dir(path):
         return True
     except OSError:
         return False
+
+
+def _mounted_filesystems():
+    try:
+        with open("/proc/mounts", "r", encoding="utf-8") as handle:
+            for line in handle:
+                parts = line.split()
+                if len(parts) >= 4:
+                    yield parts[0], parts[1].replace("\\040", " "), parts[3]
+    except OSError:
+        return
+
+
+def _sync_path(path):
+    try:
+        if hasattr(os, "sync"):
+            os.sync()
+            return
+        subprocess.run(["sync", str(path)], check=False, capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        pass
 
 
 def _slug(value):

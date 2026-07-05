@@ -201,6 +201,20 @@ class StorageExportTests(unittest.TestCase):
         self.assertEqual(mounted_root.call_count, 1)
         auto_mount.assert_called_once()
 
+    def test_usb_copy_syncs_after_export(self):
+        job_id = storage.create_job({"project_name": "Sync Job", "job_number": "SYNC-1"})
+        storage.create_test(job_id, {"test_number": "1"})
+
+        with patch.object(exporter, "_usb_root", return_value=self.root / "usb"), patch.object(exporter, "_sync_path") as sync_path:
+            folder = exporter.copy_job_to_usb(job_id)
+
+        sync_path.assert_called_once_with(folder)
+
+    def test_removable_flag_parsing_does_not_treat_zero_string_as_true(self):
+        self.assertFalse(exporter._is_removable("0"))
+        self.assertTrue(exporter._is_removable("1"))
+        self.assertTrue(exporter._is_removable(True))
+
 
 if __name__ == "__main__":
     unittest.main()
