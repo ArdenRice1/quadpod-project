@@ -272,19 +272,30 @@ class ControlGateTests(unittest.TestCase):
         )
 
     def test_auto_preload_continuous_speed_slows_near_target(self):
-        far_speed = self.engine._auto_preload_continuous_speed_locked(-3.0, 0.0, True)
+        far_speed = self.engine._auto_preload_continuous_speed_locked(-7.0, 0.0, True)
+        mid_speed = self.engine._auto_preload_continuous_speed_locked(-3.0, 0.0, True)
         near_speed = self.engine._auto_preload_continuous_speed_locked(
             engine_module.PRELOAD_MIN_LBS - 0.05,
             0.0,
             True,
         )
 
-        self.assertGreater(far_speed, near_speed)
+        self.assertGreater(far_speed, mid_speed)
+        self.assertGreater(mid_speed, near_speed)
         self.assertGreaterEqual(near_speed, engine_module.PRELOAD_AUTO_CONTINUOUS_MIN_SPEED_PERCENT)
 
+    def test_auto_preload_continuous_speed_aims_for_internal_negative_target(self):
+        at_target_speed = self.engine._auto_preload_continuous_speed_locked(
+            engine_module.PRELOAD_AUTO_TARGET_LBS,
+            0.0,
+            True,
+        )
+
+        self.assertEqual(at_target_speed, engine_module.PRELOAD_AUTO_CONTINUOUS_MIN_SPEED_PERCENT)
+
     def test_auto_preload_continuous_speed_damps_fast_rise(self):
-        slow_rise_speed = self.engine._auto_preload_continuous_speed_locked(-1.0, 0.0, True)
-        fast_rise_speed = self.engine._auto_preload_continuous_speed_locked(-1.0, 1.0, True)
+        slow_rise_speed = self.engine._auto_preload_continuous_speed_locked(-5.0, 0.0, True)
+        fast_rise_speed = self.engine._auto_preload_continuous_speed_locked(-5.0, 1.0, True)
 
         self.assertLess(fast_rise_speed, slow_rise_speed)
 
@@ -298,20 +309,29 @@ class ControlGateTests(unittest.TestCase):
 
     def test_auto_preload_continuous_brakes_when_prediction_reaches_band(self):
         should_brake = self.engine._auto_preload_continuous_should_brake_locked(
-            engine_module.PRELOAD_MIN_LBS - 0.2,
+            engine_module.PRELOAD_AUTO_TARGET_LBS - 0.2,
             0.0,
-            engine_module.PRELOAD_MIN_LBS + 0.01,
+            engine_module.PRELOAD_AUTO_TARGET_LBS + 0.01,
         )
 
         self.assertTrue(should_brake)
         self.assertTrue(self.engine.auto_preload_near_band_seen)
 
+    def test_auto_preload_continuous_does_not_wait_for_zero_to_brake(self):
+        should_brake = self.engine._auto_preload_continuous_should_brake_locked(
+            engine_module.PRELOAD_AUTO_TARGET_LBS - 0.05,
+            0.0,
+            engine_module.PRELOAD_AUTO_TARGET_LBS,
+        )
+
+        self.assertTrue(should_brake)
+
     def test_preload_hold_trim_increases_only_in_lower_half_while_dropping(self):
-        self.engine.state["current_load"] = -0.1
+        self.engine.state["current_load"] = -0.2
         self._set_load_history([
-            (0.50, -0.05),
-            (0.25, -0.08),
-            (0.00, -0.10),
+            (0.50, -0.12),
+            (0.25, -0.16),
+            (0.00, -0.20),
         ])
 
         self.engine._preload_hold_update_locked()
@@ -783,7 +803,7 @@ class ControlGateTests(unittest.TestCase):
         self.assertTrue(keep_running)
         self.assertEqual(self.engine.actuator.last_command, "neutral")
         self.assertEqual(self.engine.state["auto_preload_message"], "Settling")
-        self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "pulse_stop_fast_rise")
+        self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "pulse_stop_predicted")
 
     def test_auto_preload_adapts_stage_after_learning_coast(self):
         stage = self.engine._auto_preload_stage_for_load(-0.9, True)

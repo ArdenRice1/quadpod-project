@@ -51,6 +51,7 @@ from config import (
     PRELOAD_AUTO_CONTINUOUS_MAX_UP_RATE_LBS_PER_SECOND,
     PRELOAD_AUTO_CONTINUOUS_MIN_SPEED_PERCENT,
     PRELOAD_AUTO_CONTINUOUS_RAMP_PERCENT_PER_SECOND,
+    PRELOAD_AUTO_CONTINUOUS_SLOWDOWN_LBS,
     PRELOAD_AUTO_CONTACT_COARSE_MAX_DELTA_LBS,
     PRELOAD_AUTO_CONTACT_COARSE_PULSE_SECONDS,
     PRELOAD_AUTO_CONTACT_COARSE_SPEED_PERCENT,
@@ -81,6 +82,7 @@ from config import (
     PRELOAD_AUTO_STABLE_WINDOW_SECONDS,
     PRELOAD_AUTO_SETTLE_MAX_SECONDS,
     PRELOAD_AUTO_SETTLE_SECONDS,
+    PRELOAD_AUTO_TARGET_LBS,
     PRELOAD_AUTO_TIMEOUT_SECONDS,
     PRELOAD_AUTO_TENSION_STAGES,
     PRELOAD_AUTO_TRACE_MAX_ENTRIES,
@@ -839,7 +841,8 @@ class QuadpodEngine:
             return
 
         previous_trim = self.preload_hold_trim_us
-        if PRELOAD_MIN_LBS <= load < PRELOAD_TARGET_LBS:
+        hold_target = min(PRELOAD_TARGET_LBS, PRELOAD_AUTO_TARGET_LBS)
+        if PRELOAD_MIN_LBS <= load < hold_target:
             if rate <= -PRELOAD_HOLD_TRIM_DROP_RATE_LBS_PER_SECOND or self.preload_hold_trim_us > 0:
                 self.preload_hold_trim_us = min(
                     max(0, int(PRELOAD_HOLD_TRIM_MAX_US)),
@@ -1003,27 +1006,39 @@ class QuadpodEngine:
         return float(load) + max(0.0, float(rate)) * PRELOAD_AUTO_PREDICT_LOOKAHEAD_SECONDS + speed_margin
 
     def _auto_preload_continuous_should_brake_locked(self, load, rate, predicted_load):
-        if predicted_load >= PRELOAD_MIN_LBS:
+        target_lbs = min(PRELOAD_AUTO_PREDICT_STOP_LBS, PRELOAD_AUTO_TARGET_LBS)
+        if predicted_load >= target_lbs:
             self.auto_preload_near_band_seen = True
             return True
         if (
-            load >= PRELOAD_MIN_LBS - PRELOAD_AUTO_APPROACH_DISTANCE_LBS
+            load >= target_lbs - PRELOAD_AUTO_APPROACH_DISTANCE_LBS
             and rate >= PRELOAD_AUTO_CONTINUOUS_MAX_UP_RATE_LBS_PER_SECOND
         ):
             return True
         return False
 
     def _auto_preload_continuous_speed_locked(self, load, rate, increase):
+        target_lbs = PRELOAD_AUTO_TARGET_LBS
         if increase:
-            error_lbs = max(0.0, PRELOAD_TARGET_LBS - float(load))
+            error_lbs = max(0.0, target_lbs - float(load))
             damping = max(0.0, float(rate)) * PRELOAD_AUTO_CONTINUOUS_KD
             raw_speed = (error_lbs * PRELOAD_AUTO_CONTINUOUS_KP) - damping
+            if load >= PRELOAD_MIN_LBS - PRELOAD_AUTO_APPROACH_DISTANCE_LBS:
+                distance_scale = max(0.0, min(1.0, error_lbs / max(0.05, PRELOAD_AUTO_APPROACH_DISTANCE_LBS)))
+                raw_speed *= distance_scale
         else:
-            error_lbs = max(0.0, float(load) - PRELOAD_TARGET_LBS)
+            error_lbs = max(0.0, float(load) - target_lbs)
             raw_speed = error_lbs * (PRELOAD_AUTO_CONTINUOUS_KP * 0.5)
 
         min_speed = max(1.0, float(PRELOAD_AUTO_CONTINUOUS_MIN_SPEED_PERCENT))
         max_speed = max(min_speed, float(PRELOAD_AUTO_CONTINUOUS_MAX_SPEED_PERCENT))
+        if increase:
+            slowdown_lbs = max(0.1, float(PRELOAD_AUTO_CONTINUOUS_SLOWDOWN_LBS))
+            max_speed = max(min_speed, max_speed * max(0.0, min(1.0, error_lbs / slowdown_lbs)))
+            if rate > 0:
+                rate_window = max(0.05, float(PRELOAD_AUTO_CONTINUOUS_MAX_UP_RATE_LBS_PER_SECOND) * 4.0)
+                rate_scale = max(0.25, 1.0 - min(1.0, float(rate) / rate_window))
+                max_speed = max(min_speed, max_speed * rate_scale)
         return max(min_speed, min(max_speed, raw_speed))
 
     def _auto_preload_slew_speed(self, current_speed, desired_speed, elapsed_s):
