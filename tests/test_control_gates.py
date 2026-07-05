@@ -648,13 +648,13 @@ class ControlGateTests(unittest.TestCase):
 
     def test_auto_preload_ignores_inconsistent_spike_after_reaching_band(self):
         engine_module.PRELOAD_AUTO_DIRECT_LOAD_READ = True
-        self.engine.state["current_load"] = 0.077
-        readings = iter([415.0, 0.05, 220.0, 0.07, 42.0, 415.0, 0.04, 220.0, 0.08, 42.0])
+        self.engine.state["current_load"] = -0.077
+        readings = iter([415.0, -0.05, 220.0, -0.07, 42.0, 415.0, -0.04, 220.0, -0.08, 42.0])
         self.engine.load_cell.get_control_force = lambda: next(readings)
 
         load = self.engine._refresh_auto_preload_load()
 
-        self.assertEqual(load, 0.077)
+        self.assertEqual(load, -0.077)
         self.assertFalse(self.engine.state["auto_preload_sensor_fault"])
         self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "control_load_spike_ignored_in_band")
 
@@ -933,7 +933,7 @@ class ControlGateTests(unittest.TestCase):
         self.engine.state["jog_speed_percent"] = 1
         self.engine.jog("up")
         jog_pulse = self.engine.actuator.last_pulse_us
-        self._set_load(0.25)
+        self._set_load(-0.10)
 
         ok, message = self.engine.start_pull(self.test_id)
 
