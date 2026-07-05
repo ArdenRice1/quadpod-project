@@ -601,8 +601,10 @@ class QuadpodEngine:
                                 scan_load=self.state.get("scan_load"),
                                 scan_window_s=self.state.get("scan_load_window_s"),
                             )
-                            hold_should_start = True
-                            break
+                            if ready:
+                                hold_should_start = True
+                                break
+                            stable_since = now
                         self.state["auto_preload_message"] = "Settling"
                     else:
                         stable_since = None
@@ -745,8 +747,10 @@ class QuadpodEngine:
                                     scan_load=self.state.get("scan_load"),
                                     scan_window_s=self.state.get("scan_load_window_s"),
                                 )
-                                hold_should_start = True
-                                break
+                                if ready:
+                                    hold_should_start = True
+                                    break
+                                stable_since = now
                             self.state["auto_preload_message"] = "Settling"
                         elif near_band_hold:
                             stable_since = None

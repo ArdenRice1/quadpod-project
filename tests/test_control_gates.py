@@ -38,6 +38,7 @@ class ControlGateTests(unittest.TestCase):
         self.original_discard_settle = engine_module.PRELOAD_AUTO_CONTROL_DISCARD_SETTLE_SECONDS
         self.original_stop_jounce = engine_module.PRELOAD_AUTO_STOP_JOUNCE_IGNORE_SECONDS
         self.original_scan_verify = engine_module.PRELOAD_AUTO_SCAN_VERIFY_SECONDS
+        self.original_timeout = engine_module.PRELOAD_AUTO_TIMEOUT_SECONDS
         self.original_plausibility_enabled = engine_module.PRELOAD_AUTO_PLAUSIBILITY_ENABLED
         self.original_plausibility_base = engine_module.PRELOAD_AUTO_PLAUSIBILITY_BASE_DELTA_LBS
         self.original_plausibility_rate = engine_module.PRELOAD_AUTO_PLAUSIBILITY_LBS_PER_SECOND_AT_100
@@ -63,6 +64,7 @@ class ControlGateTests(unittest.TestCase):
         engine_module.PRELOAD_AUTO_CONTROL_DISCARD_SETTLE_SECONDS = self.original_discard_settle
         engine_module.PRELOAD_AUTO_STOP_JOUNCE_IGNORE_SECONDS = self.original_stop_jounce
         engine_module.PRELOAD_AUTO_SCAN_VERIFY_SECONDS = self.original_scan_verify
+        engine_module.PRELOAD_AUTO_TIMEOUT_SECONDS = self.original_timeout
         engine_module.PRELOAD_AUTO_PLAUSIBILITY_ENABLED = self.original_plausibility_enabled
         engine_module.PRELOAD_AUTO_PLAUSIBILITY_BASE_DELTA_LBS = self.original_plausibility_base
         engine_module.PRELOAD_AUTO_PLAUSIBILITY_LBS_PER_SECOND_AT_100 = self.original_plausibility_rate
@@ -483,8 +485,12 @@ class ControlGateTests(unittest.TestCase):
     def test_auto_preload_finishes_after_short_in_band_dwell(self):
         engine_module.PRELOAD_AUTO_IN_BAND_END_SECONDS = 0.01
         engine_module.PRELOAD_AUTO_SCAN_VERIFY_SECONDS = 0.0
+        engine_module.PRELOAD_AUTO_DRIFT_WINDOW_SECONDS = 0.05
+        engine_module.PRELOAD_AUTO_STOP_JOUNCE_IGNORE_SECONDS = 0.0
+        engine_module.PRELOAD_AUTO_TIMEOUT_SECONDS = 1.0
         self.engine.state["auto_preload_running"] = True
         self._set_load(0.0)
+        self.engine._auto_preload_ready_locked = lambda: True
 
         self.engine._auto_preload_loop()
 
@@ -511,6 +517,21 @@ class ControlGateTests(unittest.TestCase):
             self.engine.scan_load_history.append((now - seconds_ago, value))
 
         self.assertTrue(self.engine._auto_preload_scan_ready_locked())
+
+    def test_auto_preload_does_not_finish_when_scan_ready_is_false(self):
+        engine_module.PRELOAD_AUTO_IN_BAND_END_SECONDS = 0.01
+        engine_module.PRELOAD_AUTO_SCAN_VERIFY_SECONDS = 5.0
+        engine_module.PRELOAD_AUTO_STOP_JOUNCE_IGNORE_SECONDS = 0.0
+        engine_module.PRELOAD_AUTO_TIMEOUT_SECONDS = 0.2
+        self.engine.state["auto_preload_running"] = True
+        self._set_load(-0.19)
+
+        self.engine._auto_preload_loop()
+
+        events = [entry["event"] for entry in self.engine.auto_preload_trace]
+        self.assertIn("in_band_complete", events)
+        self.assertNotIn("hold_start", events)
+        self.assertEqual(self.engine.state["auto_preload_message"], "Check tension")
 
     def test_auto_preload_pulses_only_outside_safe_band(self):
         self.assertTrue(self.engine._auto_preload_direction_for_load(engine_module.PRELOAD_MIN_LBS - 0.1))
