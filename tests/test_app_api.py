@@ -231,6 +231,7 @@ class AppApiTests(unittest.TestCase):
         self.assertNotIn("Email Queue", text)
         self.assertNotIn("Queue Email", text)
         self.assertNotIn("Try Sending Now", text)
+        self.assertNotIn("/api/email/process", text)
 
     def test_copy_job_usb_redirects_with_visible_success(self):
         job_id = storage.create_job({"project_name": "USB Job", "job_number": "USB-001"})

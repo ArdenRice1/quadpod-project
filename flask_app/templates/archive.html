@@ -55,43 +55,12 @@
         <form method="POST" action="{{ url_for('copy_job_usb', job_id=job.id) }}">
           <button class="full-width secondary" type="submit">Copy Job Folder to USB/Exports</button>
         </form>
-        {% if email_feature_visible and email_status.configured %}
-          <form method="POST" action="{{ url_for('email_job', job_id=job.id) }}">
-            <div class="grid">
-              <div class="field full"><label>Email Recipient</label><input name="recipient" value="{{ email_to }}" placeholder="recipient@example.com"></div>
-            </div>
-            <button class="full-width" type="submit">Queue Email</button>
-          </form>
-        {% endif %}
       </div>
     {% else %}
       <div class="status warn">No jobs found.</div>
     {% endfor %}
   </div>
 </section>
-
-{% if email_feature_visible %}
-  <section class="section">
-    <h2>Email Queue</h2>
-    {% if email_status.configured %}
-      <div class="btnrow">
-        <button class="secondary" id="processEmail" type="button">Try Sending Now</button>
-      </div>
-    {% endif %}
-    <div id="emailStatus" class="status {{ 'good' if email_status.configured else 'warn' }}">{{ email_status.message }} Downloads and USB export always work.</div>
-    <div class="list">
-      {% for item in queue %}
-        <div class="item">
-          <strong>{{ item.status }}</strong>
-          <span class="muted">to {{ item.recipient }} - attempts {{ item.attempts }}</span>
-          {% if item.last_error %}<div class="small muted">Email not sent. Check email settings; ZIP and USB export still work.</div>{% endif %}
-        </div>
-      {% else %}
-        <div class="item muted">No email queued.</div>
-      {% endfor %}
-    </div>
-  </section>
-{% endif %}
 {% endblock %}
 
 {% block scripts %}
@@ -130,17 +99,5 @@
     });
   });
 
-  const processEmail = document.getElementById("processEmail");
-  if (processEmail) {
-    processEmail.addEventListener("click", () => {
-      fetch("{{ url_for('api_process_email') }}", { method: "POST", headers: quadpodJsonHeaders() })
-        .then((res) => res.json())
-        .then((data) => {
-          const el = document.getElementById("emailStatus");
-          el.className = data.message.includes("failed") || data.message.includes("could not") ? "status warn" : "status";
-          el.textContent = data.message;
-        });
-    });
-  }
 </script>
 {% endblock %}
