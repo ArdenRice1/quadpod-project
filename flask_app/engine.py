@@ -503,6 +503,8 @@ class QuadpodEngine:
         command_direction = None
         last_speed_command = None
         last_update = time.monotonic()
+        remembered_up_rate = 0.0
+        remembered_up_rate_until = 0.0
         hold_should_start = False
         try:
             while time.monotonic() < deadline:
@@ -538,6 +540,13 @@ class QuadpodEngine:
 
                     load = float(self.state.get("current_load") or 0.0)
                     rate = self._auto_preload_load_rate_locked()
+                    if rate >= PRELOAD_AUTO_CONTINUOUS_MAX_UP_RATE_LBS_PER_SECOND:
+                        remembered_up_rate = max(remembered_up_rate, rate)
+                        remembered_up_rate_until = now + max(0.2, PRELOAD_AUTO_STOP_JOUNCE_IGNORE_SECONDS)
+                    elif remembered_up_rate_until > now:
+                        rate = max(rate, remembered_up_rate)
+                    else:
+                        remembered_up_rate = 0.0
                     if load > PRELOAD_AUTO_ABORT_LBS:
                         self.actuator.stop()
                         self.state["actuator_command"] = self.actuator.last_command
