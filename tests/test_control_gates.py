@@ -353,13 +353,24 @@ class ControlGateTests(unittest.TestCase):
         self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "hold_trim")
 
     def test_preload_hold_trim_does_not_increase_below_allowed_band(self):
+        self.engine.preload_hold_active = True
         self.engine.preload_hold_trim_us = 3
         self.engine.state["current_load"] = engine_module.PRELOAD_MIN_LBS - 0.01
 
         self.engine._preload_hold_update_locked()
 
         self.assertEqual(self.engine.preload_hold_trim_us, 0)
+        self.assertFalse(self.engine.preload_hold_active)
         self.assertEqual(self.engine.actuator.last_command, "neutral")
+
+    def test_preload_hold_uses_scan_load_without_direct_control_read(self):
+        self.engine.preload_hold_active = True
+        self.engine.state["current_load"] = engine_module.PRELOAD_MIN_LBS - 0.01
+        self.engine._refresh_auto_preload_load = lambda *args, **kwargs: self.fail("hold should not direct-read load")
+
+        self.engine._preload_hold_update_locked()
+
+        self.assertFalse(self.engine.preload_hold_active)
         self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "hold_out_of_band")
 
     def test_preload_hold_trim_moves_back_to_neutral_at_or_above_zero(self):

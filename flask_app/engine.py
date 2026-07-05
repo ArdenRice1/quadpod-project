@@ -859,7 +859,6 @@ class QuadpodEngine:
     def _preload_hold_loop(self):
         while True:
             time.sleep(max(0.05, PRELOAD_HOLD_TRIM_INTERVAL_SECONDS))
-            self._refresh_auto_preload_load()
             with self.lock:
                 if (
                     not self.preload_hold_active
@@ -878,8 +877,11 @@ class QuadpodEngine:
         rate = self._auto_preload_load_rate_locked()
         if load < PRELOAD_MIN_LBS or load > PRELOAD_MAX_LBS:
             self.preload_hold_trim_us = 0
+            self.preload_hold_active = False
             self.actuator.stop()
             self.state["actuator_command"] = self.actuator.last_command
+            if not self.state.get("auto_preload_running"):
+                self.state["auto_preload_message"] = ""
             self._record_auto_preload_trace_locked(
                 "hold_out_of_band",
                 load=load,
