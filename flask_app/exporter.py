@@ -1,8 +1,10 @@
 ﻿import csv
 import html
 import json
+import os
 import re
 import shutil
+import subprocess
 import zipfile
 from pathlib import Path
 
@@ -472,16 +474,88 @@ def _job_base_name(job):
 def _usb_root():
     if USB_EXPORT_ROOT:
         return Path(USB_EXPORT_ROOT)
+    mounted = _mounted_usb_root()
+    if mounted:
+        return mounted
+    automounted = _auto_mount_usb_root()
+    if automounted:
+        return automounted
+    mounted = _mounted_usb_root()
+    if mounted:
+        return mounted
+    return Path(EXPORT_DIR) / "usb_copy"
+
+
+def _mounted_usb_root():
     candidates = []
-    for base in [Path("/media"), Path("/mnt")]:
+    auto_mount_parent = Path("/mnt/quadpod-usb")
+    for base in [Path("/media"), Path("/mnt"), Path("/run/media")]:
         if not base.exists():
             continue
         candidates.extend(path for path in base.glob("*/*") if path.is_dir())
         candidates.extend(path for path in base.glob("*") if path.is_dir())
+    candidates = [path for path in candidates if path != auto_mount_parent]
     writable = [path for path in candidates if _is_writable_dir(path)]
     if writable:
         return writable[0]
-    return Path(EXPORT_DIR) / "usb_copy"
+    return None
+
+
+def _auto_mount_usb_root():
+    if os.name != "posix":
+        return None
+    try:
+        result = subprocess.run(
+            ["lsblk", "-J", "-o", "NAME,PATH,RM,TYPE,FSTYPE,MOUNTPOINT"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=3,
+        )
+        devices = json.loads(result.stdout).get("blockdevices", [])
+    except (OSError, subprocess.SubprocessError, json.JSONDecodeError):
+        return None
+
+    for partition in _removable_partitions(devices):
+        mountpoint = partition.get("mountpoint")
+        if mountpoint:
+            path = Path(mountpoint)
+            if _is_writable_dir(path):
+                return path
+            continue
+
+        device_path = partition.get("path")
+        filesystem = (partition.get("fstype") or "").lower()
+        if not device_path or filesystem not in {"vfat", "exfat", "ntfs", "ext4"}:
+            continue
+
+        mount_dir = Path("/mnt/quadpod-usb") / Path(device_path).name
+        try:
+            mount_dir.mkdir(parents=True, exist_ok=True)
+            subprocess.run(["mount", device_path, str(mount_dir)], check=True, capture_output=True, text=True, timeout=5)
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if _is_writable_dir(mount_dir):
+            return mount_dir
+    return None
+
+
+def _removable_partitions(devices, parent_removable=False):
+    for device in devices:
+        removable = parent_removable or _is_removable(device.get("rm"))
+        if removable and device.get("type") in {"part", "disk"}:
+            yield device
+        yield from _removable_partitions(device.get("children") or [], removable)
+
+
+def _is_removable(value):
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes"}
+    return False
 
 
 def _is_writable_dir(path):

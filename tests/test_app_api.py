@@ -189,6 +189,13 @@ class AppApiTests(unittest.TestCase):
         self.assertIn('<details class="tool-panel" id="calibrationPanel">', text)
         self.assertNotIn('id="networkPanel" open', text)
         self.assertNotIn('id="calibrationPanel" open', text)
+        self.assertNotIn('href="/network"', text)
+
+    def test_network_page_redirects_to_setup_check(self):
+        response = self.client.get("/network", follow_redirects=False)
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.headers["Location"], "/setup-check")
 
     def test_operator_pages_hide_internal_tension_config(self):
         job_id = storage.create_job(

@@ -240,7 +240,7 @@ def archive():
 
 @app.route("/network")
 def network():
-    return render_template("network.html", status=quadpod_engine.snapshot())
+    return redirect(url_for("setup_check"), code=302)
 
 
 @app.route("/api/network/status")

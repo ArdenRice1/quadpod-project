@@ -3,6 +3,7 @@ import tempfile
 import unittest
 import zipfile
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -186,6 +187,19 @@ class StorageExportTests(unittest.TestCase):
         self.assertTrue((Path(folder) / "audit.json").exists())
         self.assertTrue((Path(folder) / "tests" / "USB_Job_USB-001_Test-1.csv").exists())
         self.assertTrue((Path(folder) / "tests" / "USB_Job_USB-001_Test-1_force_time.svg").exists())
+
+    def test_usb_root_auto_mounts_before_falling_back_to_local_exports(self):
+        mounted = self.root / "mounted-usb"
+
+        with (
+            patch.object(exporter, "USB_EXPORT_ROOT", ""),
+            patch.object(exporter, "_mounted_usb_root", side_effect=[None, mounted]) as mounted_root,
+            patch.object(exporter, "_auto_mount_usb_root", return_value=mounted) as auto_mount,
+        ):
+            self.assertEqual(exporter._usb_root(), mounted)
+
+        self.assertEqual(mounted_root.call_count, 1)
+        auto_mount.assert_called_once()
 
 
 if __name__ == "__main__":
