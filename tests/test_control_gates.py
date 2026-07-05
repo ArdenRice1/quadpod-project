@@ -34,6 +34,8 @@ class ControlGateTests(unittest.TestCase):
         self.original_approach_settle_max = engine_module.PRELOAD_AUTO_APPROACH_SETTLE_MAX_SECONDS
         self.original_approach_settle_delta = engine_module.PRELOAD_AUTO_APPROACH_SETTLE_DELTA_LBS
         self.original_control_max_transient_rejects = engine_module.PRELOAD_AUTO_CONTROL_MAX_TRANSIENT_REJECTS
+        self.original_stop_during_load_read = engine_module.PRELOAD_AUTO_STOP_DURING_LOAD_READ
+        self.original_discard_settle = engine_module.PRELOAD_AUTO_CONTROL_DISCARD_SETTLE_SECONDS
         engine_module.PRELOAD_AUTO_DRIFT_WINDOW_SECONDS = 5.0
         engine_module.PRELOAD_AUTO_DIRECT_LOAD_READ = False
         self.job_id = storage.create_job(self._job_form())
@@ -52,6 +54,8 @@ class ControlGateTests(unittest.TestCase):
         engine_module.PRELOAD_AUTO_APPROACH_SETTLE_MAX_SECONDS = self.original_approach_settle_max
         engine_module.PRELOAD_AUTO_APPROACH_SETTLE_DELTA_LBS = self.original_approach_settle_delta
         engine_module.PRELOAD_AUTO_CONTROL_MAX_TRANSIENT_REJECTS = self.original_control_max_transient_rejects
+        engine_module.PRELOAD_AUTO_STOP_DURING_LOAD_READ = self.original_stop_during_load_read
+        engine_module.PRELOAD_AUTO_CONTROL_DISCARD_SETTLE_SECONDS = self.original_discard_settle
         self.tempdir.cleanup()
 
     def _job_form(self, **updates):
@@ -665,6 +669,38 @@ class ControlGateTests(unittest.TestCase):
         self.assertFalse(self.engine.state["auto_preload_sensor_fault"])
         self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "control_load_discarded")
         self.assertEqual(self.engine.auto_preload_control_rejects, 1)
+
+    def test_auto_preload_stops_actuator_during_suspicious_control_confirmation(self):
+        engine_module.PRELOAD_AUTO_DIRECT_LOAD_READ = True
+        engine_module.PRELOAD_AUTO_STOP_DURING_LOAD_READ = True
+        self.engine.state["current_load"] = -7.85
+        readings = iter([185.0, -7.82, -7.88, -7.83, -7.86, -7.84, -7.85, -7.83, -7.86, -7.84])
+        self.engine.load_cell.get_control_force = lambda: next(readings)
+        self.engine.actuator.move_up(fast=True, speed_percent=45)
+
+        load = self.engine._refresh_auto_preload_load()
+
+        self.assertAlmostEqual(load, -7.84)
+        self.assertEqual(self.engine.actuator.last_command, "neutral")
+        self.assertIn("control_read_stop", [entry["event"] for entry in self.engine.auto_preload_trace])
+
+    def test_auto_preload_holds_neutral_after_discarded_control_burst(self):
+        engine_module.PRELOAD_AUTO_DIRECT_LOAD_READ = True
+        engine_module.PRELOAD_AUTO_STOP_DURING_LOAD_READ = True
+        engine_module.PRELOAD_AUTO_CONTROL_MAX_TRANSIENT_REJECTS = 2
+        engine_module.PRELOAD_AUTO_CONTROL_DISCARD_SETTLE_SECONDS = 0.35
+        self.engine.state["current_load"] = -3.381
+        readings = iter([14.793, -2.828, 14.793, -2.9, 10.0, 14.793, -2.828, 14.793, -2.9, 10.0])
+        self.engine.load_cell.get_control_force = lambda: next(readings)
+        self.engine.actuator.move_up(fast=True, speed_percent=45)
+
+        load = self.engine._refresh_auto_preload_load()
+
+        self.assertEqual(load, -3.381)
+        self.assertEqual(self.engine.actuator.last_command, "neutral")
+        self.assertGreater(self.engine.auto_preload_control_hold_until, time.monotonic())
+        self.assertEqual(self.engine.state["auto_preload_message"], "Settling")
+        self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "control_load_discarded")
 
     def test_auto_preload_ignores_inconsistent_spike_after_reaching_band(self):
         engine_module.PRELOAD_AUTO_DIRECT_LOAD_READ = True
