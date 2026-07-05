@@ -250,6 +250,16 @@ class AppApiTests(unittest.TestCase):
         self.assertNotIn("Try Sending Now", text)
         self.assertNotIn("/api/email/process", text)
 
+    def test_archive_uses_single_zip_download_action(self):
+        storage.create_job({"project_name": "Archive Actions", "job_number": "AA-1"})
+
+        text = self.client.get("/archive").get_data(as_text=True)
+
+        self.assertIn("Save Job Files", text)
+        self.assertNotIn("ALL CSV", text)
+        self.assertNotIn("Share ZIP", text)
+        self.assertNotIn("shareZip", text)
+
     def test_copy_job_usb_redirects_with_visible_success(self):
         job_id = storage.create_job({"project_name": "USB Job", "job_number": "USB-001"})
         test_id = storage.create_test(job_id, {"test_number": "1"})
