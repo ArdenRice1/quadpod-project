@@ -205,10 +205,15 @@ class StorageExportTests(unittest.TestCase):
         job_id = storage.create_job({"project_name": "Sync Job", "job_number": "SYNC-1"})
         storage.create_test(job_id, {"test_number": "1"})
 
-        with patch.object(exporter, "_usb_root", return_value=self.root / "usb"), patch.object(exporter, "_sync_path") as sync_path:
+        with (
+            patch.object(exporter, "_usb_root", return_value=self.root / "usb"),
+            patch.object(exporter, "_sync_path") as sync_path,
+            patch.object(exporter, "_unmount_usb_export") as unmount_export,
+        ):
             folder = exporter.copy_job_to_usb(job_id)
 
         sync_path.assert_called_once_with(folder)
+        unmount_export.assert_called_once_with(folder)
 
     def test_removable_flag_parsing_does_not_treat_zero_string_as_true(self):
         self.assertFalse(exporter._is_removable("0"))

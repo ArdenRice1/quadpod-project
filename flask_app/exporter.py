@@ -416,6 +416,7 @@ def export_job_folder(job_id, root_dir):
 def copy_job_to_usb(job_id):
     folder = export_job_folder(job_id, _usb_root())
     _sync_path(folder)
+    _unmount_usb_export(folder)
     return folder
 
 
@@ -540,7 +541,10 @@ def _auto_mount_usb_root():
         mount_dir = Path("/mnt/quadpod-usb") / Path(device_path).name
         try:
             mount_dir.mkdir(parents=True, exist_ok=True)
-            subprocess.run(["mount", device_path, str(mount_dir)], check=True, capture_output=True, text=True, timeout=5)
+            command = ["mount", device_path, str(mount_dir)]
+            if filesystem == "vfat":
+                command = ["mount", "-o", "rw,sync,flush", device_path, str(mount_dir)]
+            subprocess.run(command, check=True, capture_output=True, text=True, timeout=5)
         except (OSError, subprocess.SubprocessError):
             continue
         if _is_writable_dir(mount_dir):
@@ -595,6 +599,37 @@ def _sync_path(path):
         subprocess.run(["sync", str(path)], check=False, capture_output=True, text=True, timeout=10)
     except (OSError, subprocess.SubprocessError):
         pass
+
+
+def _unmount_usb_export(path):
+    mountpoint = _mountpoint_for_path(Path(path))
+    if not mountpoint:
+        return
+    mount_path = Path(mountpoint)
+    auto_mount_parent = Path("/mnt/quadpod-usb")
+    if mount_path != auto_mount_parent and auto_mount_parent not in mount_path.parents:
+        return
+    try:
+        subprocess.run(["umount", str(mount_path)], check=False, capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
+def _mountpoint_for_path(path):
+    best = None
+    try:
+        checked = path.resolve()
+    except OSError:
+        checked = path
+    for _, target, _ in _mounted_filesystems():
+        mount_path = Path(target)
+        try:
+            relative = checked == mount_path or mount_path in checked.parents
+        except RuntimeError:
+            relative = False
+        if relative and (best is None or len(str(mount_path)) > len(str(best))):
+            best = mount_path
+    return best
 
 
 def _slug(value):
