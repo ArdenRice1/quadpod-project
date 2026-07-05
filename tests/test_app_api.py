@@ -26,10 +26,14 @@ class AppApiTests(unittest.TestCase):
         storage.DATA_DIR = self.root
         storage.DATABASE_PATH = str(self.root / "quadpod.db")
         storage.init_db()
+        self.original_export_dir = app_module.exporter.EXPORT_DIR
+        app_module.exporter.EXPORT_DIR = self.root / "exports"
         app.config["TESTING"] = True
         self.client = app.test_client()
 
     def tearDown(self):
+        if app is not None:
+            app_module.exporter.EXPORT_DIR = self.original_export_dir
         self.tempdir.cleanup()
 
     def test_start_pull_rejects_missing_session_token(self):
