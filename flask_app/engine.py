@@ -14,6 +14,8 @@ from config import (
     MAX_TEST_SECONDS,
     LOAD_STABLE_DELTA_LBS,
     LOAD_STABLE_WINDOW_SECONDS,
+    LOADCELL_DISPLAY_ALPHA,
+    LOADCELL_DISPLAY_SNAP_DELTA_LBS,
     POST_STOP_LOG_MAX_SECONDS,
     PRELOAD_AUTO_ABORT_LBS,
     PRELOAD_AUTO_APPROACH_SETTLE_DELTA_LBS,
@@ -120,12 +122,14 @@ class QuadpodEngine:
         self.auto_preload_contact_detected = False
         self.auto_preload_near_band_seen = False
         self.auto_preload_control_rejects = 0
+        self.auto_preload_cancel_requested = False
         self.auto_preload_thread = None
         self.preload_hold_thread = None
         self.preload_hold_active = False
         self.preload_hold_trim_us = 0
         self.state = {
             "current_load": 0.0,
+            "display_load": 0.0,
             "raw_load": 0.0,
             "peak_load": 0.0,
             "preload_ready": False,
@@ -210,6 +214,7 @@ class QuadpodEngine:
             self._reset_test_session_locked()
             self.auto_preload_trace.clear()
             self._reset_auto_preload_control_locked()
+            self.auto_preload_cancel_requested = False
             if self.load_cell.use_mock or self.load_cell.gpio is not None:
                 self.load_cell.reset_hardware()
             self.state["auto_preload_running"] = True
@@ -363,6 +368,17 @@ class QuadpodEngine:
 
     def stop(self, reason="operator stop"):
         with self.lock:
+            if self.state.get("auto_preload_running"):
+                self.auto_preload_cancel_requested = True
+                self.actuator.stop()
+                self.state["actuator_command"] = self.actuator.last_command
+                self.state["auto_preload_message"] = "Check tension"
+                self._record_auto_preload_trace_locked(
+                    "cancel_requested",
+                    load=self.state.get("current_load"),
+                    reason=reason,
+                )
+                return True
             if self.state.get("test_running"):
                 self._begin_stop_locked(reason)
             else:
@@ -392,11 +408,7 @@ class QuadpodEngine:
             raw_counts = getattr(self.load_cell, "last_raw_lbs", load)
 
         with self.lock:
-            self.state["current_load"] = load
-            self.state["raw_load"] = raw_counts
-            self._record_load_locked(load)
-            self.state["preload_ready"] = PRELOAD_MIN_LBS <= load <= PRELOAD_MAX_LBS
-            self.state["preload_stable"] = self.state["preload_ready"] and self._load_stable_locked()
+            self._set_load_state_locked(load, raw_counts)
 
             if not self.state["test_running"]:
                 return
@@ -480,6 +492,12 @@ class QuadpodEngine:
                             "sensor_fault_stop",
                             load=self.state.get("current_load"),
                         )
+                        break
+                    if self.auto_preload_cancel_requested or not self.state.get("auto_preload_running"):
+                        self.actuator.stop()
+                        self.state["actuator_command"] = self.actuator.last_command
+                        self.state["auto_preload_message"] = "Check tension"
+                        self._record_auto_preload_trace_locked("cancelled", load=self.state.get("current_load"))
                         break
                     if self.state["test_running"]:
                         self.state["auto_preload_message"] = "Check tension"
@@ -614,6 +632,12 @@ class QuadpodEngine:
                             "sensor_fault_stop",
                             load=self.state.get("current_load"),
                         )
+                        break
+                    if self.auto_preload_cancel_requested or not self.state.get("auto_preload_running"):
+                        self.actuator.stop()
+                        self.state["actuator_command"] = self.actuator.last_command
+                        self.state["auto_preload_message"] = "Check tension"
+                        self._record_auto_preload_trace_locked("cancelled", load=self.state.get("current_load"))
                         break
                     if self.state["test_running"]:
                         self.state["auto_preload_message"] = "Check tension"
@@ -1262,11 +1286,7 @@ class QuadpodEngine:
                 )
             if rejected:
                 self.state["auto_preload_message"] = "Check tension"
-            self.state["current_load"] = load
-            self.state["raw_load"] = raw_counts
-            self._record_load_locked(load)
-            self.state["preload_ready"] = PRELOAD_MIN_LBS <= load <= PRELOAD_MAX_LBS
-            self.state["preload_stable"] = self.state["preload_ready"] and self._load_stable_locked()
+            self._set_load_state_locked(load, raw_counts)
         return load
 
     def _read_auto_preload_control_load(self, previous_load):
@@ -1323,8 +1343,6 @@ class QuadpodEngine:
             return False
         if load > PRELOAD_AUTO_ABORT_LBS:
             return True
-        if abs(load - previous_load) >= PRELOAD_AUTO_CONTROL_SPIKE_DELTA_LBS:
-            return False
         return True
 
     def _auto_preload_should_ignore_drop_after_near_band(self, previous_load, load):
@@ -1466,6 +1484,26 @@ class QuadpodEngine:
         )
         while self.load_history and self.load_history[0][0] < cutoff:
             self.load_history.popleft()
+
+    def _set_load_state_locked(self, load, raw_counts):
+        load = round(float(load), 3)
+        self.state["current_load"] = load
+        self.state["raw_load"] = raw_counts
+        self.state["display_load"] = self._smooth_display_load_locked(load)
+        self._record_load_locked(load)
+        self.state["preload_ready"] = PRELOAD_MIN_LBS <= load <= PRELOAD_MAX_LBS
+        self.state["preload_stable"] = self.state["preload_ready"] and self._load_stable_locked()
+
+    def _smooth_display_load_locked(self, load):
+        previous = self.state.get("display_load")
+        if previous is None:
+            return round(float(load), 3)
+        previous = float(previous)
+        load = float(load)
+        if abs(load - previous) >= max(0.0, LOADCELL_DISPLAY_SNAP_DELTA_LBS):
+            return round(load, 3)
+        alpha = max(0.0, min(1.0, float(LOADCELL_DISPLAY_ALPHA)))
+        return round(previous + ((load - previous) * alpha), 3)
 
     def _record_auto_preload_trace_locked(self, event, **data):
         entry = {"t": round(time.monotonic(), 4), "event": event}

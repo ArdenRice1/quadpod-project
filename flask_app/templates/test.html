@@ -90,7 +90,8 @@
     fetch("{{ url_for('api_status') }}")
       .then((res) => res.json())
       .then((data) => {
-        liveForce.textContent = data.current_load.toFixed(2);
+        const shownLoad = Number.isFinite(data.display_load) ? data.display_load : data.current_load;
+        liveForce.textContent = shownLoad.toFixed(2);
         peakForce.textContent = data.peak_load.toFixed(2);
         elapsed.textContent = data.elapsed_s.toFixed(1);
         samples.textContent = data.sample_count;

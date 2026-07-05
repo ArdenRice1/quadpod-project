@@ -109,7 +109,8 @@
     fetch("{{ url_for('api_status') }}")
       .then((res) => res.json())
       .then((data) => {
-        liveLoad.textContent = data.current_load.toFixed(2);
+        const shownLoad = Number.isFinite(data.display_load) ? data.display_load : data.current_load;
+        liveLoad.textContent = shownLoad.toFixed(2);
       });
   }
 

@@ -118,6 +118,14 @@ class ControlGateTests(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIn("Auto Tension", message)
 
+    def test_stop_cancels_auto_preload(self):
+        self.engine.state["auto_preload_running"] = True
+        ok = self.engine.stop("operator stop")
+        self.assertTrue(ok)
+        self.assertTrue(self.engine.auto_preload_cancel_requested)
+        self.assertEqual(self.engine.state["actuator_command"], "neutral")
+        self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "cancel_requested")
+
     def test_start_pull_clears_samples_when_restarting_test_record(self):
         storage.add_sample(self.test_id, 0.0, 10.0)
         storage.add_sample(self.test_id, 0.5, 12.0)
@@ -541,6 +549,28 @@ class ControlGateTests(unittest.TestCase):
         self.assertEqual(load, 182.0)
         self.assertEqual(self.engine.state["current_load"], 182.0)
 
+    def test_auto_preload_confirms_stable_positive_jump(self):
+        engine_module.PRELOAD_AUTO_DIRECT_LOAD_READ = True
+        self.engine.state["current_load"] = -7.0
+        readings = iter([-5.0, -5.1, -5.0, -5.05, -5.0])
+        self.engine.load_cell.get_control_force = lambda: next(readings)
+
+        load = self.engine._refresh_auto_preload_load()
+
+        self.assertAlmostEqual(load, -5.0)
+        self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "control_load_confirmed")
+
+    def test_auto_preload_confirms_stable_negative_jump(self):
+        engine_module.PRELOAD_AUTO_DIRECT_LOAD_READ = True
+        self.engine.state["current_load"] = -1.0
+        readings = iter([-3.0, -3.1, -3.0, -3.05, -3.0])
+        self.engine.load_cell.get_control_force = lambda: next(readings)
+
+        load = self.engine._refresh_auto_preload_load()
+
+        self.assertAlmostEqual(load, -3.0)
+        self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "control_load_confirmed")
+
     def test_auto_preload_rejects_inconsistent_hard_spike_after_retry(self):
         engine_module.PRELOAD_AUTO_DIRECT_LOAD_READ = True
         engine_module.PRELOAD_AUTO_CONTROL_MAX_TRANSIENT_REJECTS = 0
@@ -554,6 +584,21 @@ class ControlGateTests(unittest.TestCase):
         self.assertTrue(self.engine.state["auto_preload_sensor_fault"])
         self.assertEqual(self.engine.state["auto_preload_message"], "Check tension")
         self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "control_load_rejected")
+
+    def test_display_load_smooths_without_changing_current_load(self):
+        self.engine.state["display_load"] = 0.0
+        self.engine._set_load_state_locked(1.0, 123.0)
+
+        self.assertEqual(self.engine.state["current_load"], 1.0)
+        self.assertGreater(self.engine.state["display_load"], 0.0)
+        self.assertLess(self.engine.state["display_load"], 1.0)
+
+    def test_display_load_snaps_on_large_change(self):
+        self.engine.state["display_load"] = 0.0
+        self.engine._set_load_state_locked(-7.4, 123.0)
+
+        self.assertEqual(self.engine.state["current_load"], -7.4)
+        self.assertEqual(self.engine.state["display_load"], -7.4)
 
     def test_auto_preload_discards_transient_inconsistent_control_burst(self):
         engine_module.PRELOAD_AUTO_DIRECT_LOAD_READ = True

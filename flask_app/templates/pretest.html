@@ -14,6 +14,7 @@
   </div>
   <div class="btnrow">
     <button class="success" type="button" id="autoPreload">Auto Tension</button>
+    <button class="danger" type="button" id="stopAutoPreload" hidden>Stop</button>
     <button class="secondary" type="button" id="jogUp">Jog Up</button>
     <button class="secondary" type="button" id="jogDown">Jog Down</button>
     <button class="warn" type="button" id="tareBtn">Tare</button>
@@ -99,6 +100,8 @@
   const preloadStatus = document.getElementById("preloadStatus");
   const jogSpeed = document.getElementById("jogSpeed");
   const tareBtn = document.getElementById("tareBtn");
+  const autoPreloadBtn = document.getElementById("autoPreload");
+  const stopAutoPreloadBtn = document.getElementById("stopAutoPreload");
 
   function jog(action) {
     return fetch("{{ url_for('api_jog') }}", {
@@ -128,13 +131,21 @@
     });
   });
 
-  document.getElementById("autoPreload").addEventListener("click", () => {
+  autoPreloadBtn.addEventListener("click", () => {
     fetch("{{ url_for('api_auto_preload') }}", { method: "POST", headers: quadpodJsonHeaders() })
       .then((res) => res.json())
       .then((data) => {
         preloadStatus.className = data.ok ? "status warn" : "status bad";
         preloadStatus.textContent = data.ok ? "Auto Tension" : "Check tension";
       });
+  });
+
+  stopAutoPreloadBtn.addEventListener("click", () => {
+    fetch("{{ url_for('api_stop') }}", {
+      method: "POST",
+      headers: quadpodJsonHeaders(),
+      body: JSON.stringify({ reason: "operator stop" })
+    });
   });
 
   tareBtn.addEventListener("click", () => {
@@ -147,8 +158,11 @@
     fetch("{{ url_for('api_status') }}")
       .then((res) => res.json())
       .then((data) => {
-        liveLoad.textContent = data.current_load.toFixed(2);
+        const shownLoad = Number.isFinite(data.display_load) ? data.display_load : data.current_load;
+        liveLoad.textContent = shownLoad.toFixed(2);
         tareBtn.disabled = Boolean(data.auto_preload_running || data.test_running);
+        autoPreloadBtn.disabled = Boolean(data.auto_preload_running || data.test_running);
+        stopAutoPreloadBtn.hidden = !data.auto_preload_running;
         const autoMessage = data.auto_preload_message || "";
         const needsAction = autoMessage === "Check tension";
         if (data.auto_preload_running || needsAction) {
