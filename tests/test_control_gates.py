@@ -714,6 +714,18 @@ class ControlGateTests(unittest.TestCase):
         self.assertFalse(self.engine.state["auto_preload_sensor_fault"])
         self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "control_load_spike_ignored_in_band")
 
+    def test_auto_preload_accepts_lower_reading_when_recovering_from_above_band(self):
+        engine_module.PRELOAD_AUTO_DIRECT_LOAD_READ = True
+        self.engine.auto_preload_near_band_seen = True
+        self.engine.state["current_load"] = 0.795
+        readings = iter([-3.869, -5.9, -5.8, -5.7, -5.6])
+        self.engine.load_cell.get_control_force = lambda: next(readings)
+
+        load = self.engine._refresh_auto_preload_load()
+
+        self.assertLess(load, engine_module.PRELOAD_MIN_LBS)
+        self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "control_load_confirmed")
+
     def test_auto_preload_pulse_stops_on_inconsistent_sensor_spike(self):
         engine_module.PRELOAD_AUTO_DIRECT_LOAD_READ = True
         engine_module.PRELOAD_AUTO_CONTROL_MAX_TRANSIENT_REJECTS = 0

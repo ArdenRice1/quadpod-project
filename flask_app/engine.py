@@ -1425,7 +1425,9 @@ class QuadpodEngine:
     def _auto_preload_should_ignore_drop_after_near_band(self, previous_load, load):
         return bool(
             self.auto_preload_near_band_seen
-            and previous_load >= PRELOAD_MIN_LBS - PRELOAD_AUTO_NEAR_BAND_HOLD_MARGIN_LBS
+            and PRELOAD_MIN_LBS - PRELOAD_AUTO_NEAR_BAND_HOLD_MARGIN_LBS
+            <= previous_load
+            <= PRELOAD_MAX_LBS + PRELOAD_AUTO_NEAR_BAND_HOLD_MARGIN_LBS
             and load < PRELOAD_MIN_LBS - PRELOAD_AUTO_NEAR_BAND_HOLD_MARGIN_LBS
         )
 
