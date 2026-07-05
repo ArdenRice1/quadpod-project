@@ -82,6 +82,7 @@ from config import (
     PRELOAD_AUTO_PREDICT_STOP_LBS,
     PRELOAD_AUTO_RATE_WINDOW_SECONDS,
     PRELOAD_AUTO_SPEED_PERCENT,
+    PRELOAD_AUTO_SCAN_VERIFY_SECONDS,
     PRELOAD_AUTO_STABLE_DELTA_LBS,
     PRELOAD_AUTO_STOP_DURING_LOAD_READ,
     PRELOAD_AUTO_STOP_JOUNCE_IGNORE_SECONDS,
@@ -124,6 +125,7 @@ class QuadpodEngine:
         self.last_client_poll = time.monotonic()
         self.failure_drop_samples = 0
         self.load_history = deque()
+        self.scan_load_history = deque()
         self.auto_preload_trace = deque(maxlen=max(1, int(PRELOAD_AUTO_TRACE_MAX_ENTRIES)))
         self.auto_preload_coast_lbs = 0.0
         self.auto_preload_last_stop_load = None
@@ -142,6 +144,8 @@ class QuadpodEngine:
         self.preload_hold_trim_us = 0
         self.state = {
             "current_load": 0.0,
+            "scan_load": 0.0,
+            "scan_load_window_s": 0.0,
             "display_load": 0.0,
             "raw_load": 0.0,
             "peak_load": 0.0,
@@ -428,6 +432,7 @@ class QuadpodEngine:
             raw_counts = getattr(self.load_cell, "last_raw_lbs", load)
 
         with self.lock:
+            self._record_scan_load_locked(load)
             self._set_load_state_locked(load, raw_counts)
 
             if not self.state["test_running"]:
@@ -578,7 +583,8 @@ class QuadpodEngine:
                                 min_lbs=PRELOAD_MIN_LBS,
                                 max_lbs=PRELOAD_MAX_LBS,
                             )
-                        ready = self._auto_preload_ready_locked()
+                        scan_ready = self._auto_preload_scan_ready_locked()
+                        ready = self._auto_preload_ready_locked() and scan_ready
                         if now - stable_since >= PRELOAD_AUTO_IN_BAND_END_SECONDS:
                             self.state["auto_preload_message"] = "Ready" if ready else ""
                             if ready:
@@ -591,6 +597,9 @@ class QuadpodEngine:
                                 short_stable=self.state.get("auto_preload_short_stable"),
                                 drift_stable=self.state.get("auto_preload_drift_stable"),
                                 drift_drop_lbs=self.state.get("auto_preload_drift_drop_lbs"),
+                                scan_ready=scan_ready,
+                                scan_load=self.state.get("scan_load"),
+                                scan_window_s=self.state.get("scan_load_window_s"),
                             )
                             hold_should_start = True
                             break
@@ -715,7 +724,8 @@ class QuadpodEngine:
                         near_band_hold = self._auto_preload_near_band_hold_locked(load)
                         if in_band:
                             self.auto_preload_near_band_seen = True
-                        ready = in_band and self._auto_preload_ready_locked()
+                        scan_ready = self._auto_preload_scan_ready_locked()
+                        ready = in_band and self._auto_preload_ready_locked() and scan_ready
                         if in_band:
                             if stable_since is None:
                                 stable_since = now
@@ -731,6 +741,9 @@ class QuadpodEngine:
                                     short_stable=self.state.get("auto_preload_short_stable"),
                                     drift_stable=self.state.get("auto_preload_drift_stable"),
                                     drift_drop_lbs=self.state.get("auto_preload_drift_drop_lbs"),
+                                    scan_ready=scan_ready,
+                                    scan_load=self.state.get("scan_load"),
+                                    scan_window_s=self.state.get("scan_load_window_s"),
                                 )
                                 hold_should_start = True
                                 break
@@ -1684,6 +1697,43 @@ class QuadpodEngine:
         )
         while self.load_history and self.load_history[0][0] < cutoff:
             self.load_history.popleft()
+
+    def _record_scan_load_locked(self, load):
+        now = time.monotonic()
+        load = round(float(load), 3)
+        self.scan_load_history.append((now, load))
+        cutoff = now - max(0.2, PRELOAD_AUTO_SCAN_VERIFY_SECONDS * 2.0)
+        while self.scan_load_history and self.scan_load_history[0][0] < cutoff:
+            self.scan_load_history.popleft()
+        self.state["scan_load"] = load
+        self.state["scan_load_window_s"] = self._scan_load_window_seconds_locked(now)
+
+    def _scan_load_window_seconds_locked(self, now=None):
+        if not self.scan_load_history:
+            return 0.0
+        now = time.monotonic() if now is None else now
+        cutoff = now - max(0.2, PRELOAD_AUTO_SCAN_VERIFY_SECONDS)
+        samples = [(sample_time, value) for sample_time, value in self.scan_load_history if sample_time >= cutoff]
+        if len(samples) < 2:
+            return 0.0
+        return round(samples[-1][0] - samples[0][0], 3)
+
+    def _auto_preload_scan_ready_locked(self):
+        required_window = max(0.0, float(PRELOAD_AUTO_SCAN_VERIFY_SECONDS))
+        if required_window <= 0:
+            self.state["scan_load_window_s"] = 0.0
+            return True
+        now = time.monotonic()
+        cutoff = now - required_window
+        samples = [(sample_time, value) for sample_time, value in self.scan_load_history if sample_time >= cutoff]
+        if len(samples) < 3:
+            self.state["scan_load_window_s"] = self._scan_load_window_seconds_locked(now)
+            return False
+        window_s = samples[-1][0] - samples[0][0]
+        self.state["scan_load_window_s"] = round(window_s, 3)
+        if window_s < required_window * 0.8:
+            return False
+        return all(PRELOAD_MIN_LBS <= value <= PRELOAD_MAX_LBS for _, value in samples)
 
     def _set_load_state_locked(self, load, raw_counts):
         load = round(float(load), 3)

@@ -37,6 +37,7 @@ class ControlGateTests(unittest.TestCase):
         self.original_stop_during_load_read = engine_module.PRELOAD_AUTO_STOP_DURING_LOAD_READ
         self.original_discard_settle = engine_module.PRELOAD_AUTO_CONTROL_DISCARD_SETTLE_SECONDS
         self.original_stop_jounce = engine_module.PRELOAD_AUTO_STOP_JOUNCE_IGNORE_SECONDS
+        self.original_scan_verify = engine_module.PRELOAD_AUTO_SCAN_VERIFY_SECONDS
         self.original_plausibility_enabled = engine_module.PRELOAD_AUTO_PLAUSIBILITY_ENABLED
         self.original_plausibility_base = engine_module.PRELOAD_AUTO_PLAUSIBILITY_BASE_DELTA_LBS
         self.original_plausibility_rate = engine_module.PRELOAD_AUTO_PLAUSIBILITY_LBS_PER_SECOND_AT_100
@@ -61,6 +62,7 @@ class ControlGateTests(unittest.TestCase):
         engine_module.PRELOAD_AUTO_STOP_DURING_LOAD_READ = self.original_stop_during_load_read
         engine_module.PRELOAD_AUTO_CONTROL_DISCARD_SETTLE_SECONDS = self.original_discard_settle
         engine_module.PRELOAD_AUTO_STOP_JOUNCE_IGNORE_SECONDS = self.original_stop_jounce
+        engine_module.PRELOAD_AUTO_SCAN_VERIFY_SECONDS = self.original_scan_verify
         engine_module.PRELOAD_AUTO_PLAUSIBILITY_ENABLED = self.original_plausibility_enabled
         engine_module.PRELOAD_AUTO_PLAUSIBILITY_BASE_DELTA_LBS = self.original_plausibility_base
         engine_module.PRELOAD_AUTO_PLAUSIBILITY_LBS_PER_SECOND_AT_100 = self.original_plausibility_rate
@@ -480,6 +482,7 @@ class ControlGateTests(unittest.TestCase):
 
     def test_auto_preload_finishes_after_short_in_band_dwell(self):
         engine_module.PRELOAD_AUTO_IN_BAND_END_SECONDS = 0.01
+        engine_module.PRELOAD_AUTO_SCAN_VERIFY_SECONDS = 0.0
         self.engine.state["auto_preload_running"] = True
         self._set_load(0.0)
 
@@ -489,6 +492,25 @@ class ControlGateTests(unittest.TestCase):
         self.assertEqual(self.engine.actuator.last_command, "neutral")
         self.assertIn("in_band_complete", [entry["event"] for entry in self.engine.auto_preload_trace])
         self.assertNotEqual(self.engine.state["auto_preload_message"], "Check tension")
+
+    def test_auto_preload_scan_ready_blocks_when_scan_load_is_out_of_band(self):
+        engine_module.PRELOAD_AUTO_SCAN_VERIFY_SECONDS = 0.5
+        now = time.monotonic()
+        self.engine.scan_load_history.clear()
+        for seconds_ago, value in [(0.45, -0.2), (0.25, -0.3), (0.0, -0.46)]:
+            self.engine.scan_load_history.append((now - seconds_ago, value))
+
+        self.assertFalse(self.engine._auto_preload_scan_ready_locked())
+        self.assertAlmostEqual(self.engine.state["scan_load_window_s"], 0.45, places=1)
+
+    def test_auto_preload_scan_ready_allows_recent_scan_band_agreement(self):
+        engine_module.PRELOAD_AUTO_SCAN_VERIFY_SECONDS = 0.5
+        now = time.monotonic()
+        self.engine.scan_load_history.clear()
+        for seconds_ago, value in [(0.45, -0.2), (0.25, -0.18), (0.0, -0.12)]:
+            self.engine.scan_load_history.append((now - seconds_ago, value))
+
+        self.assertTrue(self.engine._auto_preload_scan_ready_locked())
 
     def test_auto_preload_pulses_only_outside_safe_band(self):
         self.assertTrue(self.engine._auto_preload_direction_for_load(engine_module.PRELOAD_MIN_LBS - 0.1))
