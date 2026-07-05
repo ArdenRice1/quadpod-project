@@ -237,7 +237,9 @@ class AppApiTests(unittest.TestCase):
         test_id = storage.create_test(job_id, {"test_number": "1"})
         storage.add_sample(test_id, 0.0, 10.0)
 
-        response = self.client.post(f"/job/{job_id}/copy-usb", follow_redirects=False)
+        copied_path = self.root / "exports" / "usb_copy" / "USB_Job_USB-001"
+        with patch.object(app_module.exporter, "copy_job_to_usb", return_value=copied_path):
+            response = self.client.post(f"/job/{job_id}/copy-usb", follow_redirects=False)
 
         self.assertEqual(response.status_code, 303)
         self.assertIn("copy_status=ok", response.headers["Location"])
