@@ -36,6 +36,7 @@ class ControlGateTests(unittest.TestCase):
         self.original_control_max_transient_rejects = engine_module.PRELOAD_AUTO_CONTROL_MAX_TRANSIENT_REJECTS
         self.original_stop_during_load_read = engine_module.PRELOAD_AUTO_STOP_DURING_LOAD_READ
         self.original_discard_settle = engine_module.PRELOAD_AUTO_CONTROL_DISCARD_SETTLE_SECONDS
+        self.original_stop_jounce = engine_module.PRELOAD_AUTO_STOP_JOUNCE_IGNORE_SECONDS
         self.original_plausibility_enabled = engine_module.PRELOAD_AUTO_PLAUSIBILITY_ENABLED
         self.original_plausibility_base = engine_module.PRELOAD_AUTO_PLAUSIBILITY_BASE_DELTA_LBS
         self.original_plausibility_rate = engine_module.PRELOAD_AUTO_PLAUSIBILITY_LBS_PER_SECOND_AT_100
@@ -59,6 +60,7 @@ class ControlGateTests(unittest.TestCase):
         engine_module.PRELOAD_AUTO_CONTROL_MAX_TRANSIENT_REJECTS = self.original_control_max_transient_rejects
         engine_module.PRELOAD_AUTO_STOP_DURING_LOAD_READ = self.original_stop_during_load_read
         engine_module.PRELOAD_AUTO_CONTROL_DISCARD_SETTLE_SECONDS = self.original_discard_settle
+        engine_module.PRELOAD_AUTO_STOP_JOUNCE_IGNORE_SECONDS = self.original_stop_jounce
         engine_module.PRELOAD_AUTO_PLAUSIBILITY_ENABLED = self.original_plausibility_enabled
         engine_module.PRELOAD_AUTO_PLAUSIBILITY_BASE_DELTA_LBS = self.original_plausibility_base
         engine_module.PRELOAD_AUTO_PLAUSIBILITY_LBS_PER_SECOND_AT_100 = self.original_plausibility_rate
@@ -771,6 +773,34 @@ class ControlGateTests(unittest.TestCase):
 
         self.assertAlmostEqual(load, -1.0, places=2)
         self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "control_load_confirmed")
+
+    def test_auto_preload_ignores_jounce_during_stop_hold(self):
+        engine_module.PRELOAD_AUTO_DIRECT_LOAD_READ = True
+        engine_module.PRELOAD_AUTO_PLAUSIBILITY_ENABLED = True
+        engine_module.PRELOAD_AUTO_PLAUSIBILITY_BASE_DELTA_LBS = 0.35
+        self.engine.auto_preload_control_last_load = -0.15
+        self.engine.auto_preload_control_last_time = time.monotonic()
+        self.engine.auto_preload_control_hold_until = time.monotonic() + 0.45
+        self.engine.state["current_load"] = -0.15
+        self.engine.load_cell.get_control_force = lambda: -0.7
+
+        load = self.engine._refresh_auto_preload_load(
+            control_speed_percent=0,
+            control_direction=None,
+        )
+
+        self.assertEqual(load, -0.15)
+        self.assertEqual(self.engine.state["current_load"], -0.15)
+        self.assertIn("control_load_jounce_ignored", [entry["event"] for entry in self.engine.auto_preload_trace])
+
+    def test_auto_preload_stop_jounce_hold_sets_control_anchor(self):
+        engine_module.PRELOAD_AUTO_STOP_JOUNCE_IGNORE_SECONDS = 0.45
+
+        self.engine._hold_auto_preload_after_stop_locked(-0.12, "target_band")
+
+        self.assertEqual(self.engine.auto_preload_control_last_load, -0.12)
+        self.assertGreater(self.engine.auto_preload_control_hold_until, time.monotonic())
+        self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "control_stop_jounce_hold")
 
     def test_auto_preload_pulse_stops_on_inconsistent_sensor_spike(self):
         engine_module.PRELOAD_AUTO_DIRECT_LOAD_READ = True

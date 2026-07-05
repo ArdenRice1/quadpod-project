@@ -84,6 +84,7 @@ from config import (
     PRELOAD_AUTO_SPEED_PERCENT,
     PRELOAD_AUTO_STABLE_DELTA_LBS,
     PRELOAD_AUTO_STOP_DURING_LOAD_READ,
+    PRELOAD_AUTO_STOP_JOUNCE_IGNORE_SECONDS,
     PRELOAD_AUTO_STABLE_WINDOW_SECONDS,
     PRELOAD_AUTO_SETTLE_MAX_SECONDS,
     PRELOAD_AUTO_SETTLE_SECONDS,
@@ -569,6 +570,7 @@ class QuadpodEngine:
                         last_speed_command = None
                         if stable_since is None:
                             stable_since = now
+                            self._hold_auto_preload_after_stop_locked(load, "target_band")
                             self._record_auto_preload_trace_locked(
                                 "continuous_in_band",
                                 load=load,
@@ -604,6 +606,7 @@ class QuadpodEngine:
                                 command_direction = None
                                 last_speed_command = None
                                 self.state["auto_preload_message"] = "Settling"
+                                self._hold_auto_preload_after_stop_locked(load, "predictive_brake")
                                 self._record_auto_preload_trace_locked(
                                     "continuous_brake",
                                     load=load,
@@ -1391,6 +1394,15 @@ class QuadpodEngine:
                 self.auto_preload_control_last_load = float(load)
                 self.auto_preload_control_last_time = now
                 return load, trace_event
+            if self.auto_preload_control_hold_until > now and control_direction is None:
+                if abs(float(load) - float(last_load)) > PRELOAD_AUTO_PLAUSIBILITY_BASE_DELTA_LBS:
+                    self._record_auto_preload_trace_locked(
+                        "control_load_jounce_ignored",
+                        load=load,
+                        accepted_load=float(last_load),
+                        remaining_s=self.auto_preload_control_hold_until - now,
+                    )
+                return float(last_load), trace_event
 
         elapsed_s = max(0.0, now - float(last_time))
         max_delta = self._auto_preload_plausible_delta_locked(
@@ -1494,6 +1506,24 @@ class QuadpodEngine:
         )
         self.auto_preload_control_hold_logged = False
         self.state["auto_preload_message"] = "Settling"
+
+    def _hold_auto_preload_after_stop_locked(self, load, reason):
+        settle_seconds = max(0.0, float(PRELOAD_AUTO_STOP_JOUNCE_IGNORE_SECONDS))
+        if settle_seconds <= 0:
+            return
+        self.auto_preload_control_last_load = float(load)
+        self.auto_preload_control_last_time = time.monotonic()
+        self.auto_preload_control_hold_until = max(
+            self.auto_preload_control_hold_until,
+            time.monotonic() + settle_seconds,
+        )
+        self.auto_preload_control_hold_logged = False
+        self._record_auto_preload_trace_locked(
+            "control_stop_jounce_hold",
+            load=load,
+            reason=reason,
+            seconds=settle_seconds,
+        )
 
     def _auto_preload_read_needs_confirmation(self, previous_load, load):
         return (
