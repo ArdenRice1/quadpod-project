@@ -328,6 +328,12 @@ class ControlGateTests(unittest.TestCase):
         self.assertLessEqual(mid_speed, engine_module.PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_MID_MAX_SPEED_PERCENT)
         self.assertLessEqual(final_speed, engine_module.PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_FINAL_MAX_SPEED_PERCENT)
 
+    def test_auto_preload_slew_can_be_clamped_to_sensor_paced_cap(self):
+        slewed = self.engine._auto_preload_slew_speed(30.0, 9.0, 0.1)
+        clamped = min(slewed, self.engine._auto_preload_sensor_paced_max_speed_locked(-4.7))
+
+        self.assertLessEqual(clamped, engine_module.PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_START_MAX_SPEED_PERCENT)
+
     def test_auto_preload_rate_uses_fastest_recent_rise(self):
         self._set_load_history([
             (0.70, -4.864),
@@ -564,6 +570,19 @@ class ControlGateTests(unittest.TestCase):
         self.engine.scan_load_history.clear()
         for seconds_ago, value in [(0.45, -0.2), (0.25, -0.18), (0.0, -0.12)]:
             self.engine.scan_load_history.append((now - seconds_ago, value))
+
+        self.assertTrue(self.engine._auto_preload_scan_ready_locked())
+
+    def test_auto_preload_scan_ready_falls_back_to_stable_in_band_load(self):
+        engine_module.PRELOAD_AUTO_SCAN_VERIFY_SECONDS = 0.5
+        self.engine.scan_load_history.clear()
+        self.engine.state["current_load"] = -0.2
+        self.engine.state["scan_load"] = -0.2
+        self._set_load_history([
+            (3.0, -0.2),
+            (1.0, -0.21),
+            (0.0, -0.2),
+        ])
 
         self.assertTrue(self.engine._auto_preload_scan_ready_locked())
 

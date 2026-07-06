@@ -657,6 +657,11 @@ class QuadpodEngine:
                                 desired_speed,
                                 now - last_update,
                             )
+                            if direction:
+                                current_speed = min(
+                                    current_speed,
+                                    self._auto_preload_sensor_paced_max_speed_locked(load),
+                                )
                             command_speed = max(1, min(100, int(round(current_speed))))
                             self._move_preload_direction_locked(direction, command_speed)
                             command_direction = direction
@@ -1775,6 +1780,14 @@ class QuadpodEngine:
         samples = [(sample_time, value) for sample_time, value in self.scan_load_history if sample_time >= cutoff]
         if len(samples) < 3:
             self.state["scan_load_window_s"] = self._scan_load_window_seconds_locked(now)
+            current_load = float(self.state.get("current_load") or 0.0)
+            scan_load = float(self.state.get("scan_load") or current_load)
+            if (
+                PRELOAD_MIN_LBS <= current_load <= PRELOAD_MAX_LBS
+                and PRELOAD_MIN_LBS <= scan_load <= PRELOAD_MAX_LBS
+                and self._auto_preload_load_stable_locked()
+            ):
+                return True
             return False
         window_s = samples[-1][0] - samples[0][0]
         self.state["scan_load_window_s"] = round(window_s, 3)
