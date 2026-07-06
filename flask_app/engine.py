@@ -92,6 +92,7 @@ from config import (
     PRELOAD_AUTO_PLAUSIBILITY_BASE_DELTA_LBS,
     PRELOAD_AUTO_PLAUSIBILITY_ENABLED,
     PRELOAD_AUTO_PLAUSIBILITY_LBS_PER_SECOND_AT_100,
+    PRELOAD_AUTO_POST_BAND_RECOVERY_MAX_LBS,
     PRELOAD_AUTO_PREDICT_LOOKAHEAD_SECONDS,
     PRELOAD_AUTO_PREDICT_STOP_LBS,
     PRELOAD_AUTO_RATE_WINDOW_SECONDS,
@@ -116,6 +117,7 @@ from config import (
     PRELOAD_MAX_LBS,
     PRELOAD_MIN_LBS,
     PRELOAD_READY_LATCH_MARGIN_LBS,
+    PRELOAD_READY_LATCH_POSITIVE_MARGIN_LBS,
     PRELOAD_STABILITY_SECONDS,
     PRELOAD_TARGET_LBS,
     PRELOAD_TOLERANCE_LBS,
@@ -566,6 +568,20 @@ class QuadpodEngine:
                     else:
                         remembered_up_rate = 0.0
                     if load > PRELOAD_AUTO_ABORT_LBS:
+                        if self._auto_preload_can_recover_post_band_locked(load):
+                            self.actuator.stop()
+                            self.state["actuator_command"] = self.actuator.last_command
+                            self._set_preload_ready_latch_locked(load)
+                            hold_should_start = True
+                            self.state["auto_preload_message"] = "Ready"
+                            command_direction = None
+                            self._record_auto_preload_trace_locked(
+                                "post_band_recovery",
+                                load=load,
+                                abort_lbs=PRELOAD_AUTO_ABORT_LBS,
+                                recovery_max_lbs=PRELOAD_AUTO_POST_BAND_RECOVERY_MAX_LBS,
+                            )
+                            break
                         self.actuator.stop()
                         self.state["actuator_command"] = self.actuator.last_command
                         self.state["auto_preload_message"] = "Check tension"
@@ -941,7 +957,13 @@ class QuadpodEngine:
     def _preload_hold_update_locked(self):
         load = float(self.state.get("current_load") or 0.0)
         rate = self._auto_preload_load_rate_locked()
-        if load < PRELOAD_MIN_LBS or load > PRELOAD_MAX_LBS:
+        if self.state.get("preload_ready_latched"):
+            recovery_min = PRELOAD_MIN_LBS - max(0.0, float(PRELOAD_READY_LATCH_MARGIN_LBS))
+            recovery_max = PRELOAD_AUTO_POST_BAND_RECOVERY_MAX_LBS
+        else:
+            recovery_min = PRELOAD_MIN_LBS
+            recovery_max = PRELOAD_MAX_LBS
+        if load < recovery_min or load > recovery_max:
             self.preload_hold_trim_us = 0
             self.preload_hold_active = False
             self.actuator.stop()
@@ -956,7 +978,12 @@ class QuadpodEngine:
 
         previous_trim = self.preload_hold_trim_us
         hold_target = min(PRELOAD_TARGET_LBS, PRELOAD_AUTO_TARGET_LBS)
-        if PRELOAD_MIN_LBS <= load < hold_target:
+        if load > PRELOAD_MAX_LBS:
+            self.preload_hold_trim_us = max(
+                -max(0, int(PRELOAD_HOLD_TRIM_MAX_US)),
+                self.preload_hold_trim_us - max(1, int(PRELOAD_HOLD_TRIM_STEP_US)),
+            )
+        elif PRELOAD_MIN_LBS <= load < hold_target:
             if rate <= -PRELOAD_HOLD_TRIM_DROP_RATE_LBS_PER_SECOND or self.preload_hold_trim_us > 0:
                 self.preload_hold_trim_us = min(
                     max(0, int(PRELOAD_HOLD_TRIM_MAX_US)),
@@ -966,6 +993,9 @@ class QuadpodEngine:
             self.preload_hold_trim_us = max(
                 0,
                 self.preload_hold_trim_us - max(1, int(PRELOAD_HOLD_TRIM_STEP_US)),
+            ) if self.preload_hold_trim_us >= 0 else min(
+                0,
+                self.preload_hold_trim_us + max(1, int(PRELOAD_HOLD_TRIM_STEP_US)),
             )
 
         hold_us = VICTOR_NEUTRAL_US + self.preload_hold_trim_us
@@ -1858,21 +1888,30 @@ class QuadpodEngine:
     def _preload_ready_latch_allows_load_locked(self, load):
         if not self.state.get("preload_ready_latched"):
             return False
-        margin = max(0.0, float(PRELOAD_READY_LATCH_MARGIN_LBS))
-        return PRELOAD_MIN_LBS - margin <= float(load) <= PRELOAD_MAX_LBS + margin
+        negative_margin = max(0.0, float(PRELOAD_READY_LATCH_MARGIN_LBS))
+        positive_margin = max(negative_margin, float(PRELOAD_READY_LATCH_POSITIVE_MARGIN_LBS))
+        return PRELOAD_MIN_LBS - negative_margin <= float(load) <= PRELOAD_MAX_LBS + positive_margin
 
     def _set_preload_ready_latch_locked(self, load):
         self.state["preload_ready_latched"] = True
+        self.state["preload_ready"] = self._preload_start_allowed_locked(load)
         self._record_auto_preload_trace_locked(
             "ready_latched",
             load=load,
             min_lbs=PRELOAD_MIN_LBS,
             max_lbs=PRELOAD_MAX_LBS,
             margin_lbs=PRELOAD_READY_LATCH_MARGIN_LBS,
+            positive_margin_lbs=PRELOAD_READY_LATCH_POSITIVE_MARGIN_LBS,
         )
 
     def _clear_preload_ready_latch_locked(self):
         self.state["preload_ready_latched"] = False
+
+    def _auto_preload_can_recover_post_band_locked(self, load):
+        return bool(
+            self.auto_preload_near_band_seen
+            and PRELOAD_MAX_LBS < float(load) <= PRELOAD_AUTO_POST_BAND_RECOVERY_MAX_LBS
+        )
 
     def _record_auto_preload_trace_locked(self, event, **data):
         entry = {"t": round(time.monotonic(), 4), "event": event}

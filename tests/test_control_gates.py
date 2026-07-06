@@ -134,6 +134,15 @@ class ControlGateTests(unittest.TestCase):
         self.assertTrue(ok, message)
         self.assertTrue(self.engine.state["test_running"])
 
+    def test_start_accepts_positive_recovery_after_auto_preload_ready_latch(self):
+        self.engine._set_preload_ready_latch_locked(0.0)
+        self._set_load(0.8)
+
+        ok, message = self.engine.start_pull(self.test_id)
+
+        self.assertTrue(ok, message)
+        self.assertTrue(self.engine.state["test_running"])
+
     def test_start_rejects_drift_outside_ready_latch_margin(self):
         self.engine._set_preload_ready_latch_locked(0.0)
         self._set_load(engine_module.PRELOAD_MIN_LBS - engine_module.PRELOAD_READY_LATCH_MARGIN_LBS - 0.01)
@@ -406,6 +415,18 @@ class ControlGateTests(unittest.TestCase):
 
         self.assertTrue(should_brake)
 
+    def test_auto_preload_can_recover_small_overshoot_after_band_seen(self):
+        self.assertFalse(self.engine._auto_preload_can_recover_post_band_locked(1.06))
+
+        self.engine.auto_preload_near_band_seen = True
+
+        self.assertTrue(self.engine._auto_preload_can_recover_post_band_locked(1.06))
+        self.assertFalse(
+            self.engine._auto_preload_can_recover_post_band_locked(
+                engine_module.PRELOAD_AUTO_POST_BAND_RECOVERY_MAX_LBS + 0.1
+            )
+        )
+
     def test_auto_preload_continuous_does_not_wait_for_zero_to_brake(self):
         should_brake = self.engine._auto_preload_continuous_should_brake_locked(
             engine_module.PRELOAD_AUTO_TARGET_LBS - 0.05,
@@ -463,6 +484,34 @@ class ControlGateTests(unittest.TestCase):
 
         self.assertEqual(self.engine.preload_hold_trim_us, 2)
         self.assertEqual(self.engine.actuator.last_pulse_us, engine_module.VICTOR_NEUTRAL_US + 2)
+
+    def test_preload_hold_trim_decreases_for_positive_recovery_after_latch(self):
+        self.engine.preload_hold_active = True
+        self.engine._set_preload_ready_latch_locked(0.0)
+        self.engine.state["current_load"] = 0.8
+        self._set_load_history([
+            (1.00, 0.7),
+            (0.50, 0.75),
+            (0.00, 0.8),
+        ])
+
+        self.engine._preload_hold_update_locked()
+
+        self.assertTrue(self.engine.preload_hold_active)
+        self.assertEqual(self.engine.preload_hold_trim_us, -1)
+        self.assertEqual(self.engine.actuator.last_pulse_us, engine_module.VICTOR_NEUTRAL_US - 1)
+        self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "hold_trim")
+
+    def test_preload_hold_stops_above_positive_recovery_limit(self):
+        self.engine.preload_hold_active = True
+        self.engine._set_preload_ready_latch_locked(0.0)
+        self.engine.state["current_load"] = engine_module.PRELOAD_AUTO_POST_BAND_RECOVERY_MAX_LBS + 0.1
+
+        self.engine._preload_hold_update_locked()
+
+        self.assertFalse(self.engine.preload_hold_active)
+        self.assertEqual(self.engine.actuator.last_command, "neutral")
+        self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "hold_out_of_band")
 
     def test_auto_preload_contact_detection_keeps_coarse_stage_far_from_target(self):
         normal = self.engine._auto_preload_stage_for_load(-6.0, True)
