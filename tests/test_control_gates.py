@@ -361,10 +361,10 @@ class ControlGateTests(unittest.TestCase):
         self.assertLessEqual(clamped, engine_module.PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_START_MAX_SPEED_PERCENT)
 
     def test_auto_preload_no_progress_allows_final_speed_boost(self):
-        self.assertTrue(self.engine._auto_preload_no_progress_locked(-0.56, 0.0))
+        self.assertTrue(self.engine._auto_preload_no_progress_locked(-1.3, 0.0))
 
         boosted_speed = self.engine._auto_preload_continuous_speed_locked(
-            -0.56,
+            -1.3,
             0.0,
             True,
             max_speed_override=engine_module.PRELOAD_AUTO_CONTINUOUS_NO_PROGRESS_BOOST_SPEED_PERCENT,
@@ -373,8 +373,11 @@ class ControlGateTests(unittest.TestCase):
         self.assertGreater(boosted_speed, engine_module.PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_FINAL_MAX_SPEED_PERCENT)
         self.assertLessEqual(boosted_speed, engine_module.PRELOAD_AUTO_CONTINUOUS_NO_PROGRESS_BOOST_SPEED_PERCENT)
 
+    def test_auto_preload_no_progress_does_not_boost_final_creep(self):
+        self.assertFalse(self.engine._auto_preload_no_progress_locked(-0.8, 0.0))
+
     def test_auto_preload_no_progress_does_not_apply_to_fast_rise(self):
-        self.assertFalse(self.engine._auto_preload_no_progress_locked(-0.56, 0.5))
+        self.assertFalse(self.engine._auto_preload_no_progress_locked(-1.3, 0.5))
 
     def test_auto_preload_rate_uses_fastest_recent_rise(self):
         self._set_load_history([
@@ -414,6 +417,30 @@ class ControlGateTests(unittest.TestCase):
         self.assertTrue(self.engine.auto_preload_final_approach_stop_seen)
         self.assertFalse(self.engine.auto_preload_near_band_seen)
         self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "final_approach_stop_target")
+
+    def test_auto_preload_continuous_creeps_after_final_brake_when_still_far(self):
+        self.engine.auto_preload_initial_stop_seen = True
+        self.engine.auto_preload_final_approach_stop_seen = True
+
+        should_brake = self.engine._auto_preload_continuous_should_brake_locked(
+            engine_module.PRELOAD_AUTO_FINAL_APPROACH_STOP_LBS - engine_module.PRELOAD_AUTO_FINAL_REBRAKE_MARGIN_LBS - 0.2,
+            0.0,
+            engine_module.PRELOAD_AUTO_FINAL_APPROACH_STOP_LBS + 0.01,
+        )
+
+        self.assertFalse(should_brake)
+
+    def test_auto_preload_continuous_rebrakes_after_final_brake_if_prediction_reaches_band(self):
+        self.engine.auto_preload_initial_stop_seen = True
+        self.engine.auto_preload_final_approach_stop_seen = True
+
+        should_brake = self.engine._auto_preload_continuous_should_brake_locked(
+            engine_module.PRELOAD_AUTO_FINAL_APPROACH_STOP_LBS - engine_module.PRELOAD_AUTO_FINAL_REBRAKE_MARGIN_LBS - 0.2,
+            0.0,
+            engine_module.PRELOAD_MIN_LBS + 0.01,
+        )
+
+        self.assertTrue(should_brake)
 
     def test_auto_preload_continuous_first_brakes_at_initial_stop_target(self):
         should_brake = self.engine._auto_preload_continuous_should_brake_locked(

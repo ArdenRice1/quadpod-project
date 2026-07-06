@@ -88,6 +88,7 @@ from config import (
     PRELOAD_AUTO_DIRECT_LOAD_READ,
     PRELOAD_AUTO_FINAL_APPROACH_STOP_LBS,
     PRELOAD_AUTO_FINAL_MAX_DELTA_LBS,
+    PRELOAD_AUTO_FINAL_REBRAKE_MARGIN_LBS,
     PRELOAD_AUTO_IN_BAND_END_SECONDS,
     PRELOAD_AUTO_INITIAL_STOP_LBS,
     PRELOAD_AUTO_MAX_RISE_RATE_LBS_PER_SECOND,
@@ -1252,6 +1253,8 @@ class QuadpodEngine:
                     target_lbs=target_lbs,
                 )
             else:
+                if self._auto_preload_should_creep_after_final_brake_locked(load, predicted_load, target_lbs):
+                    return False
                 self.auto_preload_final_approach_stop_seen = True
                 self._record_auto_preload_trace_locked(
                     "final_approach_stop_target",
@@ -1271,6 +1274,12 @@ class QuadpodEngine:
         ):
             return True
         return False
+
+    def _auto_preload_should_creep_after_final_brake_locked(self, load, predicted_load, target_lbs):
+        if not self.auto_preload_final_approach_stop_seen:
+            return False
+        rebrake_load = float(target_lbs) - max(0.0, float(PRELOAD_AUTO_FINAL_REBRAKE_MARGIN_LBS))
+        return bool(float(load) < rebrake_load and float(predicted_load) < PRELOAD_MIN_LBS)
 
     def _auto_preload_continuous_brake_target_locked(self):
         if not self.auto_preload_initial_stop_seen:
@@ -1375,6 +1384,7 @@ class QuadpodEngine:
         return bool(
             load < PRELOAD_MIN_LBS
             and load >= PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_FINAL_LBS
+            and load < PRELOAD_AUTO_FINAL_APPROACH_STOP_LBS - max(0.0, PRELOAD_AUTO_FINAL_REBRAKE_MARGIN_LBS)
             and abs(float(rate)) <= PRELOAD_AUTO_CONTINUOUS_NO_PROGRESS_RATE_LBS_PER_SECOND
         )
 
