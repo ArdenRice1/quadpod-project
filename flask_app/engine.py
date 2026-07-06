@@ -1,4 +1,5 @@
 import datetime as dt
+import json
 import threading
 import time
 from collections import deque
@@ -54,6 +55,12 @@ from config import (
     PRELOAD_AUTO_CONTINUOUS_MAX_UP_RATE_LBS_PER_SECOND,
     PRELOAD_AUTO_CONTINUOUS_MIN_SPEED_PERCENT,
     PRELOAD_AUTO_CONTINUOUS_RAMP_PERCENT_PER_SECOND,
+    PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_FINAL_LBS,
+    PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_FINAL_MAX_SPEED_PERCENT,
+    PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_MID_LBS,
+    PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_MID_MAX_SPEED_PERCENT,
+    PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_START_LBS,
+    PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_START_MAX_SPEED_PERCENT,
     PRELOAD_AUTO_CONTINUOUS_SLOWDOWN_LBS,
     PRELOAD_AUTO_CONTACT_COARSE_MAX_DELTA_LBS,
     PRELOAD_AUTO_CONTACT_COARSE_PULSE_SECONDS,
@@ -94,6 +101,7 @@ from config import (
     PRELOAD_AUTO_TARGET_LBS,
     PRELOAD_AUTO_TIMEOUT_SECONDS,
     PRELOAD_AUTO_TENSION_STAGES,
+    PRELOAD_AUTO_TRACE_DIR,
     PRELOAD_AUTO_TRACE_MAX_ENTRIES,
     PRELOAD_HOLD_TRIM_DROP_RATE_LBS_PER_SECOND,
     PRELOAD_HOLD_TRIM_ENABLED,
@@ -129,6 +137,7 @@ class QuadpodEngine:
         self.load_history = deque()
         self.scan_load_history = deque()
         self.auto_preload_trace = deque(maxlen=max(1, int(PRELOAD_AUTO_TRACE_MAX_ENTRIES)))
+        self.auto_preload_trace_file = None
         self.auto_preload_coast_lbs = 0.0
         self.auto_preload_last_stop_load = None
         self.auto_preload_last_stop_increase = None
@@ -236,6 +245,7 @@ class QuadpodEngine:
             self._reset_test_session_locked()
             self._clear_preload_ready_latch_locked()
             self.auto_preload_trace.clear()
+            self._start_auto_preload_trace_file_locked()
             self._reset_auto_preload_control_locked()
             self.auto_preload_cancel_requested = False
             if self.load_cell.use_mock or self.load_cell.gpio is not None:
@@ -1126,7 +1136,18 @@ class QuadpodEngine:
                 rate_window = max(0.05, float(PRELOAD_AUTO_CONTINUOUS_MAX_UP_RATE_LBS_PER_SECOND) * 4.0)
                 rate_scale = max(0.25, 1.0 - min(1.0, float(rate) / rate_window))
                 max_speed = max(min_speed, max_speed * rate_scale)
+            max_speed = min(max_speed, self._auto_preload_sensor_paced_max_speed_locked(load))
+            min_speed = min(min_speed, max_speed)
         return max(min_speed, min(max_speed, raw_speed))
+
+    def _auto_preload_sensor_paced_max_speed_locked(self, load):
+        if load >= PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_FINAL_LBS:
+            return max(1.0, float(PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_FINAL_MAX_SPEED_PERCENT))
+        if load >= PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_MID_LBS:
+            return max(1.0, float(PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_MID_MAX_SPEED_PERCENT))
+        if load >= PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_START_LBS:
+            return max(1.0, float(PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_START_MAX_SPEED_PERCENT))
+        return max(1.0, float(PRELOAD_AUTO_CONTINUOUS_MAX_SPEED_PERCENT))
 
     def _auto_preload_slew_speed(self, current_speed, desired_speed, elapsed_s):
         max_step = max(0.0, PRELOAD_AUTO_CONTINUOUS_RAMP_PERCENT_PER_SECOND) * max(0.0, float(elapsed_s))
@@ -1816,6 +1837,24 @@ class QuadpodEngine:
             else:
                 entry[key] = value
         self.auto_preload_trace.append(entry)
+        self._append_auto_preload_trace_file_locked(entry)
+
+    def _start_auto_preload_trace_file_locked(self):
+        try:
+            PRELOAD_AUTO_TRACE_DIR.mkdir(parents=True, exist_ok=True)
+            stamp = time.strftime("%Y%m%d-%H%M%S", time.localtime())
+            self.auto_preload_trace_file = PRELOAD_AUTO_TRACE_DIR / f"auto_tension_{stamp}_{int(time.time() * 1000) % 1000:03d}.jsonl"
+        except OSError:
+            self.auto_preload_trace_file = None
+
+    def _append_auto_preload_trace_file_locked(self, entry):
+        if self.auto_preload_trace_file is None:
+            return
+        try:
+            with self.auto_preload_trace_file.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(entry, sort_keys=True) + "\n")
+        except OSError:
+            self.auto_preload_trace_file = None
 
     def _load_stable_locked(self):
         if len(self.load_history) < 3:

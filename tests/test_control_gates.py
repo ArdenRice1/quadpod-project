@@ -42,8 +42,10 @@ class ControlGateTests(unittest.TestCase):
         self.original_plausibility_enabled = engine_module.PRELOAD_AUTO_PLAUSIBILITY_ENABLED
         self.original_plausibility_base = engine_module.PRELOAD_AUTO_PLAUSIBILITY_BASE_DELTA_LBS
         self.original_plausibility_rate = engine_module.PRELOAD_AUTO_PLAUSIBILITY_LBS_PER_SECOND_AT_100
+        self.original_trace_dir = engine_module.PRELOAD_AUTO_TRACE_DIR
         engine_module.PRELOAD_AUTO_DRIFT_WINDOW_SECONDS = 5.0
         engine_module.PRELOAD_AUTO_DIRECT_LOAD_READ = False
+        engine_module.PRELOAD_AUTO_TRACE_DIR = self.root / "auto_tension_traces"
         self.job_id = storage.create_job(self._job_form())
         self.test_id = storage.create_test(self.job_id, self._test_form())
 
@@ -68,6 +70,7 @@ class ControlGateTests(unittest.TestCase):
         engine_module.PRELOAD_AUTO_PLAUSIBILITY_ENABLED = self.original_plausibility_enabled
         engine_module.PRELOAD_AUTO_PLAUSIBILITY_BASE_DELTA_LBS = self.original_plausibility_base
         engine_module.PRELOAD_AUTO_PLAUSIBILITY_LBS_PER_SECOND_AT_100 = self.original_plausibility_rate
+        engine_module.PRELOAD_AUTO_TRACE_DIR = self.original_trace_dir
         self.tempdir.cleanup()
 
     def _job_form(self, **updates):
@@ -298,7 +301,8 @@ class ControlGateTests(unittest.TestCase):
 
         self.assertGreater(far_speed, mid_speed)
         self.assertGreater(mid_speed, near_speed)
-        self.assertGreaterEqual(near_speed, engine_module.PRELOAD_AUTO_CONTINUOUS_MIN_SPEED_PERCENT)
+        self.assertGreaterEqual(near_speed, 1.0)
+        self.assertLessEqual(near_speed, engine_module.PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_FINAL_MAX_SPEED_PERCENT)
 
     def test_auto_preload_continuous_speed_aims_for_internal_negative_target(self):
         at_target_speed = self.engine._auto_preload_continuous_speed_locked(
@@ -307,13 +311,22 @@ class ControlGateTests(unittest.TestCase):
             True,
         )
 
-        self.assertEqual(at_target_speed, engine_module.PRELOAD_AUTO_CONTINUOUS_MIN_SPEED_PERCENT)
+        self.assertEqual(at_target_speed, engine_module.PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_FINAL_MAX_SPEED_PERCENT)
 
     def test_auto_preload_continuous_speed_damps_fast_rise(self):
-        slow_rise_speed = self.engine._auto_preload_continuous_speed_locked(-5.0, 0.0, True)
-        fast_rise_speed = self.engine._auto_preload_continuous_speed_locked(-5.0, 1.0, True)
+        slow_rise_speed = self.engine._auto_preload_continuous_speed_locked(-5.5, 0.0, True)
+        fast_rise_speed = self.engine._auto_preload_continuous_speed_locked(-5.5, 1.0, True)
 
         self.assertLess(fast_rise_speed, slow_rise_speed)
+
+    def test_auto_preload_continuous_speed_is_sensor_paced_near_contact(self):
+        start_speed = self.engine._auto_preload_continuous_speed_locked(-4.7, 0.0, True)
+        mid_speed = self.engine._auto_preload_continuous_speed_locked(-3.5, 0.0, True)
+        final_speed = self.engine._auto_preload_continuous_speed_locked(-2.0, 0.0, True)
+
+        self.assertLessEqual(start_speed, engine_module.PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_START_MAX_SPEED_PERCENT)
+        self.assertLessEqual(mid_speed, engine_module.PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_MID_MAX_SPEED_PERCENT)
+        self.assertLessEqual(final_speed, engine_module.PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_FINAL_MAX_SPEED_PERCENT)
 
     def test_auto_preload_rate_uses_fastest_recent_rise(self):
         self._set_load_history([
@@ -1048,6 +1061,14 @@ class ControlGateTests(unittest.TestCase):
         self.assertEqual(len(self.engine.auto_preload_trace), engine_module.PRELOAD_AUTO_TRACE_MAX_ENTRIES)
         self.assertEqual(self.engine.auto_preload_trace[-1]["index"], engine_module.PRELOAD_AUTO_TRACE_MAX_ENTRIES + 9)
         self.assertNotIn("auto_preload_trace", self.engine.snapshot())
+
+    def test_auto_preload_trace_persists_jsonl(self):
+        self.engine._start_auto_preload_trace_file_locked()
+        self.engine._record_auto_preload_trace_locked("sample", index=1, load=-0.1)
+
+        trace_files = list(engine_module.PRELOAD_AUTO_TRACE_DIR.glob("auto_tension_*.jsonl"))
+        self.assertEqual(len(trace_files), 1)
+        self.assertIn('"event": "sample"', trace_files[0].read_text(encoding="utf-8"))
 
     def _set_load_history(self, samples):
         now = time.monotonic()
