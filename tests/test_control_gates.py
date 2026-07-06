@@ -310,17 +310,31 @@ class ControlGateTests(unittest.TestCase):
 
         self.assertGreater(far_speed, mid_speed)
         self.assertGreater(mid_speed, near_speed)
-        self.assertGreaterEqual(near_speed, 1.0)
+        self.assertGreaterEqual(near_speed, 0.0)
         self.assertLessEqual(near_speed, engine_module.PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_CRAWL_MAX_SPEED_PERCENT)
 
     def test_auto_preload_continuous_speed_aims_for_internal_negative_target(self):
+        self.engine.auto_preload_initial_stop_seen = True
+        self.engine.auto_preload_final_approach_stop_seen = True
         at_target_speed = self.engine._auto_preload_continuous_speed_locked(
             engine_module.PRELOAD_AUTO_TARGET_LBS,
             0.0,
             True,
         )
 
-        self.assertEqual(at_target_speed, engine_module.PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_CRAWL_MAX_SPEED_PERCENT)
+        self.assertEqual(at_target_speed, 0.0)
+
+    def test_auto_preload_continuous_crawl_zone_can_stop_instead_of_forcing_minimum(self):
+        self.engine.auto_preload_initial_stop_seen = True
+        self.engine.auto_preload_final_approach_stop_seen = True
+
+        speed = self.engine._auto_preload_continuous_speed_locked(
+            engine_module.PRELOAD_MIN_LBS - 0.01,
+            0.0,
+            True,
+        )
+
+        self.assertEqual(speed, 0.0)
 
     def test_auto_preload_continuous_speed_damps_fast_rise(self):
         slow_rise_speed = self.engine._auto_preload_continuous_speed_locked(-6.5, 0.0, True)
@@ -804,7 +818,7 @@ class ControlGateTests(unittest.TestCase):
         self.assertTrue(self.engine.auto_preload_near_band_seen)
         self.assertIsNone(self.engine._auto_preload_direction_for_load(engine_module.PRELOAD_MIN_LBS - 0.02))
 
-    def test_auto_preload_ignores_sudden_low_drop_after_near_band(self):
+    def test_auto_preload_accepts_small_low_drop_after_near_band(self):
         engine_module.PRELOAD_AUTO_DIRECT_LOAD_READ = True
         self.engine.auto_preload_near_band_seen = True
         current_load = engine_module.PRELOAD_MIN_LBS - 0.02
@@ -815,9 +829,10 @@ class ControlGateTests(unittest.TestCase):
 
         load = self.engine._refresh_auto_preload_load()
 
-        self.assertEqual(load, current_load)
+        self.assertEqual(load, dropped_load)
+        self.assertEqual(self.engine.state["current_load"], dropped_load)
         self.assertFalse(self.engine.state["auto_preload_sensor_fault"])
-        self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "control_load_drop_ignored_after_near_band")
+        self.assertEqual(len(self.engine.auto_preload_trace), 0)
 
     def test_auto_preload_pulse_stops_when_max_reached(self):
         self.engine.state["current_load"] = engine_module.PRELOAD_MAX_LBS + 0.01
@@ -1088,6 +1103,29 @@ class ControlGateTests(unittest.TestCase):
         self.assertEqual(load, -0.15)
         self.assertEqual(self.engine.state["current_load"], -0.15)
         self.assertIn("control_load_jounce_ignored", [entry["event"] for entry in self.engine.auto_preload_trace])
+
+    def test_auto_preload_rejects_large_negative_drop_after_near_band(self):
+        engine_module.PRELOAD_AUTO_DIRECT_LOAD_READ = True
+        self.engine.auto_preload_near_band_seen = True
+        self.engine.state["current_load"] = 0.02
+        readings = iter([-6.0, -6.1, -6.0, -6.05, -6.0, -6.0, -6.1, -6.0, -6.05, -6.0])
+        self.engine.load_cell.get_control_force = lambda: next(readings)
+
+        load = self.engine._refresh_auto_preload_load()
+
+        self.assertEqual(load, 0.02)
+        self.assertEqual(self.engine.state["current_load"], 0.02)
+        self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "control_load_drop_ignored_after_near_band")
+
+    def test_scan_rejects_large_negative_drop_after_near_band(self):
+        self.engine.auto_preload_near_band_seen = True
+        self.engine.state["current_load"] = 0.02
+        self.engine.load_cell.get_force = lambda: -6.0
+
+        self.engine._scan_once()
+
+        self.assertEqual(self.engine.state["current_load"], 0.02)
+        self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "scan_load_drop_ignored_after_near_band")
 
     def test_auto_preload_stop_jounce_hold_sets_control_anchor(self):
         engine_module.PRELOAD_AUTO_STOP_JOUNCE_IGNORE_SECONDS = 0.45
