@@ -327,6 +327,12 @@ class ControlGateTests(unittest.TestCase):
 
         self.assertGreater(rate, 2.0)
 
+    def test_auto_preload_remembers_upward_momentum_past_stop_jounce(self):
+        self.assertGreaterEqual(
+            self.engine._auto_preload_up_rate_memory_seconds(),
+            engine_module.PRELOAD_AUTO_STOP_JOUNCE_IGNORE_SECONDS * 2.5,
+        )
+
     def test_auto_preload_continuous_speed_ramp_limits_step_change(self):
         ramped = self.engine._auto_preload_slew_speed(10.0, 50.0, 0.1)
 

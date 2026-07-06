@@ -542,7 +542,7 @@ class QuadpodEngine:
                     rate = self._auto_preload_load_rate_locked()
                     if rate >= PRELOAD_AUTO_CONTINUOUS_MAX_UP_RATE_LBS_PER_SECOND:
                         remembered_up_rate = max(remembered_up_rate, rate)
-                        remembered_up_rate_until = now + max(0.2, PRELOAD_AUTO_STOP_JOUNCE_IGNORE_SECONDS)
+                        remembered_up_rate_until = now + self._auto_preload_up_rate_memory_seconds()
                     elif remembered_up_rate_until > now:
                         rate = max(rate, remembered_up_rate)
                     else:
@@ -1078,6 +1078,12 @@ class QuadpodEngine:
     def _auto_preload_continuous_predicted_load_locked(self, load, rate, speed_percent):
         speed_margin = (max(0.0, float(speed_percent)) / 100.0) * PRELOAD_AUTO_CONTINUOUS_BRAKE_MARGIN_LBS
         return float(load) + max(0.0, float(rate)) * PRELOAD_AUTO_PREDICT_LOOKAHEAD_SECONDS + speed_margin
+
+    def _auto_preload_up_rate_memory_seconds(self):
+        return max(
+            PRELOAD_AUTO_PREDICT_LOOKAHEAD_SECONDS,
+            PRELOAD_AUTO_STOP_JOUNCE_IGNORE_SECONDS * 2.5,
+        )
 
     def _auto_preload_continuous_should_brake_locked(self, load, rate, predicted_load):
         target_lbs = min(PRELOAD_AUTO_PREDICT_STOP_LBS, PRELOAD_AUTO_TARGET_LBS, PRELOAD_MIN_LBS)
