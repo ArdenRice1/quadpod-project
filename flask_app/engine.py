@@ -92,6 +92,7 @@ from config import (
     PRELOAD_AUTO_PLAUSIBILITY_BASE_DELTA_LBS,
     PRELOAD_AUTO_PLAUSIBILITY_ENABLED,
     PRELOAD_AUTO_PLAUSIBILITY_LBS_PER_SECOND_AT_100,
+    PRELOAD_AUTO_POST_ABORT_RECOVERY_SECONDS,
     PRELOAD_AUTO_POST_BAND_RECOVERY_MAX_LBS,
     PRELOAD_AUTO_PREDICT_LOOKAHEAD_SECONDS,
     PRELOAD_AUTO_PREDICT_STOP_LBS,
@@ -525,6 +526,8 @@ class QuadpodEngine:
         remembered_up_rate = 0.0
         remembered_up_rate_until = 0.0
         no_progress_since = None
+        post_abort_recovery_until = 0.0
+        post_abort_recovery_started = False
         hold_should_start = False
         try:
             while time.monotonic() < deadline:
@@ -567,21 +570,60 @@ class QuadpodEngine:
                         rate = max(rate, remembered_up_rate)
                     else:
                         remembered_up_rate = 0.0
+                    if post_abort_recovery_until > 0:
+                        self.actuator.stop()
+                        self.state["actuator_command"] = self.actuator.last_command
+                        current_speed = 0.0
+                        command_direction = None
+                        last_speed_command = None
+                        if PRELOAD_MIN_LBS <= load <= PRELOAD_MAX_LBS:
+                            self._set_preload_ready_latch_locked(load)
+                            hold_should_start = True
+                            self.state["auto_preload_message"] = "Ready"
+                            self._record_auto_preload_trace_locked(
+                                "post_abort_recovery_ready",
+                                load=load,
+                                seconds=max(0.0, PRELOAD_AUTO_POST_ABORT_RECOVERY_SECONDS - (post_abort_recovery_until - now)),
+                            )
+                            break
+                        if load > PRELOAD_AUTO_POST_BAND_RECOVERY_MAX_LBS or now >= post_abort_recovery_until:
+                            self.state["auto_preload_message"] = "Check tension"
+                            self._record_auto_preload_trace_locked(
+                                "post_abort_recovery_failed",
+                                load=load,
+                                recovery_max_lbs=PRELOAD_AUTO_POST_BAND_RECOVERY_MAX_LBS,
+                                seconds=PRELOAD_AUTO_POST_ABORT_RECOVERY_SECONDS,
+                            )
+                            break
+                        self.state["auto_preload_message"] = "Settling"
+                        if not post_abort_recovery_started:
+                            self._record_auto_preload_trace_locked(
+                                "post_abort_recovery_wait",
+                                load=load,
+                                seconds=PRELOAD_AUTO_POST_ABORT_RECOVERY_SECONDS,
+                            )
+                            post_abort_recovery_started = True
+                        time.sleep(max(0.01, PRELOAD_AUTO_CONTINUOUS_INTERVAL_SECONDS))
+                        continue
                     if load > PRELOAD_AUTO_ABORT_LBS:
                         if self._auto_preload_can_recover_post_band_locked(load):
                             self.actuator.stop()
                             self.state["actuator_command"] = self.actuator.last_command
-                            self._set_preload_ready_latch_locked(load)
-                            hold_should_start = True
-                            self.state["auto_preload_message"] = "Ready"
+                            current_speed = 0.0
                             command_direction = None
+                            last_speed_command = None
+                            post_abort_recovery_until = now + max(0.0, float(PRELOAD_AUTO_POST_ABORT_RECOVERY_SECONDS))
+                            post_abort_recovery_started = False
+                            self.state["auto_preload_message"] = "Settling"
                             self._record_auto_preload_trace_locked(
-                                "post_band_recovery",
+                                "post_abort_recovery_start",
                                 load=load,
                                 abort_lbs=PRELOAD_AUTO_ABORT_LBS,
                                 recovery_max_lbs=PRELOAD_AUTO_POST_BAND_RECOVERY_MAX_LBS,
+                                seconds=PRELOAD_AUTO_POST_ABORT_RECOVERY_SECONDS,
                             )
-                            break
+                            time.sleep(max(0.01, PRELOAD_AUTO_CONTINUOUS_INTERVAL_SECONDS))
+                            continue
                         self.actuator.stop()
                         self.state["actuator_command"] = self.actuator.last_command
                         self.state["auto_preload_message"] = "Check tension"

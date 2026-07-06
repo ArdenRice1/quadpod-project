@@ -427,6 +427,39 @@ class ControlGateTests(unittest.TestCase):
             )
         )
 
+    def test_auto_preload_latches_ready_when_overshoot_drifts_back_into_band(self):
+        original_recovery_seconds = engine_module.PRELOAD_AUTO_POST_ABORT_RECOVERY_SECONDS
+        original_drift_window = engine_module.PRELOAD_AUTO_DRIFT_WINDOW_SECONDS
+        original_in_band_end = engine_module.PRELOAD_AUTO_IN_BAND_END_SECONDS
+        engine_module.PRELOAD_AUTO_POST_ABORT_RECOVERY_SECONDS = 0.5
+        engine_module.PRELOAD_AUTO_DRIFT_WINDOW_SECONDS = 0.05
+        engine_module.PRELOAD_AUTO_IN_BAND_END_SECONDS = 0.01
+        loads = iter([-0.1, 1.08, 0.6, -0.1])
+        self.engine.state["auto_preload_running"] = True
+
+        def refresh(*args, **kwargs):
+            try:
+                value = next(loads)
+            except StopIteration:
+                value = -0.1
+            self.engine._set_load_state_locked(value, 100.0)
+
+        self.engine._refresh_auto_preload_load = refresh
+        self.engine._auto_preload_ready_locked = lambda: True
+        self.engine._auto_preload_scan_ready_locked = lambda: True
+
+        try:
+            self.engine._auto_preload_continuous_loop()
+        finally:
+            engine_module.PRELOAD_AUTO_POST_ABORT_RECOVERY_SECONDS = original_recovery_seconds
+            engine_module.PRELOAD_AUTO_DRIFT_WINDOW_SECONDS = original_drift_window
+            engine_module.PRELOAD_AUTO_IN_BAND_END_SECONDS = original_in_band_end
+
+        events = [entry["event"] for entry in self.engine.auto_preload_trace]
+        self.assertIn("post_abort_recovery_start", events)
+        self.assertIn("post_abort_recovery_ready", events)
+        self.assertTrue(self.engine.state["preload_ready_latched"])
+
     def test_auto_preload_continuous_does_not_wait_for_zero_to_brake(self):
         should_brake = self.engine._auto_preload_continuous_should_brake_locked(
             engine_module.PRELOAD_AUTO_TARGET_LBS - 0.05,
