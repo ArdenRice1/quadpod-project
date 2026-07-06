@@ -360,6 +360,15 @@ class ControlGateTests(unittest.TestCase):
 
         self.assertTrue(should_brake)
 
+    def test_auto_preload_continuous_brakes_on_fast_coast_before_target(self):
+        should_brake = self.engine._auto_preload_continuous_should_brake_locked(
+            -4.7,
+            2.1,
+            -1.9,
+        )
+
+        self.assertTrue(should_brake)
+
     def test_auto_preload_continuous_does_not_wait_for_zero_to_brake(self):
         should_brake = self.engine._auto_preload_continuous_should_brake_locked(
             engine_module.PRELOAD_AUTO_TARGET_LBS - 0.05,

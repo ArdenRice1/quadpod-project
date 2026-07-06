@@ -45,6 +45,8 @@ from config import (
     PRELOAD_AUTO_CONTROL_SPIKE_RETRY_SECONDS,
     PRELOAD_AUTO_CONTROL_SPIKE_DELTA_LBS,
     PRELOAD_AUTO_CONTINUOUS_BRAKE_MARGIN_LBS,
+    PRELOAD_AUTO_CONTINUOUS_COAST_BRAKE_RATE_LBS_PER_SECOND,
+    PRELOAD_AUTO_CONTINUOUS_COAST_BRAKE_START_LBS,
     PRELOAD_AUTO_CONTINUOUS_INTERVAL_SECONDS,
     PRELOAD_AUTO_CONTINUOUS_KD,
     PRELOAD_AUTO_CONTINUOUS_KP,
@@ -1089,6 +1091,11 @@ class QuadpodEngine:
         target_lbs = min(PRELOAD_AUTO_PREDICT_STOP_LBS, PRELOAD_AUTO_TARGET_LBS, PRELOAD_MIN_LBS)
         if predicted_load >= target_lbs:
             self.auto_preload_near_band_seen = True
+            return True
+        if (
+            load >= PRELOAD_AUTO_CONTINUOUS_COAST_BRAKE_START_LBS
+            and rate >= PRELOAD_AUTO_CONTINUOUS_COAST_BRAKE_RATE_LBS_PER_SECOND
+        ):
             return True
         if (
             load >= target_lbs - PRELOAD_AUTO_APPROACH_DISTANCE_LBS
