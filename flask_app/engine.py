@@ -55,6 +55,11 @@ from config import (
     PRELOAD_AUTO_CONTINUOUS_MAX_UP_RATE_LBS_PER_SECOND,
     PRELOAD_AUTO_CONTINUOUS_MIN_SPEED_PERCENT,
     PRELOAD_AUTO_CONTINUOUS_RAMP_PERCENT_PER_SECOND,
+    PRELOAD_AUTO_CONTINUOUS_NO_PROGRESS_BOOST_SPEED_PERCENT,
+    PRELOAD_AUTO_CONTINUOUS_NO_PROGRESS_RATE_LBS_PER_SECOND,
+    PRELOAD_AUTO_CONTINUOUS_NO_PROGRESS_SECONDS,
+    PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_EARLY_LBS,
+    PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_EARLY_MAX_SPEED_PERCENT,
     PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_FINAL_LBS,
     PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_FINAL_MAX_SPEED_PERCENT,
     PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_MID_LBS,
@@ -517,6 +522,7 @@ class QuadpodEngine:
         last_update = time.monotonic()
         remembered_up_rate = 0.0
         remembered_up_rate_until = 0.0
+        no_progress_since = None
         hold_should_start = False
         try:
             while time.monotonic() < deadline:
@@ -588,6 +594,7 @@ class QuadpodEngine:
 
                     in_band = PRELOAD_MIN_LBS <= load <= PRELOAD_MAX_LBS
                     if in_band:
+                        no_progress_since = None
                         self.auto_preload_near_band_seen = True
                         self.actuator.stop()
                         self.state["actuator_command"] = self.actuator.last_command
@@ -651,7 +658,23 @@ class QuadpodEngine:
                             direction = False
 
                         if direction is not None:
-                            desired_speed = self._auto_preload_continuous_speed_locked(load, rate, direction)
+                            no_progress_boost = 0.0
+                            if direction:
+                                if self._auto_preload_no_progress_locked(load, rate):
+                                    if no_progress_since is None:
+                                        no_progress_since = now
+                                    elif now - no_progress_since >= PRELOAD_AUTO_CONTINUOUS_NO_PROGRESS_SECONDS:
+                                        no_progress_boost = PRELOAD_AUTO_CONTINUOUS_NO_PROGRESS_BOOST_SPEED_PERCENT
+                                else:
+                                    no_progress_since = None
+                            else:
+                                no_progress_since = None
+                            desired_speed = self._auto_preload_continuous_speed_locked(
+                                load,
+                                rate,
+                                direction,
+                                max_speed_override=no_progress_boost,
+                            )
                             current_speed = self._auto_preload_slew_speed(
                                 current_speed,
                                 desired_speed,
@@ -660,7 +683,7 @@ class QuadpodEngine:
                             if direction:
                                 current_speed = min(
                                     current_speed,
-                                    self._auto_preload_sensor_paced_max_speed_locked(load),
+                                    self._auto_preload_sensor_paced_max_speed_locked(load, no_progress_boost),
                                 )
                             command_speed = max(1, min(100, int(round(current_speed))))
                             self._move_preload_direction_locked(direction, command_speed)
@@ -1119,7 +1142,7 @@ class QuadpodEngine:
             return True
         return False
 
-    def _auto_preload_continuous_speed_locked(self, load, rate, increase):
+    def _auto_preload_continuous_speed_locked(self, load, rate, increase, max_speed_override=0.0):
         target_lbs = PRELOAD_AUTO_TARGET_LBS
         if increase:
             error_lbs = max(0.0, target_lbs - float(load))
@@ -1141,18 +1164,29 @@ class QuadpodEngine:
                 rate_window = max(0.05, float(PRELOAD_AUTO_CONTINUOUS_MAX_UP_RATE_LBS_PER_SECOND) * 4.0)
                 rate_scale = max(0.25, 1.0 - min(1.0, float(rate) / rate_window))
                 max_speed = max(min_speed, max_speed * rate_scale)
-            max_speed = min(max_speed, self._auto_preload_sensor_paced_max_speed_locked(load))
+            max_speed = min(max_speed, self._auto_preload_sensor_paced_max_speed_locked(load, max_speed_override))
             min_speed = min(min_speed, max_speed)
         return max(min_speed, min(max_speed, raw_speed))
 
-    def _auto_preload_sensor_paced_max_speed_locked(self, load):
+    def _auto_preload_sensor_paced_max_speed_locked(self, load, max_speed_override=0.0):
         if load >= PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_FINAL_LBS:
-            return max(1.0, float(PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_FINAL_MAX_SPEED_PERCENT))
-        if load >= PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_MID_LBS:
-            return max(1.0, float(PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_MID_MAX_SPEED_PERCENT))
-        if load >= PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_START_LBS:
-            return max(1.0, float(PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_START_MAX_SPEED_PERCENT))
-        return max(1.0, float(PRELOAD_AUTO_CONTINUOUS_MAX_SPEED_PERCENT))
+            base = PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_FINAL_MAX_SPEED_PERCENT
+        elif load >= PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_MID_LBS:
+            base = PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_MID_MAX_SPEED_PERCENT
+        elif load >= PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_START_LBS:
+            base = PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_START_MAX_SPEED_PERCENT
+        elif load >= PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_EARLY_LBS:
+            base = PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_EARLY_MAX_SPEED_PERCENT
+        else:
+            base = PRELOAD_AUTO_CONTINUOUS_MAX_SPEED_PERCENT
+        return max(1.0, float(max(float(base), float(max_speed_override or 0.0))))
+
+    def _auto_preload_no_progress_locked(self, load, rate):
+        return bool(
+            load < PRELOAD_MIN_LBS
+            and load >= PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_FINAL_LBS
+            and abs(float(rate)) <= PRELOAD_AUTO_CONTINUOUS_NO_PROGRESS_RATE_LBS_PER_SECOND
+        )
 
     def _auto_preload_slew_speed(self, current_speed, desired_speed, elapsed_s):
         max_step = max(0.0, PRELOAD_AUTO_CONTINUOUS_RAMP_PERCENT_PER_SECOND) * max(0.0, float(elapsed_s))

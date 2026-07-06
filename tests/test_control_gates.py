@@ -314,16 +314,18 @@ class ControlGateTests(unittest.TestCase):
         self.assertEqual(at_target_speed, engine_module.PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_FINAL_MAX_SPEED_PERCENT)
 
     def test_auto_preload_continuous_speed_damps_fast_rise(self):
-        slow_rise_speed = self.engine._auto_preload_continuous_speed_locked(-5.5, 0.0, True)
-        fast_rise_speed = self.engine._auto_preload_continuous_speed_locked(-5.5, 1.0, True)
+        slow_rise_speed = self.engine._auto_preload_continuous_speed_locked(-6.5, 0.0, True)
+        fast_rise_speed = self.engine._auto_preload_continuous_speed_locked(-6.5, 1.0, True)
 
         self.assertLess(fast_rise_speed, slow_rise_speed)
 
     def test_auto_preload_continuous_speed_is_sensor_paced_near_contact(self):
+        early_speed = self.engine._auto_preload_continuous_speed_locked(-5.7, 0.0, True)
         start_speed = self.engine._auto_preload_continuous_speed_locked(-4.7, 0.0, True)
         mid_speed = self.engine._auto_preload_continuous_speed_locked(-3.5, 0.0, True)
         final_speed = self.engine._auto_preload_continuous_speed_locked(-2.0, 0.0, True)
 
+        self.assertLessEqual(early_speed, engine_module.PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_EARLY_MAX_SPEED_PERCENT)
         self.assertLessEqual(start_speed, engine_module.PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_START_MAX_SPEED_PERCENT)
         self.assertLessEqual(mid_speed, engine_module.PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_MID_MAX_SPEED_PERCENT)
         self.assertLessEqual(final_speed, engine_module.PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_FINAL_MAX_SPEED_PERCENT)
@@ -333,6 +335,22 @@ class ControlGateTests(unittest.TestCase):
         clamped = min(slewed, self.engine._auto_preload_sensor_paced_max_speed_locked(-4.7))
 
         self.assertLessEqual(clamped, engine_module.PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_START_MAX_SPEED_PERCENT)
+
+    def test_auto_preload_no_progress_allows_final_speed_boost(self):
+        self.assertTrue(self.engine._auto_preload_no_progress_locked(-0.56, 0.0))
+
+        boosted_speed = self.engine._auto_preload_continuous_speed_locked(
+            -0.56,
+            0.0,
+            True,
+            max_speed_override=engine_module.PRELOAD_AUTO_CONTINUOUS_NO_PROGRESS_BOOST_SPEED_PERCENT,
+        )
+
+        self.assertGreater(boosted_speed, engine_module.PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_FINAL_MAX_SPEED_PERCENT)
+        self.assertLessEqual(boosted_speed, engine_module.PRELOAD_AUTO_CONTINUOUS_NO_PROGRESS_BOOST_SPEED_PERCENT)
+
+    def test_auto_preload_no_progress_does_not_apply_to_fast_rise(self):
+        self.assertFalse(self.engine._auto_preload_no_progress_locked(-0.56, 0.5))
 
     def test_auto_preload_rate_uses_fastest_recent_rise(self):
         self._set_load_history([
