@@ -60,8 +60,14 @@ from config import (
     PRELOAD_AUTO_CONTINUOUS_NO_PROGRESS_SECONDS,
     PRELOAD_AUTO_CONTINUOUS_PROGRESSIVE_CURVE,
     PRELOAD_AUTO_CONTINUOUS_PROGRESSIVE_RATE_SCALE,
+    PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_APPROACH_LBS,
+    PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_APPROACH_MAX_SPEED_PERCENT,
+    PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_CRAWL_LBS,
+    PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_CRAWL_MAX_SPEED_PERCENT,
     PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_EARLY_LBS,
     PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_EARLY_MAX_SPEED_PERCENT,
+    PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_FINE_LBS,
+    PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_FINE_MAX_SPEED_PERCENT,
     PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_FINAL_LBS,
     PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_FINAL_MAX_SPEED_PERCENT,
     PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_MID_LBS,
@@ -80,6 +86,7 @@ from config import (
     PRELOAD_AUTO_CONTACT_SETTLE_SECONDS,
     PRELOAD_AUTO_CONTACT_SPEED_PERCENT,
     PRELOAD_AUTO_DIRECT_LOAD_READ,
+    PRELOAD_AUTO_FINAL_APPROACH_STOP_LBS,
     PRELOAD_AUTO_FINAL_MAX_DELTA_LBS,
     PRELOAD_AUTO_IN_BAND_END_SECONDS,
     PRELOAD_AUTO_INITIAL_STOP_LBS,
@@ -155,6 +162,7 @@ class QuadpodEngine:
         self.auto_preload_contact_detected = False
         self.auto_preload_near_band_seen = False
         self.auto_preload_initial_stop_seen = False
+        self.auto_preload_final_approach_stop_seen = False
         self.auto_preload_control_rejects = 0
         self.auto_preload_control_hold_until = 0.0
         self.auto_preload_control_hold_logged = False
@@ -972,6 +980,7 @@ class QuadpodEngine:
         self.auto_preload_contact_detected = False
         self.auto_preload_near_band_seen = False
         self.auto_preload_initial_stop_seen = False
+        self.auto_preload_final_approach_stop_seen = False
         self.auto_preload_control_rejects = 0
         self.auto_preload_control_hold_until = 0.0
         self.auto_preload_control_hold_logged = False
@@ -1243,7 +1252,13 @@ class QuadpodEngine:
                     target_lbs=target_lbs,
                 )
             else:
-                self.auto_preload_near_band_seen = True
+                self.auto_preload_final_approach_stop_seen = True
+                self._record_auto_preload_trace_locked(
+                    "final_approach_stop_target",
+                    load=load,
+                    predicted_load=predicted_load,
+                    target_lbs=target_lbs,
+                )
             return True
         if (
             load >= PRELOAD_AUTO_CONTINUOUS_COAST_BRAKE_START_LBS
@@ -1260,7 +1275,7 @@ class QuadpodEngine:
     def _auto_preload_continuous_brake_target_locked(self):
         if not self.auto_preload_initial_stop_seen:
             return float(PRELOAD_AUTO_INITIAL_STOP_LBS)
-        return min(PRELOAD_AUTO_PREDICT_STOP_LBS, PRELOAD_AUTO_TARGET_LBS, PRELOAD_MIN_LBS)
+        return min(PRELOAD_AUTO_FINAL_APPROACH_STOP_LBS, PRELOAD_MIN_LBS)
 
     def _auto_preload_continuous_speed_locked(self, load, rate, increase, max_speed_override=0.0):
         target_lbs = self._auto_preload_continuous_brake_target_locked() if increase else PRELOAD_AUTO_TARGET_LBS
@@ -1297,7 +1312,10 @@ class QuadpodEngine:
             (float(PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_EARLY_LBS), float(PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_EARLY_MAX_SPEED_PERCENT)),
             (float(PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_START_LBS), float(PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_START_MAX_SPEED_PERCENT)),
             (float(PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_MID_LBS), float(PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_MID_MAX_SPEED_PERCENT)),
+            (float(PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_APPROACH_LBS), float(PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_APPROACH_MAX_SPEED_PERCENT)),
             (float(PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_FINAL_LBS), float(PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_FINAL_MAX_SPEED_PERCENT)),
+            (float(PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_FINE_LBS), float(PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_FINE_MAX_SPEED_PERCENT)),
+            (float(PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_CRAWL_LBS), float(PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_CRAWL_MAX_SPEED_PERCENT)),
         ]
         load = float(load)
         curve = max(0.1, float(PRELOAD_AUTO_CONTINUOUS_PROGRESSIVE_CURVE))
@@ -1335,8 +1353,14 @@ class QuadpodEngine:
         return max(1.0, float(max(cap, float(max_speed_override or 0.0))))
 
     def _auto_preload_sensor_paced_max_speed_locked(self, load, max_speed_override=0.0):
-        if load >= PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_FINAL_LBS:
+        if load >= PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_CRAWL_LBS:
+            base = PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_CRAWL_MAX_SPEED_PERCENT
+        elif load >= PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_FINE_LBS:
+            base = PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_FINE_MAX_SPEED_PERCENT
+        elif load >= PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_FINAL_LBS:
             base = PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_FINAL_MAX_SPEED_PERCENT
+        elif load >= PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_APPROACH_LBS:
+            base = PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_APPROACH_MAX_SPEED_PERCENT
         elif load >= PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_MID_LBS:
             base = PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_MID_MAX_SPEED_PERCENT
         elif load >= PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_START_LBS:
