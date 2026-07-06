@@ -80,6 +80,7 @@ from config import (
     PRELOAD_AUTO_DIRECT_LOAD_READ,
     PRELOAD_AUTO_FINAL_MAX_DELTA_LBS,
     PRELOAD_AUTO_IN_BAND_END_SECONDS,
+    PRELOAD_AUTO_INITIAL_STOP_LBS,
     PRELOAD_AUTO_MAX_RISE_RATE_LBS_PER_SECOND,
     PRELOAD_AUTO_MAX_STOP_MARGIN_LBS,
     PRELOAD_AUTO_MIN_STOP_MARGIN_LBS,
@@ -151,6 +152,7 @@ class QuadpodEngine:
         self.auto_preload_last_stop_increase = None
         self.auto_preload_contact_detected = False
         self.auto_preload_near_band_seen = False
+        self.auto_preload_initial_stop_seen = False
         self.auto_preload_control_rejects = 0
         self.auto_preload_control_hold_until = 0.0
         self.auto_preload_control_hold_logged = False
@@ -963,6 +965,7 @@ class QuadpodEngine:
         self.auto_preload_last_stop_increase = None
         self.auto_preload_contact_detected = False
         self.auto_preload_near_band_seen = False
+        self.auto_preload_initial_stop_seen = False
         self.auto_preload_control_rejects = 0
         self.auto_preload_control_hold_until = 0.0
         self.auto_preload_control_hold_logged = False
@@ -1223,9 +1226,18 @@ class QuadpodEngine:
         )
 
     def _auto_preload_continuous_should_brake_locked(self, load, rate, predicted_load):
-        target_lbs = min(PRELOAD_AUTO_PREDICT_STOP_LBS, PRELOAD_AUTO_TARGET_LBS, PRELOAD_MIN_LBS)
+        target_lbs = self._auto_preload_continuous_brake_target_locked()
         if predicted_load >= target_lbs:
-            self.auto_preload_near_band_seen = True
+            if not self.auto_preload_initial_stop_seen:
+                self.auto_preload_initial_stop_seen = True
+                self._record_auto_preload_trace_locked(
+                    "initial_stop_target",
+                    load=load,
+                    predicted_load=predicted_load,
+                    target_lbs=target_lbs,
+                )
+            else:
+                self.auto_preload_near_band_seen = True
             return True
         if (
             load >= PRELOAD_AUTO_CONTINUOUS_COAST_BRAKE_START_LBS
@@ -1238,6 +1250,11 @@ class QuadpodEngine:
         ):
             return True
         return False
+
+    def _auto_preload_continuous_brake_target_locked(self):
+        if not self.auto_preload_initial_stop_seen:
+            return float(PRELOAD_AUTO_INITIAL_STOP_LBS)
+        return min(PRELOAD_AUTO_PREDICT_STOP_LBS, PRELOAD_AUTO_TARGET_LBS, PRELOAD_MIN_LBS)
 
     def _auto_preload_continuous_speed_locked(self, load, rate, increase, max_speed_override=0.0):
         target_lbs = PRELOAD_AUTO_TARGET_LBS

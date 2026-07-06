@@ -388,6 +388,7 @@ class ControlGateTests(unittest.TestCase):
         )
 
     def test_auto_preload_continuous_brakes_when_prediction_reaches_band(self):
+        self.engine.auto_preload_initial_stop_seen = True
         should_brake = self.engine._auto_preload_continuous_should_brake_locked(
             engine_module.PRELOAD_AUTO_TARGET_LBS - 0.2,
             0.0,
@@ -397,7 +398,20 @@ class ControlGateTests(unittest.TestCase):
         self.assertTrue(should_brake)
         self.assertTrue(self.engine.auto_preload_near_band_seen)
 
+    def test_auto_preload_continuous_first_brakes_at_initial_stop_target(self):
+        should_brake = self.engine._auto_preload_continuous_should_brake_locked(
+            engine_module.PRELOAD_AUTO_INITIAL_STOP_LBS - 0.2,
+            0.0,
+            engine_module.PRELOAD_AUTO_INITIAL_STOP_LBS + 0.01,
+        )
+
+        self.assertTrue(should_brake)
+        self.assertTrue(self.engine.auto_preload_initial_stop_seen)
+        self.assertFalse(self.engine.auto_preload_near_band_seen)
+        self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "initial_stop_target")
+
     def test_auto_preload_continuous_brakes_at_bottom_of_allowed_band(self):
+        self.engine.auto_preload_initial_stop_seen = True
         should_brake = self.engine._auto_preload_continuous_should_brake_locked(
             engine_module.PRELOAD_MIN_LBS - 0.5,
             1.0,
@@ -407,6 +421,7 @@ class ControlGateTests(unittest.TestCase):
         self.assertTrue(should_brake)
 
     def test_auto_preload_continuous_brakes_on_fast_coast_before_target(self):
+        self.engine.auto_preload_initial_stop_seen = True
         should_brake = self.engine._auto_preload_continuous_should_brake_locked(
             -4.7,
             2.1,
@@ -461,6 +476,7 @@ class ControlGateTests(unittest.TestCase):
         self.assertTrue(self.engine.state["preload_ready_latched"])
 
     def test_auto_preload_continuous_does_not_wait_for_zero_to_brake(self):
+        self.engine.auto_preload_initial_stop_seen = True
         should_brake = self.engine._auto_preload_continuous_should_brake_locked(
             engine_module.PRELOAD_AUTO_TARGET_LBS - 0.05,
             0.0,
