@@ -58,6 +58,8 @@ from config import (
     PRELOAD_AUTO_CONTINUOUS_NO_PROGRESS_BOOST_SPEED_PERCENT,
     PRELOAD_AUTO_CONTINUOUS_NO_PROGRESS_RATE_LBS_PER_SECOND,
     PRELOAD_AUTO_CONTINUOUS_NO_PROGRESS_SECONDS,
+    PRELOAD_AUTO_CONTINUOUS_PROGRESSIVE_CURVE,
+    PRELOAD_AUTO_CONTINUOUS_PROGRESSIVE_RATE_SCALE,
     PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_EARLY_LBS,
     PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_EARLY_MAX_SPEED_PERCENT,
     PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_FINAL_LBS,
@@ -768,7 +770,11 @@ class QuadpodEngine:
                             if direction:
                                 current_speed = min(
                                     current_speed,
-                                    self._auto_preload_sensor_paced_max_speed_locked(load, no_progress_boost),
+                                    self._auto_preload_progressive_max_speed_locked(
+                                        load,
+                                        rate,
+                                        max_speed_override=no_progress_boost,
+                                    ),
                                 )
                             command_speed = max(1, min(100, int(round(current_speed))))
                             self._move_preload_direction_locked(direction, command_speed)
@@ -1257,7 +1263,7 @@ class QuadpodEngine:
         return min(PRELOAD_AUTO_PREDICT_STOP_LBS, PRELOAD_AUTO_TARGET_LBS, PRELOAD_MIN_LBS)
 
     def _auto_preload_continuous_speed_locked(self, load, rate, increase, max_speed_override=0.0):
-        target_lbs = PRELOAD_AUTO_TARGET_LBS
+        target_lbs = self._auto_preload_continuous_brake_target_locked() if increase else PRELOAD_AUTO_TARGET_LBS
         if increase:
             error_lbs = max(0.0, target_lbs - float(load))
             damping = max(0.0, float(rate)) * PRELOAD_AUTO_CONTINUOUS_KD
@@ -1278,9 +1284,55 @@ class QuadpodEngine:
                 rate_window = max(0.05, float(PRELOAD_AUTO_CONTINUOUS_MAX_UP_RATE_LBS_PER_SECOND) * 4.0)
                 rate_scale = max(0.25, 1.0 - min(1.0, float(rate) / rate_window))
                 max_speed = max(min_speed, max_speed * rate_scale)
-            max_speed = min(max_speed, self._auto_preload_sensor_paced_max_speed_locked(load, max_speed_override))
+            max_speed = min(
+                max_speed,
+                self._auto_preload_progressive_max_speed_locked(load, rate, target_lbs, max_speed_override),
+            )
             min_speed = min(min_speed, max_speed)
         return max(min_speed, min(max_speed, raw_speed))
+
+    def _auto_preload_progressive_max_speed_locked(self, load, rate, target_lbs=None, max_speed_override=0.0):
+        target_lbs = self._auto_preload_continuous_brake_target_locked() if target_lbs is None else float(target_lbs)
+        points = [
+            (float(PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_EARLY_LBS), float(PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_EARLY_MAX_SPEED_PERCENT)),
+            (float(PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_START_LBS), float(PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_START_MAX_SPEED_PERCENT)),
+            (float(PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_MID_LBS), float(PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_MID_MAX_SPEED_PERCENT)),
+            (float(PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_FINAL_LBS), float(PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_FINAL_MAX_SPEED_PERCENT)),
+        ]
+        load = float(load)
+        curve = max(0.1, float(PRELOAD_AUTO_CONTINUOUS_PROGRESSIVE_CURVE))
+        early_threshold, early_speed = points[0]
+        final_threshold, final_speed = points[-1]
+        if load <= early_threshold:
+            slack_span = max(0.5, abs(early_threshold - target_lbs) * 0.35)
+            slack_start = early_threshold - slack_span
+            fraction = max(0.0, min(1.0, (load - slack_start) / max(0.001, slack_span)))
+            shaped = pow(fraction, curve)
+            cap = float(PRELOAD_AUTO_CONTINUOUS_MAX_SPEED_PERCENT) + (
+                (early_speed - float(PRELOAD_AUTO_CONTINUOUS_MAX_SPEED_PERCENT)) * shaped
+            )
+        elif load >= final_threshold:
+            cap = final_speed
+        else:
+            cap = final_speed
+            for (lower_threshold, lower_speed), (upper_threshold, upper_speed) in zip(points, points[1:]):
+                if lower_threshold <= load <= upper_threshold:
+                    span = max(0.001, upper_threshold - lower_threshold)
+                    fraction = max(0.0, min(1.0, (load - lower_threshold) / span))
+                    shaped = pow(fraction, curve)
+                    cap = lower_speed + ((upper_speed - lower_speed) * shaped)
+                    break
+        if load < early_threshold:
+            slack_span = max(0.1, abs(early_threshold - target_lbs))
+            fraction = max(0.0, min(1.0, (target_lbs - load) / slack_span))
+            cap = min(cap, early_speed + ((float(PRELOAD_AUTO_CONTINUOUS_MAX_SPEED_PERCENT) - early_speed) * fraction))
+        if rate > 0:
+            rate_scale = max(
+                0.35,
+                1.0 - min(0.65, (float(rate) / max(0.05, PRELOAD_AUTO_CONTINUOUS_PROGRESSIVE_RATE_SCALE)) * 0.25),
+            )
+            cap *= rate_scale
+        return max(1.0, float(max(cap, float(max_speed_override or 0.0))))
 
     def _auto_preload_sensor_paced_max_speed_locked(self, load, max_speed_override=0.0):
         if load >= PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_FINAL_LBS:

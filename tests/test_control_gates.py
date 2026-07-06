@@ -339,9 +339,18 @@ class ControlGateTests(unittest.TestCase):
         self.assertLessEqual(mid_speed, engine_module.PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_MID_MAX_SPEED_PERCENT)
         self.assertLessEqual(final_speed, engine_module.PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_FINAL_MAX_SPEED_PERCENT)
 
+    def test_auto_preload_progressive_cap_slows_smoothly(self):
+        caps = [
+            self.engine._auto_preload_progressive_max_speed_locked(load, 0.0)
+            for load in [-7.0, -6.5, -6.0, -5.5, -5.0, -4.5, -4.0, -3.0]
+        ]
+
+        self.assertEqual(caps, sorted(caps, reverse=True))
+        self.assertGreater(caps[0], caps[-1])
+
     def test_auto_preload_slew_can_be_clamped_to_sensor_paced_cap(self):
         slewed = self.engine._auto_preload_slew_speed(30.0, 9.0, 0.1)
-        clamped = min(slewed, self.engine._auto_preload_sensor_paced_max_speed_locked(-4.7))
+        clamped = min(slewed, self.engine._auto_preload_progressive_max_speed_locked(-4.7, 0.0))
 
         self.assertLessEqual(clamped, engine_module.PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_START_MAX_SPEED_PERCENT)
 
