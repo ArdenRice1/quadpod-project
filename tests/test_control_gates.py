@@ -456,7 +456,7 @@ class ControlGateTests(unittest.TestCase):
             engine_module.PRELOAD_AUTO_IN_BAND_END_SECONDS = original_in_band_end
 
         events = [entry["event"] for entry in self.engine.auto_preload_trace]
-        self.assertIn("post_abort_recovery_start", events)
+        self.assertIn("post_band_settle_start", events)
         self.assertIn("post_abort_recovery_ready", events)
         self.assertTrue(self.engine.state["preload_ready_latched"])
 

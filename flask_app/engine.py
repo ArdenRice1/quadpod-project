@@ -605,6 +605,31 @@ class QuadpodEngine:
                             post_abort_recovery_started = True
                         time.sleep(max(0.01, PRELOAD_AUTO_CONTINUOUS_INTERVAL_SECONDS))
                         continue
+                    if self.auto_preload_near_band_seen and load > PRELOAD_MAX_LBS:
+                        if load <= PRELOAD_AUTO_POST_BAND_RECOVERY_MAX_LBS:
+                            self.actuator.stop()
+                            self.state["actuator_command"] = self.actuator.last_command
+                            current_speed = 0.0
+                            command_direction = None
+                            last_speed_command = None
+                            post_abort_recovery_until = now + max(0.0, float(PRELOAD_AUTO_POST_ABORT_RECOVERY_SECONDS))
+                            post_abort_recovery_started = False
+                            self.state["auto_preload_message"] = "Settling"
+                            self._record_auto_preload_trace_locked(
+                                "post_band_settle_start",
+                                load=load,
+                                recovery_max_lbs=PRELOAD_AUTO_POST_BAND_RECOVERY_MAX_LBS,
+                                seconds=PRELOAD_AUTO_POST_ABORT_RECOVERY_SECONDS,
+                            )
+                            time.sleep(max(0.01, PRELOAD_AUTO_CONTINUOUS_INTERVAL_SECONDS))
+                            continue
+                        self.state["auto_preload_message"] = "Check tension"
+                        self._record_auto_preload_trace_locked(
+                            "post_band_settle_failed",
+                            load=load,
+                            recovery_max_lbs=PRELOAD_AUTO_POST_BAND_RECOVERY_MAX_LBS,
+                        )
+                        break
                     if load > PRELOAD_AUTO_ABORT_LBS:
                         if self._auto_preload_can_recover_post_band_locked(load):
                             self.actuator.stop()
