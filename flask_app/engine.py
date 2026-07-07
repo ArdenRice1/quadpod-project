@@ -1899,33 +1899,33 @@ class QuadpodEngine:
 
     def _read_auto_preload_control_load(self, previous_load, control_speed_percent=0.0, control_direction=None):
         samples = [self.load_cell.get_control_force()]
+        if not self._auto_preload_control_sample_valid(samples[0]):
+            self.auto_preload_control_rejects += 1
+            rejected = self.auto_preload_control_rejects > PRELOAD_AUTO_CONTROL_MAX_TRANSIENT_REJECTS
+            trace_event = "control_load_rejected" if rejected else "control_load_invalid_ignored"
+            with self.lock:
+                self._record_auto_preload_trace_locked(
+                    trace_event,
+                    previous_load=previous_load,
+                    first_load=samples[0],
+                    min_valid_lbs=PRELOAD_AUTO_CONTROL_MIN_VALID_LBS,
+                    max_valid_lbs=PRELOAD_AUTO_CONTROL_MAX_VALID_LBS,
+                    reject_count=self.auto_preload_control_rejects,
+                )
+            return previous_load, samples, True, rejected, trace_event
+
         needs_confirmation = self._auto_preload_read_needs_confirmation(previous_load, samples[0])
         if not needs_confirmation:
             return samples[0], samples, False, False, "control_load_read"
 
-        stop_for_confirmation = self._auto_preload_should_stop_for_control_confirmation_locked(
-            previous_load,
-            control_speed_percent,
-            control_direction,
-        )
-        if stop_for_confirmation:
-            with self.lock:
-                if self.actuator.last_command != "neutral":
-                    self.actuator.stop()
-                    self.state["actuator_command"] = self.actuator.last_command
-                    self._record_auto_preload_trace_locked(
-                        "control_read_stop",
-                        previous_load=previous_load,
-                        first_load=samples[0],
-                    )
-        else:
-            with self.lock:
+        with self.lock:
+            if self.actuator.last_command != "neutral" and PRELOAD_AUTO_STOP_DURING_LOAD_READ:
+                self.actuator.stop()
+                self.state["actuator_command"] = self.actuator.last_command
                 self._record_auto_preload_trace_locked(
-                    "control_read_confirm_without_stop",
+                    "control_read_stop",
                     previous_load=previous_load,
                     first_load=samples[0],
-                    speed_percent=float(control_speed_percent or 0.0),
-                    direction=control_direction,
                 )
 
         samples.extend(
@@ -1966,20 +1966,6 @@ class QuadpodEngine:
 
     def _auto_preload_valid_control_samples(self, samples):
         return [float(sample) for sample in samples if self._auto_preload_control_sample_valid(sample)]
-
-    def _auto_preload_should_stop_for_control_confirmation_locked(
-        self,
-        previous_load,
-        control_speed_percent=0.0,
-        control_direction=None,
-    ):
-        if not PRELOAD_AUTO_STOP_DURING_LOAD_READ:
-            return False
-        if control_direction is False:
-            return True
-        if float(previous_load) >= self._auto_preload_initial_prediction_gate_lbs_locked():
-            return True
-        return False
 
     def _hold_auto_preload_after_discard_locked(self, load):
         settle_seconds = max(0.0, float(PRELOAD_AUTO_CONTROL_DISCARD_SETTLE_SECONDS))

@@ -986,17 +986,17 @@ class ControlGateTests(unittest.TestCase):
         self.assertEqual(len(calls), 1)
         self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "pulse_complete")
 
-    def test_auto_preload_confirms_and_rejects_single_control_spike(self):
+    def test_auto_preload_ignores_single_invalid_control_spike(self):
         engine_module.PRELOAD_AUTO_DIRECT_LOAD_READ = True
         self.engine.state["current_load"] = -7.85
-        readings = iter([185.0, -7.82, -7.88, -7.83, -7.86, -7.84, -7.85, -7.83, -7.86, -7.84])
+        readings = iter([185.0])
         self.engine.load_cell.get_control_force = lambda: next(readings)
 
         load = self.engine._refresh_auto_preload_load()
 
-        self.assertAlmostEqual(load, -7.83, places=2)
-        self.assertAlmostEqual(self.engine.state["current_load"], -7.83, places=2)
-        self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "control_load_confirmed")
+        self.assertEqual(load, -7.85)
+        self.assertEqual(self.engine.state["current_load"], -7.85)
+        self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "control_load_invalid_ignored")
         self.assertEqual(self.engine.auto_preload_trace[-1]["first_load"], 185.0)
 
     def test_auto_preload_ignores_out_of_band_high_control_loads(self):
@@ -1009,7 +1009,7 @@ class ControlGateTests(unittest.TestCase):
 
         self.assertEqual(load, -7.85)
         self.assertEqual(self.engine.state["current_load"], -7.85)
-        self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "control_load_discarded")
+        self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "control_load_invalid_ignored")
 
     def test_auto_preload_confirms_stable_positive_jump(self):
         engine_module.PRELOAD_AUTO_DIRECT_LOAD_READ = True
@@ -1066,7 +1066,7 @@ class ControlGateTests(unittest.TestCase):
         engine_module.PRELOAD_AUTO_DIRECT_LOAD_READ = True
         engine_module.PRELOAD_AUTO_CONTROL_MAX_TRANSIENT_REJECTS = 2
         self.engine.state["current_load"] = -3.381
-        readings = iter([14.793, -2.828, 14.793, -2.9, 10.0, 14.793, -2.828, 14.793, -2.9, 10.0])
+        readings = iter([-1.6, -19.0, -2.828, -19.0, -2.9, -19.0, -2.828, -19.0, -2.9, -19.0])
         self.engine.load_cell.get_control_force = lambda: next(readings)
 
         load = self.engine._refresh_auto_preload_load()
@@ -1076,19 +1076,19 @@ class ControlGateTests(unittest.TestCase):
         self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "control_load_discarded")
         self.assertEqual(self.engine.auto_preload_control_rejects, 1)
 
-    def test_auto_preload_keeps_actuator_moving_for_far_suspicious_control_confirmation(self):
+    def test_auto_preload_ignores_far_invalid_sample_without_stopping_actuator(self):
         engine_module.PRELOAD_AUTO_DIRECT_LOAD_READ = True
         engine_module.PRELOAD_AUTO_STOP_DURING_LOAD_READ = True
         self.engine.state["current_load"] = -7.85
-        readings = iter([185.0, -7.82, -7.88, -7.83, -7.86, -7.84, -7.85, -7.83, -7.86, -7.84])
+        readings = iter([185.0])
         self.engine.load_cell.get_control_force = lambda: next(readings)
         self.engine.actuator.move_up(fast=True, speed_percent=45)
 
         load = self.engine._refresh_auto_preload_load()
 
-        self.assertAlmostEqual(load, -7.83, places=2)
+        self.assertEqual(load, -7.85)
         self.assertEqual(self.engine.actuator.last_command, "up_fast")
-        self.assertIn("control_read_confirm_without_stop", [entry["event"] for entry in self.engine.auto_preload_trace])
+        self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "control_load_invalid_ignored")
 
     def test_auto_preload_holds_neutral_after_discarded_control_burst(self):
         engine_module.PRELOAD_AUTO_DIRECT_LOAD_READ = True
@@ -1096,7 +1096,7 @@ class ControlGateTests(unittest.TestCase):
         engine_module.PRELOAD_AUTO_CONTROL_MAX_TRANSIENT_REJECTS = 2
         engine_module.PRELOAD_AUTO_CONTROL_DISCARD_SETTLE_SECONDS = 0.35
         self.engine.state["current_load"] = -3.381
-        readings = iter([14.793, -2.828, 14.793, -2.9, 10.0, 14.793, -2.828, 14.793, -2.9, 10.0])
+        readings = iter([-1.6, -19.0, -2.828, -19.0, -2.9, -19.0, -2.828, -19.0, -2.9, -19.0])
         self.engine.load_cell.get_control_force = lambda: next(readings)
         self.engine.actuator.move_up(fast=True, speed_percent=45)
 
@@ -1118,7 +1118,7 @@ class ControlGateTests(unittest.TestCase):
 
         self.assertEqual(load, -0.077)
         self.assertFalse(self.engine.state["auto_preload_sensor_fault"])
-        self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "control_load_spike_ignored_in_band")
+        self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "control_load_invalid_ignored")
 
     def test_auto_preload_accepts_lower_reading_when_recovering_from_above_band(self):
         engine_module.PRELOAD_AUTO_DIRECT_LOAD_READ = True
@@ -1204,9 +1204,9 @@ class ControlGateTests(unittest.TestCase):
         self.assertEqual(self.engine.state["current_load"], 0.02)
         self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "control_load_drop_ignored_after_near_band")
 
-    def test_auto_preload_confirms_far_spike_without_stopping_actuator(self):
+    def test_auto_preload_ignores_direct_invalid_sample_without_stopping_actuator(self):
         self.engine.actuator.move_up(fast=True, speed_percent=20)
-        readings = iter([120.0, -7.1, -7.0, -7.1, -7.0, -7.05, -7.1, -7.0, -7.1, -7.0])
+        readings = iter([120.0])
         self.engine.load_cell.get_control_force = lambda: next(readings)
 
         load, samples, needs_confirmation, rejected, trace_event = self.engine._read_auto_preload_control_load(
@@ -1218,13 +1218,13 @@ class ControlGateTests(unittest.TestCase):
         self.assertAlmostEqual(load, -7.0, places=1)
         self.assertTrue(needs_confirmation)
         self.assertFalse(rejected)
-        self.assertEqual(trace_event, "control_load_confirmed")
+        self.assertEqual(trace_event, "control_load_invalid_ignored")
         self.assertEqual(self.engine.actuator.last_command, "up_fast")
-        self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "control_read_confirm_without_stop")
+        self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "control_load_invalid_ignored")
 
     def test_auto_preload_stops_for_spike_confirmation_near_initial_gate(self):
         self.engine.actuator.move_up(fast=True, speed_percent=20)
-        readings = iter([120.0, -2.9, -2.8, -2.9, -2.8, -2.85, -2.9, -2.8, -2.9, -2.8])
+        readings = iter([-1.0, -2.9, -2.8, -2.9, -2.8, -2.85, -2.9, -2.8, -2.9, -2.8])
         self.engine.load_cell.get_control_force = lambda: next(readings)
 
         load, samples, needs_confirmation, rejected, trace_event = self.engine._read_auto_preload_control_load(
