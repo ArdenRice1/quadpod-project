@@ -393,7 +393,7 @@ class ControlGateTests(unittest.TestCase):
     def test_auto_preload_no_progress_does_not_apply_to_fast_rise(self):
         self.assertFalse(self.engine._auto_preload_no_progress_locked(-1.3, 0.5))
 
-    def test_auto_preload_rate_uses_fastest_recent_rise(self):
+    def test_auto_preload_rate_uses_robust_recent_rise(self):
         self._set_load_history([
             (0.70, -4.864),
             (0.60, -4.864),
@@ -404,6 +404,20 @@ class ControlGateTests(unittest.TestCase):
         rate = self.engine._auto_preload_load_rate_locked()
 
         self.assertGreater(rate, 2.0)
+
+    def test_auto_preload_rate_ignores_single_jounce_spike(self):
+        self._set_load_history([
+            (0.50, -5.00),
+            (0.40, -4.99),
+            (0.30, -3.00),
+            (0.20, -4.98),
+            (0.10, -4.97),
+            (0.00, -4.96),
+        ])
+
+        rate = self.engine._auto_preload_load_rate_locked()
+
+        self.assertLess(rate, 1.0)
 
     def test_auto_preload_remembers_upward_momentum_past_stop_jounce(self):
         self.assertGreaterEqual(
@@ -468,6 +482,43 @@ class ControlGateTests(unittest.TestCase):
         self.assertFalse(self.engine.auto_preload_final_approach_stop_seen)
         self.assertFalse(self.engine.auto_preload_near_band_seen)
         self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "initial_stop_target")
+
+    def test_auto_preload_continuous_ignores_prediction_far_before_initial_gate(self):
+        should_brake = self.engine._auto_preload_continuous_should_brake_locked(
+            -7.3,
+            4.7,
+            -0.2,
+        )
+
+        self.assertFalse(should_brake)
+        self.assertFalse(self.engine.auto_preload_initial_stop_seen)
+        self.assertFalse(self.engine.auto_preload_final_approach_stop_seen)
+        self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "prediction_ignored_before_initial_gate")
+
+    def test_auto_preload_continuous_brakes_without_phase_change_before_initial_gate(self):
+        should_brake = self.engine._auto_preload_continuous_should_brake_locked(
+            -4.7,
+            2.1,
+            -0.2,
+        )
+
+        self.assertTrue(should_brake)
+        self.assertFalse(self.engine.auto_preload_initial_stop_seen)
+        self.assertFalse(self.engine.auto_preload_final_approach_stop_seen)
+        self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "prediction_brake_before_initial_gate")
+
+    def test_auto_preload_continuous_brakes_without_final_phase_change_until_near_final(self):
+        self.engine.auto_preload_initial_stop_seen = True
+
+        should_brake = self.engine._auto_preload_continuous_should_brake_locked(
+            -4.7,
+            2.1,
+            -0.2,
+        )
+
+        self.assertTrue(should_brake)
+        self.assertFalse(self.engine.auto_preload_final_approach_stop_seen)
+        self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "prediction_brake_before_final_gate")
 
     def test_auto_preload_continuous_final_brake_target_after_initial_stop(self):
         self.assertEqual(

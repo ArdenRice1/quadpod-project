@@ -1078,7 +1078,7 @@ class QuadpodEngine:
 
     def _preload_hold_update_locked(self):
         load = float(self.state.get("current_load") or 0.0)
-        rate = self._auto_preload_load_rate_locked()
+        rate = self._auto_preload_signed_load_rate_locked()
         if self.state.get("preload_ready_latched"):
             recovery_min = PRELOAD_MIN_LBS - max(0.0, float(PRELOAD_READY_LATCH_MARGIN_LBS))
             recovery_max = PRELOAD_AUTO_POST_BAND_RECOVERY_MAX_LBS
@@ -1292,23 +1292,50 @@ class QuadpodEngine:
         target_lbs = self._auto_preload_continuous_brake_target_locked()
         if predicted_load >= target_lbs:
             if not self.auto_preload_initial_stop_seen:
-                self.auto_preload_initial_stop_seen = True
-                self._record_auto_preload_trace_locked(
-                    "initial_stop_target",
-                    load=load,
-                    predicted_load=predicted_load,
-                    target_lbs=target_lbs,
-                )
+                if self._auto_preload_initial_prediction_gate_locked(load):
+                    self.auto_preload_initial_stop_seen = True
+                    self._record_auto_preload_trace_locked(
+                        "initial_stop_target",
+                        load=load,
+                        predicted_load=predicted_load,
+                        target_lbs=target_lbs,
+                    )
+                elif load >= PRELOAD_AUTO_CONTINUOUS_COAST_BRAKE_START_LBS:
+                    self._record_auto_preload_trace_locked(
+                        "prediction_brake_before_initial_gate",
+                        load=load,
+                        predicted_load=predicted_load,
+                        target_lbs=target_lbs,
+                        gate_lbs=self._auto_preload_initial_prediction_gate_lbs_locked(),
+                    )
+                else:
+                    self._record_auto_preload_trace_locked(
+                        "prediction_ignored_before_initial_gate",
+                        load=load,
+                        predicted_load=predicted_load,
+                        target_lbs=target_lbs,
+                        gate_lbs=self._auto_preload_initial_prediction_gate_lbs_locked(),
+                    )
+                    return False
             else:
                 if self._auto_preload_should_creep_after_final_brake_locked(load, predicted_load, target_lbs):
                     return False
-                self.auto_preload_final_approach_stop_seen = True
-                self._record_auto_preload_trace_locked(
-                    "final_approach_stop_target",
-                    load=load,
-                    predicted_load=predicted_load,
-                    target_lbs=target_lbs,
-                )
+                if self._auto_preload_final_prediction_gate_locked(load):
+                    self.auto_preload_final_approach_stop_seen = True
+                    self._record_auto_preload_trace_locked(
+                        "final_approach_stop_target",
+                        load=load,
+                        predicted_load=predicted_load,
+                        target_lbs=target_lbs,
+                    )
+                else:
+                    self._record_auto_preload_trace_locked(
+                        "prediction_brake_before_final_gate",
+                        load=load,
+                        predicted_load=predicted_load,
+                        target_lbs=target_lbs,
+                        gate_lbs=self._auto_preload_final_prediction_gate_lbs_locked(),
+                    )
             return True
         if (
             load >= PRELOAD_AUTO_CONTINUOUS_COAST_BRAKE_START_LBS
@@ -1321,6 +1348,18 @@ class QuadpodEngine:
         ):
             return True
         return False
+
+    def _auto_preload_initial_prediction_gate_lbs_locked(self):
+        return min(float(PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_APPROACH_LBS), float(PRELOAD_AUTO_INITIAL_STOP_LBS))
+
+    def _auto_preload_final_prediction_gate_lbs_locked(self):
+        return min(float(PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_FINE_LBS), float(PRELOAD_AUTO_FINAL_APPROACH_STOP_LBS))
+
+    def _auto_preload_initial_prediction_gate_locked(self, load):
+        return float(load) >= self._auto_preload_initial_prediction_gate_lbs_locked()
+
+    def _auto_preload_final_prediction_gate_locked(self, load):
+        return float(load) >= self._auto_preload_final_prediction_gate_lbs_locked()
 
     def _auto_preload_should_creep_after_final_brake_locked(self, load, predicted_load, target_lbs):
         if not self.auto_preload_final_approach_stop_seen:
@@ -2192,29 +2231,45 @@ class QuadpodEngine:
         allowed_delta = PRELOAD_AUTO_STABLE_DELTA_LBS if delta_lbs is None else float(delta_lbs)
         return max(values) - min(values) <= allowed_delta
 
-    def _auto_preload_load_rate_locked(self):
+    def _auto_preload_recent_load_samples_locked(self):
         now = time.monotonic()
         cutoff = now - max(0.1, PRELOAD_AUTO_RATE_WINDOW_SECONDS)
-        samples = [(sample_time, value) for sample_time, value in self.load_history if sample_time >= cutoff]
+        return [(sample_time, value) for sample_time, value in self.load_history if sample_time >= cutoff]
+
+    def _auto_preload_signed_load_rate_locked(self):
+        samples = self._auto_preload_recent_load_samples_locked()
         if len(samples) < 2:
             return 0.0
         first_time, first_value = samples[0]
         last_time, last_value = samples[-1]
         elapsed = last_time - first_time
-        window_rate = 0.0
-        if elapsed > 0:
-            window_rate = (last_value - first_value) / elapsed
+        if elapsed <= 0:
+            return 0.0
+        return (last_value - first_value) / elapsed
 
-        # Auto Tension is safer when it remembers the fastest recent upward
-        # trend. A short stop can make the broad window look flat while the
-        # actuator/load path is still coasting upward under tension.
-        fastest_rise = window_rate
+    def _auto_preload_load_rate_locked(self):
+        samples = self._auto_preload_recent_load_samples_locked()
+        if len(samples) < 2:
+            return 0.0
+        window_rate = self._auto_preload_signed_load_rate_locked()
+
+        # Use a robust upper slope instead of the single fastest adjacent
+        # sample. One HX711/jounce spike can otherwise dominate prediction and
+        # make the controller brake or enter final approach far from target.
+        positive_slopes = []
         for (prev_time, prev_value), (sample_time, value) in zip(samples, samples[1:]):
             sample_elapsed = sample_time - prev_time
             if sample_elapsed <= 0:
                 continue
-            fastest_rise = max(fastest_rise, (value - prev_value) / sample_elapsed)
-        return fastest_rise
+            slope = (value - prev_value) / sample_elapsed
+            if slope > 0:
+                positive_slopes.append(slope)
+        if not positive_slopes:
+            return max(0.0, window_rate)
+        positive_slopes.sort()
+        robust_index = int((len(positive_slopes) - 1) * 0.75)
+        robust_rise = positive_slopes[robust_index]
+        return max(0.0, window_rate, robust_rise)
 
     def _auto_preload_ready_locked(self):
         short_stable = self._auto_preload_load_stable_locked()
