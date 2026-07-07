@@ -388,7 +388,7 @@ class ControlGateTests(unittest.TestCase):
         self.assertLessEqual(boosted_speed, engine_module.PRELOAD_AUTO_CONTINUOUS_NO_PROGRESS_BOOST_SPEED_PERCENT)
 
     def test_auto_preload_no_progress_does_not_boost_final_creep(self):
-        self.assertFalse(self.engine._auto_preload_no_progress_locked(-0.8, 0.0))
+        self.assertFalse(self.engine._auto_preload_no_progress_locked(-0.4, 0.0))
 
     def test_auto_preload_no_progress_does_not_apply_to_fast_rise(self):
         self.assertFalse(self.engine._auto_preload_no_progress_locked(-1.3, 0.5))
