@@ -1236,8 +1236,8 @@ class ControlGateTests(unittest.TestCase):
         self.assertEqual(self.engine.actuator.last_command, "up_fast")
         self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "control_load_invalid_ignored")
 
-    def test_auto_preload_uses_fast_control_read_while_moving(self):
-        engine_module.PRELOAD_AUTO_MOVING_CONTROL_SAMPLES = 1
+    def test_auto_preload_uses_moving_control_sample_count_while_moving(self):
+        engine_module.PRELOAD_AUTO_MOVING_CONTROL_SAMPLES = 3
         requested_samples = []
 
         def read_control_load(samples=None):
@@ -1257,7 +1257,7 @@ class ControlGateTests(unittest.TestCase):
         self.assertFalse(needs_confirmation)
         self.assertFalse(rejected)
         self.assertEqual(trace_event, "control_load_read")
-        self.assertEqual(requested_samples, [1])
+        self.assertEqual(requested_samples, [3])
 
     def test_auto_preload_uses_default_control_read_when_stopped(self):
         requested_samples = []
