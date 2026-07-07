@@ -101,7 +101,6 @@ from config import (
     PRELOAD_AUTO_FINAL_MAX_DELTA_LBS,
     PRELOAD_AUTO_FINAL_REBRAKE_MARGIN_LBS,
     PRELOAD_AUTO_IN_BAND_END_SECONDS,
-    PRELOAD_AUTO_INITIAL_STOP_LBS,
     PRELOAD_AUTO_MAX_RISE_RATE_LBS_PER_SECOND,
     PRELOAD_AUTO_MAX_STOP_MARGIN_LBS,
     PRELOAD_AUTO_MIN_STOP_MARGIN_LBS,
@@ -118,6 +117,7 @@ from config import (
     PRELOAD_AUTO_POST_ABORT_RECOVERY_SECONDS,
     PRELOAD_AUTO_POST_BAND_RECOVERY_MAX_LBS,
     PRELOAD_AUTO_PREDICT_LOOKAHEAD_SECONDS,
+    PRELOAD_AUTO_PREDICT_ENABLE_LBS,
     PRELOAD_AUTO_PREDICT_STOP_LBS,
     PRELOAD_AUTO_RATE_WINDOW_SECONDS,
     PRELOAD_AUTO_SPEED_PERCENT,
@@ -1290,6 +1290,8 @@ class QuadpodEngine:
         )
 
     def _auto_preload_continuous_should_brake_locked(self, load, rate, predicted_load):
+        if float(load) < float(PRELOAD_AUTO_PREDICT_ENABLE_LBS):
+            return False
         if self.auto_preload_final_approach_stop_seen and float(load) >= PRELOAD_AUTO_FINAL_APPROACH_STOP_LBS:
             if predicted_load >= PRELOAD_MAX_LBS or rate >= PRELOAD_AUTO_CONTINUOUS_MAX_UP_RATE_LBS_PER_SECOND:
                 self._record_auto_preload_trace_locked(
@@ -1303,55 +1305,27 @@ class QuadpodEngine:
             return False
         target_lbs = self._auto_preload_continuous_brake_target_locked()
         if predicted_load >= target_lbs:
-            if not self.auto_preload_initial_stop_seen:
-                if self._auto_preload_initial_prediction_gate_locked(load):
-                    self.auto_preload_initial_stop_seen = True
-                    self._record_auto_preload_trace_locked(
-                        "initial_stop_target",
-                        load=load,
-                        predicted_load=predicted_load,
-                        target_lbs=target_lbs,
-                    )
-                elif load >= PRELOAD_AUTO_CONTINUOUS_COAST_BRAKE_START_LBS:
-                    self._record_auto_preload_trace_locked(
-                        "prediction_brake_before_initial_gate",
-                        load=load,
-                        predicted_load=predicted_load,
-                        target_lbs=target_lbs,
-                        gate_lbs=self._auto_preload_initial_prediction_gate_lbs_locked(),
-                    )
-                    if not self._auto_preload_close_to_initial_prediction_gate_locked(load):
-                        return False
-                else:
-                    self._record_auto_preload_trace_locked(
-                        "prediction_ignored_before_initial_gate",
-                        load=load,
-                        predicted_load=predicted_load,
-                        target_lbs=target_lbs,
-                        gate_lbs=self._auto_preload_initial_prediction_gate_lbs_locked(),
-                    )
-                    return False
+            if self._auto_preload_should_creep_after_final_brake_locked(load, predicted_load, target_lbs):
+                return False
+            if self._auto_preload_final_prediction_gate_locked(load):
+                self.auto_preload_initial_stop_seen = True
+                self.auto_preload_final_approach_stop_seen = True
+                self._record_auto_preload_trace_locked(
+                    "final_approach_stop_target",
+                    load=load,
+                    predicted_load=predicted_load,
+                    target_lbs=target_lbs,
+                )
             else:
-                if self._auto_preload_should_creep_after_final_brake_locked(load, predicted_load, target_lbs):
+                self._record_auto_preload_trace_locked(
+                    "prediction_brake_before_final_gate",
+                    load=load,
+                    predicted_load=predicted_load,
+                    target_lbs=target_lbs,
+                    gate_lbs=self._auto_preload_final_prediction_gate_lbs_locked(),
+                )
+                if not self._auto_preload_close_to_final_prediction_gate_locked(load):
                     return False
-                if self._auto_preload_final_prediction_gate_locked(load):
-                    self.auto_preload_final_approach_stop_seen = True
-                    self._record_auto_preload_trace_locked(
-                        "final_approach_stop_target",
-                        load=load,
-                        predicted_load=predicted_load,
-                        target_lbs=target_lbs,
-                    )
-                else:
-                    self._record_auto_preload_trace_locked(
-                        "prediction_brake_before_final_gate",
-                        load=load,
-                        predicted_load=predicted_load,
-                        target_lbs=target_lbs,
-                        gate_lbs=self._auto_preload_final_prediction_gate_lbs_locked(),
-                    )
-                    if not self._auto_preload_close_to_final_prediction_gate_locked(load):
-                        return False
             return True
         if (
             load >= PRELOAD_AUTO_CONTINUOUS_COAST_BRAKE_START_LBS
@@ -1365,22 +1339,11 @@ class QuadpodEngine:
             return True
         return False
 
-    def _auto_preload_initial_prediction_gate_lbs_locked(self):
-        return min(float(PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_APPROACH_LBS), float(PRELOAD_AUTO_INITIAL_STOP_LBS))
-
     def _auto_preload_final_prediction_gate_lbs_locked(self):
         return min(float(PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_FINE_LBS), float(PRELOAD_AUTO_FINAL_APPROACH_STOP_LBS))
 
-    def _auto_preload_initial_prediction_gate_locked(self, load):
-        return float(load) >= self._auto_preload_initial_prediction_gate_lbs_locked()
-
     def _auto_preload_final_prediction_gate_locked(self, load):
         return float(load) >= self._auto_preload_final_prediction_gate_lbs_locked()
-
-    def _auto_preload_close_to_initial_prediction_gate_locked(self, load):
-        gate_lbs = self._auto_preload_initial_prediction_gate_lbs_locked()
-        margin_lbs = max(0.1, min(0.4, float(PRELOAD_AUTO_APPROACH_DISTANCE_LBS) * 0.5))
-        return float(load) >= gate_lbs - margin_lbs
 
     def _auto_preload_close_to_final_prediction_gate_locked(self, load):
         gate_lbs = self._auto_preload_final_prediction_gate_lbs_locked()
@@ -1394,8 +1357,6 @@ class QuadpodEngine:
         return bool(float(load) < rebrake_load and float(predicted_load) < PRELOAD_MIN_LBS)
 
     def _auto_preload_continuous_brake_target_locked(self):
-        if not self.auto_preload_initial_stop_seen:
-            return float(PRELOAD_AUTO_INITIAL_STOP_LBS)
         return min(PRELOAD_AUTO_FINAL_APPROACH_STOP_LBS, PRELOAD_MIN_LBS)
 
     def _auto_preload_continuous_speed_locked(self, load, rate, increase, max_speed_override=0.0, min_speed_override=0.0):
@@ -1525,6 +1486,7 @@ class QuadpodEngine:
         return bool(
             load < PRELOAD_MIN_LBS
             and load >= PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_FINAL_LBS
+            and load < PRELOAD_AUTO_PREDICT_ENABLE_LBS
             and load < PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_CRAWL_LBS
             and load < PRELOAD_AUTO_FINAL_APPROACH_STOP_LBS - max(0.0, PRELOAD_AUTO_FINAL_REBRAKE_MARGIN_LBS)
             and abs(float(rate)) <= PRELOAD_AUTO_CONTINUOUS_NO_PROGRESS_RATE_LBS_PER_SECOND

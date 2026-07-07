@@ -497,19 +497,6 @@ class ControlGateTests(unittest.TestCase):
 
         self.assertTrue(should_brake)
 
-    def test_auto_preload_continuous_first_brakes_at_initial_stop_target(self):
-        should_brake = self.engine._auto_preload_continuous_should_brake_locked(
-            engine_module.PRELOAD_AUTO_INITIAL_STOP_LBS - 0.2,
-            0.0,
-            engine_module.PRELOAD_AUTO_INITIAL_STOP_LBS + 0.01,
-        )
-
-        self.assertTrue(should_brake)
-        self.assertTrue(self.engine.auto_preload_initial_stop_seen)
-        self.assertFalse(self.engine.auto_preload_final_approach_stop_seen)
-        self.assertFalse(self.engine.auto_preload_near_band_seen)
-        self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "initial_stop_target")
-
     def test_auto_preload_continuous_ignores_prediction_far_before_initial_gate(self):
         should_brake = self.engine._auto_preload_continuous_should_brake_locked(
             -7.3,
@@ -520,7 +507,7 @@ class ControlGateTests(unittest.TestCase):
         self.assertFalse(should_brake)
         self.assertFalse(self.engine.auto_preload_initial_stop_seen)
         self.assertFalse(self.engine.auto_preload_final_approach_stop_seen)
-        self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "prediction_ignored_before_initial_gate")
+        self.assertEqual(len(self.engine.auto_preload_trace), 0)
 
     def test_auto_preload_continuous_ignores_prediction_far_before_initial_gate_even_after_coast_start(self):
         should_brake = self.engine._auto_preload_continuous_should_brake_locked(
@@ -532,19 +519,29 @@ class ControlGateTests(unittest.TestCase):
         self.assertFalse(should_brake)
         self.assertFalse(self.engine.auto_preload_initial_stop_seen)
         self.assertFalse(self.engine.auto_preload_final_approach_stop_seen)
-        self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "prediction_brake_before_initial_gate")
+        self.assertEqual(len(self.engine.auto_preload_trace), 0)
 
-    def test_auto_preload_continuous_brakes_without_phase_change_close_to_initial_gate(self):
+    def test_auto_preload_continuous_ignores_prediction_close_to_initial_gate(self):
         should_brake = self.engine._auto_preload_continuous_should_brake_locked(
             -3.2,
             2.1,
             -0.2,
         )
 
-        self.assertTrue(should_brake)
+        self.assertFalse(should_brake)
         self.assertFalse(self.engine.auto_preload_initial_stop_seen)
         self.assertFalse(self.engine.auto_preload_final_approach_stop_seen)
-        self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "prediction_brake_before_initial_gate")
+
+    def test_auto_preload_continuous_brakes_after_prediction_enable_point(self):
+        should_brake = self.engine._auto_preload_continuous_should_brake_locked(
+            engine_module.PRELOAD_AUTO_PREDICT_ENABLE_LBS + 0.05,
+            0.5,
+            engine_module.PRELOAD_AUTO_FINAL_APPROACH_STOP_LBS + 0.01,
+        )
+
+        self.assertTrue(should_brake)
+        self.assertTrue(self.engine.auto_preload_final_approach_stop_seen)
+        self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "final_approach_stop_target")
 
     def test_auto_preload_continuous_brakes_without_final_phase_change_until_near_final(self):
         self.engine.auto_preload_initial_stop_seen = True
@@ -557,12 +554,11 @@ class ControlGateTests(unittest.TestCase):
 
         self.assertFalse(should_brake)
         self.assertFalse(self.engine.auto_preload_final_approach_stop_seen)
-        self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "prediction_brake_before_final_gate")
 
     def test_auto_preload_continuous_final_brake_target_after_initial_stop(self):
         self.assertEqual(
             self.engine._auto_preload_continuous_brake_target_locked(),
-            engine_module.PRELOAD_AUTO_INITIAL_STOP_LBS,
+            engine_module.PRELOAD_AUTO_FINAL_APPROACH_STOP_LBS,
         )
 
         self.engine.auto_preload_initial_stop_seen = True
@@ -590,7 +586,7 @@ class ControlGateTests(unittest.TestCase):
             -1.9,
         )
 
-        self.assertTrue(should_brake)
+        self.assertFalse(should_brake)
 
     def test_auto_preload_continuous_uses_fast_poll_interval(self):
         engine_module.PRELOAD_AUTO_CONTINUOUS_POLL_SECONDS = 0.025
