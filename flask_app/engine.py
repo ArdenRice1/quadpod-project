@@ -42,7 +42,9 @@ from config import (
     PRELOAD_AUTO_CONTROL_CONFIRM_SAMPLES,
     PRELOAD_AUTO_CONTROL_DISCARD_SETTLE_SECONDS,
     PRELOAD_AUTO_CONTROL_HARD_SPIKE_LBS,
+    PRELOAD_AUTO_CONTROL_MAX_VALID_LBS,
     PRELOAD_AUTO_CONTROL_MAX_TRANSIENT_REJECTS,
+    PRELOAD_AUTO_CONTROL_MIN_VALID_LBS,
     PRELOAD_AUTO_CONTROL_SPIKE_RETRY_SECONDS,
     PRELOAD_AUTO_CONTROL_SPIKE_DELTA_LBS,
     PRELOAD_AUTO_CONTINUOUS_BRAKE_MARGIN_LBS,
@@ -52,6 +54,9 @@ from config import (
     PRELOAD_AUTO_CONTINUOUS_CRAWL_MIN_SPEED_PERCENT,
     PRELOAD_AUTO_CONTINUOUS_CRAWL_STOP_SPEED_PERCENT,
     PRELOAD_AUTO_CONTINUOUS_CRAWL_ZONE_LBS,
+    PRELOAD_AUTO_CONTINUOUS_FINAL_PULL_FLOOR_START_LBS,
+    PRELOAD_AUTO_CONTINUOUS_FINAL_PULL_MIN_SPEED_PERCENT,
+    PRELOAD_AUTO_CONTINUOUS_FINAL_PULL_STOP_MARGIN_LBS,
     PRELOAD_AUTO_CONTINUOUS_INTERVAL_SECONDS,
     PRELOAD_AUTO_CONTINUOUS_KD,
     PRELOAD_AUTO_CONTINUOUS_KP,
@@ -778,7 +783,7 @@ class QuadpodEngine:
                                     if no_progress_since is None:
                                         no_progress_since = now
                                     elif now - no_progress_since >= PRELOAD_AUTO_CONTINUOUS_NO_PROGRESS_SECONDS:
-                                        no_progress_boost = PRELOAD_AUTO_CONTINUOUS_NO_PROGRESS_BOOST_SPEED_PERCENT
+                                        no_progress_boost = self._auto_preload_no_progress_floor_speed_locked(load)
                                 else:
                                     no_progress_since = None
                             else:
@@ -788,6 +793,7 @@ class QuadpodEngine:
                                 rate,
                                 direction,
                                 max_speed_override=no_progress_boost,
+                                min_speed_override=no_progress_boost,
                             )
                             current_speed = self._auto_preload_slew_speed(
                                 current_speed,
@@ -835,6 +841,7 @@ class QuadpodEngine:
                                     increase=direction,
                                     desired_speed=desired_speed,
                                     speed_percent=command_speed,
+                                    no_progress_boost=no_progress_boost,
                                 )
                                 last_speed_command = command_speed
                 last_update = now
@@ -1308,6 +1315,8 @@ class QuadpodEngine:
                         target_lbs=target_lbs,
                         gate_lbs=self._auto_preload_initial_prediction_gate_lbs_locked(),
                     )
+                    if not self._auto_preload_close_to_initial_prediction_gate_locked(load):
+                        return False
                 else:
                     self._record_auto_preload_trace_locked(
                         "prediction_ignored_before_initial_gate",
@@ -1336,6 +1345,8 @@ class QuadpodEngine:
                         target_lbs=target_lbs,
                         gate_lbs=self._auto_preload_final_prediction_gate_lbs_locked(),
                     )
+                    if not self._auto_preload_close_to_final_prediction_gate_locked(load):
+                        return False
             return True
         if (
             load >= PRELOAD_AUTO_CONTINUOUS_COAST_BRAKE_START_LBS
@@ -1361,6 +1372,16 @@ class QuadpodEngine:
     def _auto_preload_final_prediction_gate_locked(self, load):
         return float(load) >= self._auto_preload_final_prediction_gate_lbs_locked()
 
+    def _auto_preload_close_to_initial_prediction_gate_locked(self, load):
+        gate_lbs = self._auto_preload_initial_prediction_gate_lbs_locked()
+        margin_lbs = max(0.1, min(0.4, float(PRELOAD_AUTO_APPROACH_DISTANCE_LBS) * 0.5))
+        return float(load) >= gate_lbs - margin_lbs
+
+    def _auto_preload_close_to_final_prediction_gate_locked(self, load):
+        gate_lbs = self._auto_preload_final_prediction_gate_lbs_locked()
+        margin_lbs = max(0.1, min(0.4, float(PRELOAD_AUTO_APPROACH_DISTANCE_LBS) * 0.5))
+        return float(load) >= gate_lbs - margin_lbs
+
     def _auto_preload_should_creep_after_final_brake_locked(self, load, predicted_load, target_lbs):
         if not self.auto_preload_final_approach_stop_seen:
             return False
@@ -1372,7 +1393,7 @@ class QuadpodEngine:
             return float(PRELOAD_AUTO_INITIAL_STOP_LBS)
         return min(PRELOAD_AUTO_FINAL_APPROACH_STOP_LBS, PRELOAD_MIN_LBS)
 
-    def _auto_preload_continuous_speed_locked(self, load, rate, increase, max_speed_override=0.0):
+    def _auto_preload_continuous_speed_locked(self, load, rate, increase, max_speed_override=0.0, min_speed_override=0.0):
         target_lbs = self._auto_preload_continuous_brake_target_locked() if increase else PRELOAD_AUTO_TARGET_LBS
         if increase:
             control_target_lbs = PRELOAD_MIN_LBS if self.auto_preload_final_approach_stop_seen else target_lbs
@@ -1401,6 +1422,8 @@ class QuadpodEngine:
             )
             if max_speed_override:
                 max_speed = max(max_speed, float(max_speed_override))
+            if min_speed_override and load < PRELOAD_MIN_LBS:
+                raw_speed = max(raw_speed, min(max_speed, float(min_speed_override)))
             min_speed = min(min_speed, max_speed)
             distance_to_band = max(0.0, PRELOAD_MIN_LBS - float(load))
             crawl_zone = max(0.0, float(PRELOAD_AUTO_CONTINUOUS_CRAWL_ZONE_LBS))
@@ -1413,7 +1436,20 @@ class QuadpodEngine:
                 crawl_max = max(crawl_min, float(PRELOAD_AUTO_CONTINUOUS_CRAWL_MAX_SPEED_PERCENT))
                 max_speed = min(max_speed, crawl_max)
                 min_speed = min(crawl_min, max_speed)
+            final_floor = self._auto_preload_final_pull_floor_speed_locked(load)
+            if final_floor > 0:
+                max_speed = max(max_speed, final_floor)
+                min_speed = min(max(min_speed, final_floor), max_speed)
+                raw_speed = max(raw_speed, final_floor)
         return max(min_speed, min(max_speed, raw_speed))
+
+    def _auto_preload_final_pull_floor_speed_locked(self, load):
+        load = float(load)
+        if load < float(PRELOAD_AUTO_CONTINUOUS_FINAL_PULL_FLOOR_START_LBS):
+            return 0.0
+        if load >= PRELOAD_MIN_LBS - max(0.0, float(PRELOAD_AUTO_CONTINUOUS_FINAL_PULL_STOP_MARGIN_LBS)):
+            return 0.0
+        return max(0.0, float(PRELOAD_AUTO_CONTINUOUS_FINAL_PULL_MIN_SPEED_PERCENT))
 
     def _auto_preload_progressive_max_speed_locked(self, load, rate, target_lbs=None, max_speed_override=0.0):
         target_lbs = self._auto_preload_continuous_brake_target_locked() if target_lbs is None else float(target_lbs)
@@ -1488,6 +1524,15 @@ class QuadpodEngine:
             and load < PRELOAD_AUTO_FINAL_APPROACH_STOP_LBS - max(0.0, PRELOAD_AUTO_FINAL_REBRAKE_MARGIN_LBS)
             and abs(float(rate)) <= PRELOAD_AUTO_CONTINUOUS_NO_PROGRESS_RATE_LBS_PER_SECOND
         )
+
+    def _auto_preload_no_progress_floor_speed_locked(self, load):
+        final_floor = self._auto_preload_final_pull_floor_speed_locked(load)
+        if final_floor > 0:
+            return min(float(PRELOAD_AUTO_CONTINUOUS_NO_PROGRESS_BOOST_SPEED_PERCENT), final_floor)
+        safe_zone_speed = self._auto_preload_sensor_paced_max_speed_locked(load)
+        crawl_escape_speed = float(PRELOAD_AUTO_CONTINUOUS_CRAWL_MAX_SPEED_PERCENT) + 1.5
+        requested_speed = max(safe_zone_speed, crawl_escape_speed)
+        return min(float(PRELOAD_AUTO_CONTINUOUS_NO_PROGRESS_BOOST_SPEED_PERCENT), requested_speed)
 
     def _auto_preload_slew_speed(self, current_speed, desired_speed, elapsed_s):
         max_step = max(0.0, PRELOAD_AUTO_CONTINUOUS_RAMP_PERCENT_PER_SECOND) * max(0.0, float(elapsed_s))
@@ -1742,7 +1787,11 @@ class QuadpodEngine:
         with self.lock:
             previous_load = float(self.state.get("current_load") or 0.0)
 
-        load, samples, needs_confirmation, rejected, trace_event = self._read_auto_preload_control_load(previous_load)
+        load, samples, needs_confirmation, rejected, trace_event = self._read_auto_preload_control_load(
+            previous_load,
+            control_speed_percent=control_speed_percent,
+            control_direction=control_direction,
+        )
         load, trace_event = self._apply_auto_preload_plausibility_gate(
             previous_load,
             load,
@@ -1848,13 +1897,18 @@ class QuadpodEngine:
         rate_lbs_per_s = 0.75 + ((speed / 100.0) * max(0.0, PRELOAD_AUTO_PLAUSIBILITY_LBS_PER_SECOND_AT_100))
         return base_delta + (max(0.0, float(elapsed_s)) * rate_lbs_per_s)
 
-    def _read_auto_preload_control_load(self, previous_load):
+    def _read_auto_preload_control_load(self, previous_load, control_speed_percent=0.0, control_direction=None):
         samples = [self.load_cell.get_control_force()]
         needs_confirmation = self._auto_preload_read_needs_confirmation(previous_load, samples[0])
         if not needs_confirmation:
             return samples[0], samples, False, False, "control_load_read"
 
-        if PRELOAD_AUTO_STOP_DURING_LOAD_READ:
+        stop_for_confirmation = self._auto_preload_should_stop_for_control_confirmation_locked(
+            previous_load,
+            control_speed_percent,
+            control_direction,
+        )
+        if stop_for_confirmation:
             with self.lock:
                 if self.actuator.last_command != "neutral":
                     self.actuator.stop()
@@ -1864,13 +1918,23 @@ class QuadpodEngine:
                         previous_load=previous_load,
                         first_load=samples[0],
                     )
+        else:
+            with self.lock:
+                self._record_auto_preload_trace_locked(
+                    "control_read_confirm_without_stop",
+                    previous_load=previous_load,
+                    first_load=samples[0],
+                    speed_percent=float(control_speed_percent or 0.0),
+                    direction=control_direction,
+                )
 
         samples.extend(
             self.load_cell.get_control_force()
             for _ in range(max(0, int(PRELOAD_AUTO_CONTROL_CONFIRM_SAMPLES) - 1))
         )
-        load = self._median(samples)
-        if self._auto_preload_control_samples_are_trustworthy(previous_load, samples, load):
+        valid_samples = self._auto_preload_valid_control_samples(samples)
+        load = self._median(valid_samples) if valid_samples else previous_load
+        if self._auto_preload_control_samples_are_trustworthy(previous_load, valid_samples, load):
             self.auto_preload_control_rejects = 0
             if self._auto_preload_should_ignore_drop_after_near_band(previous_load, load):
                 return previous_load, samples, True, False, "control_load_drop_ignored_after_near_band"
@@ -1884,9 +1948,10 @@ class QuadpodEngine:
             self.load_cell.get_control_force()
             for _ in range(max(1, int(PRELOAD_AUTO_CONTROL_CONFIRM_SAMPLES)))
         ]
-        retry_load = self._median(retry_samples)
+        retry_valid_samples = self._auto_preload_valid_control_samples(retry_samples)
+        retry_load = self._median(retry_valid_samples) if retry_valid_samples else previous_load
         all_samples = samples + retry_samples
-        if self._auto_preload_control_samples_are_trustworthy(previous_load, retry_samples, retry_load):
+        if self._auto_preload_control_samples_are_trustworthy(previous_load, retry_valid_samples, retry_load):
             self.auto_preload_control_rejects = 0
             if self._auto_preload_should_ignore_drop_after_near_band(previous_load, retry_load):
                 return previous_load, all_samples, True, False, "control_load_drop_ignored_after_near_band"
@@ -1898,6 +1963,23 @@ class QuadpodEngine:
         if self.auto_preload_control_rejects <= PRELOAD_AUTO_CONTROL_MAX_TRANSIENT_REJECTS:
             return previous_load, all_samples, True, False, "control_load_discarded"
         return previous_load, all_samples, True, True, "control_load_rejected"
+
+    def _auto_preload_valid_control_samples(self, samples):
+        return [float(sample) for sample in samples if self._auto_preload_control_sample_valid(sample)]
+
+    def _auto_preload_should_stop_for_control_confirmation_locked(
+        self,
+        previous_load,
+        control_speed_percent=0.0,
+        control_direction=None,
+    ):
+        if not PRELOAD_AUTO_STOP_DURING_LOAD_READ:
+            return False
+        if control_direction is False:
+            return True
+        if float(previous_load) >= self._auto_preload_initial_prediction_gate_lbs_locked():
+            return True
+        return False
 
     def _hold_auto_preload_after_discard_locked(self, load):
         settle_seconds = max(0.0, float(PRELOAD_AUTO_CONTROL_DISCARD_SETTLE_SECONDS))
@@ -1932,19 +2014,29 @@ class QuadpodEngine:
 
     def _auto_preload_read_needs_confirmation(self, previous_load, load):
         return (
-            abs(load - previous_load) >= PRELOAD_AUTO_CONTROL_SPIKE_DELTA_LBS
+            not self._auto_preload_control_sample_valid(load)
+            or abs(load - previous_load) >= PRELOAD_AUTO_CONTROL_SPIKE_DELTA_LBS
             or abs(load) >= PRELOAD_AUTO_CONTROL_HARD_SPIKE_LBS
             or (load > PRELOAD_AUTO_ABORT_LBS and previous_load <= PRELOAD_AUTO_ABORT_LBS)
             or self._auto_preload_should_ignore_drop_after_near_band(previous_load, load)
         )
 
+    def _auto_preload_control_sample_valid(self, load):
+        return PRELOAD_AUTO_CONTROL_MIN_VALID_LBS <= float(load) <= PRELOAD_AUTO_CONTROL_MAX_VALID_LBS
+
     def _auto_preload_control_samples_are_trustworthy(self, previous_load, samples, load):
+        if len(samples) < self._auto_preload_min_valid_control_samples_locked():
+            return False
         sample_range = max(samples) - min(samples)
         if sample_range > PRELOAD_AUTO_CONTROL_CONFIRM_MAX_RANGE_LBS:
             return False
         if load > PRELOAD_AUTO_ABORT_LBS:
             return True
         return True
+
+    def _auto_preload_min_valid_control_samples_locked(self):
+        requested = max(1, int(PRELOAD_AUTO_CONTROL_CONFIRM_SAMPLES))
+        return max(1, min(requested, (requested // 2) + 1))
 
     def _auto_preload_should_ignore_drop_after_near_band(self, previous_load, load):
         return bool(

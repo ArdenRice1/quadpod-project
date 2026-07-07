@@ -313,6 +313,11 @@ class ControlGateTests(unittest.TestCase):
         self.assertGreaterEqual(near_speed, 0.0)
         self.assertLessEqual(near_speed, engine_module.PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_CRAWL_MAX_SPEED_PERCENT)
 
+    def test_auto_preload_continuous_final_pull_uses_configured_floor(self):
+        speed = self.engine._auto_preload_continuous_speed_locked(-0.8, 0.0, True)
+
+        self.assertEqual(speed, engine_module.PRELOAD_AUTO_CONTINUOUS_FINAL_PULL_MIN_SPEED_PERCENT)
+
     def test_auto_preload_continuous_speed_aims_for_internal_negative_target(self):
         self.engine.auto_preload_initial_stop_seen = True
         self.engine.auto_preload_final_approach_stop_seen = True
@@ -349,7 +354,7 @@ class ControlGateTests(unittest.TestCase):
         approach_speed = self.engine._auto_preload_continuous_speed_locked(-2.8, 0.0, True)
         final_speed = self.engine._auto_preload_continuous_speed_locked(-2.0, 0.0, True)
         fine_speed = self.engine._auto_preload_continuous_speed_locked(-1.2, 0.0, True)
-        crawl_speed = self.engine._auto_preload_continuous_speed_locked(-0.8, 0.0, True)
+        final_floor_speed = self.engine._auto_preload_continuous_speed_locked(-0.8, 0.0, True)
 
         self.assertLessEqual(early_speed, engine_module.PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_EARLY_MAX_SPEED_PERCENT)
         self.assertLessEqual(start_speed, engine_module.PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_START_MAX_SPEED_PERCENT)
@@ -357,7 +362,7 @@ class ControlGateTests(unittest.TestCase):
         self.assertLessEqual(approach_speed, engine_module.PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_APPROACH_MAX_SPEED_PERCENT)
         self.assertLessEqual(final_speed, engine_module.PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_FINAL_MAX_SPEED_PERCENT)
         self.assertLessEqual(fine_speed, engine_module.PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_FINE_MAX_SPEED_PERCENT)
-        self.assertLessEqual(crawl_speed, engine_module.PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_CRAWL_MAX_SPEED_PERCENT)
+        self.assertEqual(final_floor_speed, engine_module.PRELOAD_AUTO_CONTINUOUS_FINAL_PULL_MIN_SPEED_PERCENT)
 
     def test_auto_preload_progressive_cap_slows_smoothly(self):
         caps = [
@@ -386,6 +391,24 @@ class ControlGateTests(unittest.TestCase):
 
         self.assertGreater(boosted_speed, engine_module.PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_FINAL_MAX_SPEED_PERCENT)
         self.assertLessEqual(boosted_speed, engine_module.PRELOAD_AUTO_CONTINUOUS_NO_PROGRESS_BOOST_SPEED_PERCENT)
+
+    def test_auto_preload_no_progress_boost_sets_speed_floor_near_stall(self):
+        self.engine.auto_preload_initial_stop_seen = True
+        self.engine.auto_preload_final_approach_stop_seen = True
+
+        normal_speed = self.engine._auto_preload_continuous_speed_locked(-0.8, 0.0, True)
+        floor_speed = self.engine._auto_preload_no_progress_floor_speed_locked(-0.8)
+        boosted_speed = self.engine._auto_preload_continuous_speed_locked(
+            -0.8,
+            0.0,
+            True,
+            max_speed_override=floor_speed,
+            min_speed_override=floor_speed,
+        )
+
+        self.assertEqual(normal_speed, floor_speed)
+        self.assertEqual(boosted_speed, floor_speed)
+        self.assertLess(boosted_speed, engine_module.PRELOAD_AUTO_CONTINUOUS_NO_PROGRESS_BOOST_SPEED_PERCENT)
 
     def test_auto_preload_no_progress_does_not_boost_final_creep(self):
         self.assertFalse(self.engine._auto_preload_no_progress_locked(-0.4, 0.0))
@@ -495,9 +518,21 @@ class ControlGateTests(unittest.TestCase):
         self.assertFalse(self.engine.auto_preload_final_approach_stop_seen)
         self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "prediction_ignored_before_initial_gate")
 
-    def test_auto_preload_continuous_brakes_without_phase_change_before_initial_gate(self):
+    def test_auto_preload_continuous_ignores_prediction_far_before_initial_gate_even_after_coast_start(self):
         should_brake = self.engine._auto_preload_continuous_should_brake_locked(
             -4.7,
+            2.1,
+            -0.2,
+        )
+
+        self.assertFalse(should_brake)
+        self.assertFalse(self.engine.auto_preload_initial_stop_seen)
+        self.assertFalse(self.engine.auto_preload_final_approach_stop_seen)
+        self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "prediction_brake_before_initial_gate")
+
+    def test_auto_preload_continuous_brakes_without_phase_change_close_to_initial_gate(self):
+        should_brake = self.engine._auto_preload_continuous_should_brake_locked(
+            -3.2,
             2.1,
             -0.2,
         )
@@ -516,7 +551,7 @@ class ControlGateTests(unittest.TestCase):
             -0.2,
         )
 
-        self.assertTrue(should_brake)
+        self.assertFalse(should_brake)
         self.assertFalse(self.engine.auto_preload_final_approach_stop_seen)
         self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "prediction_brake_before_final_gate")
 
@@ -959,21 +994,22 @@ class ControlGateTests(unittest.TestCase):
 
         load = self.engine._refresh_auto_preload_load()
 
-        self.assertAlmostEqual(load, -7.84)
-        self.assertAlmostEqual(self.engine.state["current_load"], -7.84)
+        self.assertAlmostEqual(load, -7.83, places=2)
+        self.assertAlmostEqual(self.engine.state["current_load"], -7.83, places=2)
         self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "control_load_confirmed")
         self.assertEqual(self.engine.auto_preload_trace[-1]["first_load"], 185.0)
 
-    def test_auto_preload_confirms_real_high_control_load(self):
+    def test_auto_preload_ignores_out_of_band_high_control_loads(self):
         engine_module.PRELOAD_AUTO_DIRECT_LOAD_READ = True
         self.engine.state["current_load"] = -7.85
-        readings = iter([185.0, 180.0, 181.0, 182.0, 183.0])
+        readings = iter([185.0, 180.0, 181.0, 182.0, 183.0, 185.0, 180.0, 181.0, 182.0, 183.0])
         self.engine.load_cell.get_control_force = lambda: next(readings)
 
         load = self.engine._refresh_auto_preload_load()
 
-        self.assertEqual(load, 182.0)
-        self.assertEqual(self.engine.state["current_load"], 182.0)
+        self.assertEqual(load, -7.85)
+        self.assertEqual(self.engine.state["current_load"], -7.85)
+        self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "control_load_discarded")
 
     def test_auto_preload_confirms_stable_positive_jump(self):
         engine_module.PRELOAD_AUTO_DIRECT_LOAD_READ = True
@@ -1040,7 +1076,7 @@ class ControlGateTests(unittest.TestCase):
         self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "control_load_discarded")
         self.assertEqual(self.engine.auto_preload_control_rejects, 1)
 
-    def test_auto_preload_stops_actuator_during_suspicious_control_confirmation(self):
+    def test_auto_preload_keeps_actuator_moving_for_far_suspicious_control_confirmation(self):
         engine_module.PRELOAD_AUTO_DIRECT_LOAD_READ = True
         engine_module.PRELOAD_AUTO_STOP_DURING_LOAD_READ = True
         self.engine.state["current_load"] = -7.85
@@ -1050,9 +1086,9 @@ class ControlGateTests(unittest.TestCase):
 
         load = self.engine._refresh_auto_preload_load()
 
-        self.assertAlmostEqual(load, -7.84)
-        self.assertEqual(self.engine.actuator.last_command, "neutral")
-        self.assertIn("control_read_stop", [entry["event"] for entry in self.engine.auto_preload_trace])
+        self.assertAlmostEqual(load, -7.83, places=2)
+        self.assertEqual(self.engine.actuator.last_command, "up_fast")
+        self.assertIn("control_read_confirm_without_stop", [entry["event"] for entry in self.engine.auto_preload_trace])
 
     def test_auto_preload_holds_neutral_after_discarded_control_burst(self):
         engine_module.PRELOAD_AUTO_DIRECT_LOAD_READ = True
@@ -1167,6 +1203,42 @@ class ControlGateTests(unittest.TestCase):
         self.assertEqual(load, 0.02)
         self.assertEqual(self.engine.state["current_load"], 0.02)
         self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "control_load_drop_ignored_after_near_band")
+
+    def test_auto_preload_confirms_far_spike_without_stopping_actuator(self):
+        self.engine.actuator.move_up(fast=True, speed_percent=20)
+        readings = iter([120.0, -7.1, -7.0, -7.1, -7.0, -7.05, -7.1, -7.0, -7.1, -7.0])
+        self.engine.load_cell.get_control_force = lambda: next(readings)
+
+        load, samples, needs_confirmation, rejected, trace_event = self.engine._read_auto_preload_control_load(
+            -7.0,
+            control_speed_percent=20,
+            control_direction=True,
+        )
+
+        self.assertAlmostEqual(load, -7.0, places=1)
+        self.assertTrue(needs_confirmation)
+        self.assertFalse(rejected)
+        self.assertEqual(trace_event, "control_load_confirmed")
+        self.assertEqual(self.engine.actuator.last_command, "up_fast")
+        self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "control_read_confirm_without_stop")
+
+    def test_auto_preload_stops_for_spike_confirmation_near_initial_gate(self):
+        self.engine.actuator.move_up(fast=True, speed_percent=20)
+        readings = iter([120.0, -2.9, -2.8, -2.9, -2.8, -2.85, -2.9, -2.8, -2.9, -2.8])
+        self.engine.load_cell.get_control_force = lambda: next(readings)
+
+        load, samples, needs_confirmation, rejected, trace_event = self.engine._read_auto_preload_control_load(
+            -2.9,
+            control_speed_percent=20,
+            control_direction=True,
+        )
+
+        self.assertAlmostEqual(load, -2.8, places=1)
+        self.assertTrue(needs_confirmation)
+        self.assertFalse(rejected)
+        self.assertEqual(trace_event, "control_load_confirmed")
+        self.assertEqual(self.engine.actuator.last_command, "neutral")
+        self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "control_read_stop")
 
     def test_scan_rejects_large_negative_drop_after_near_band(self):
         self.engine.auto_preload_near_band_seen = True
