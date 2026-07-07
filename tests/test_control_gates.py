@@ -36,9 +36,11 @@ class ControlGateTests(unittest.TestCase):
         self.original_control_max_transient_rejects = engine_module.PRELOAD_AUTO_CONTROL_MAX_TRANSIENT_REJECTS
         self.original_stop_during_load_read = engine_module.PRELOAD_AUTO_STOP_DURING_LOAD_READ
         self.original_discard_settle = engine_module.PRELOAD_AUTO_CONTROL_DISCARD_SETTLE_SECONDS
+        self.original_moving_control_samples = engine_module.PRELOAD_AUTO_MOVING_CONTROL_SAMPLES
         self.original_stop_jounce = engine_module.PRELOAD_AUTO_STOP_JOUNCE_IGNORE_SECONDS
         self.original_scan_verify = engine_module.PRELOAD_AUTO_SCAN_VERIFY_SECONDS
         self.original_timeout = engine_module.PRELOAD_AUTO_TIMEOUT_SECONDS
+        self.original_continuous_poll = engine_module.PRELOAD_AUTO_CONTINUOUS_POLL_SECONDS
         self.original_plausibility_enabled = engine_module.PRELOAD_AUTO_PLAUSIBILITY_ENABLED
         self.original_plausibility_base = engine_module.PRELOAD_AUTO_PLAUSIBILITY_BASE_DELTA_LBS
         self.original_plausibility_rate = engine_module.PRELOAD_AUTO_PLAUSIBILITY_LBS_PER_SECOND_AT_100
@@ -64,9 +66,11 @@ class ControlGateTests(unittest.TestCase):
         engine_module.PRELOAD_AUTO_CONTROL_MAX_TRANSIENT_REJECTS = self.original_control_max_transient_rejects
         engine_module.PRELOAD_AUTO_STOP_DURING_LOAD_READ = self.original_stop_during_load_read
         engine_module.PRELOAD_AUTO_CONTROL_DISCARD_SETTLE_SECONDS = self.original_discard_settle
+        engine_module.PRELOAD_AUTO_MOVING_CONTROL_SAMPLES = self.original_moving_control_samples
         engine_module.PRELOAD_AUTO_STOP_JOUNCE_IGNORE_SECONDS = self.original_stop_jounce
         engine_module.PRELOAD_AUTO_SCAN_VERIFY_SECONDS = self.original_scan_verify
         engine_module.PRELOAD_AUTO_TIMEOUT_SECONDS = self.original_timeout
+        engine_module.PRELOAD_AUTO_CONTINUOUS_POLL_SECONDS = self.original_continuous_poll
         engine_module.PRELOAD_AUTO_PLAUSIBILITY_ENABLED = self.original_plausibility_enabled
         engine_module.PRELOAD_AUTO_PLAUSIBILITY_BASE_DELTA_LBS = self.original_plausibility_base
         engine_module.PRELOAD_AUTO_PLAUSIBILITY_LBS_PER_SECOND_AT_100 = self.original_plausibility_rate
@@ -587,6 +591,16 @@ class ControlGateTests(unittest.TestCase):
         )
 
         self.assertTrue(should_brake)
+
+    def test_auto_preload_continuous_uses_fast_poll_interval(self):
+        engine_module.PRELOAD_AUTO_CONTINUOUS_POLL_SECONDS = 0.025
+
+        self.assertEqual(self.engine._auto_preload_continuous_poll_seconds(), 0.025)
+
+    def test_auto_preload_continuous_poll_interval_has_floor(self):
+        engine_module.PRELOAD_AUTO_CONTINUOUS_POLL_SECONDS = -1.0
+
+        self.assertEqual(self.engine._auto_preload_continuous_poll_seconds(), 0.01)
 
     def test_auto_preload_can_recover_small_overshoot_after_band_seen(self):
         self.assertFalse(self.engine._auto_preload_can_recover_post_band_locked(1.06))
@@ -1221,6 +1235,46 @@ class ControlGateTests(unittest.TestCase):
         self.assertEqual(trace_event, "control_load_invalid_ignored")
         self.assertEqual(self.engine.actuator.last_command, "up_fast")
         self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "control_load_invalid_ignored")
+
+    def test_auto_preload_uses_fast_control_read_while_moving(self):
+        engine_module.PRELOAD_AUTO_MOVING_CONTROL_SAMPLES = 1
+        requested_samples = []
+
+        def read_control_load(samples=None):
+            requested_samples.append(samples)
+            return -7.0
+
+        self.engine.load_cell.get_control_force = read_control_load
+
+        load, samples, needs_confirmation, rejected, trace_event = self.engine._read_auto_preload_control_load(
+            -7.1,
+            control_speed_percent=20,
+            control_direction=True,
+        )
+
+        self.assertAlmostEqual(load, -7.0, places=1)
+        self.assertEqual(samples, [-7.0])
+        self.assertFalse(needs_confirmation)
+        self.assertFalse(rejected)
+        self.assertEqual(trace_event, "control_load_read")
+        self.assertEqual(requested_samples, [1])
+
+    def test_auto_preload_uses_default_control_read_when_stopped(self):
+        requested_samples = []
+
+        def read_control_load(samples=None):
+            requested_samples.append(samples)
+            return -7.0
+
+        self.engine.load_cell.get_control_force = read_control_load
+
+        self.engine._read_auto_preload_control_load(
+            -7.1,
+            control_speed_percent=0,
+            control_direction=None,
+        )
+
+        self.assertEqual(requested_samples, [None])
 
     def test_auto_preload_stops_for_spike_confirmation_near_initial_gate(self):
         self.engine.actuator.move_up(fast=True, speed_percent=20)

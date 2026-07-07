@@ -38,6 +38,25 @@ class ConfigTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 importlib.reload(config)
 
+    def test_auto_tension_poll_interval_defaults_to_sample_period(self):
+        with patch.dict(
+            os.environ,
+            {
+                "QUADPOD_SAMPLE_RATE_HZ": "40",
+                "QUADPOD_PRELOAD_AUTO_CONTINUOUS_INTERVAL_SECONDS": "0.08",
+            },
+            clear=False,
+        ):
+            loaded = importlib.reload(config)
+
+        self.assertEqual(loaded.PRELOAD_AUTO_CONTINUOUS_POLL_SECONDS, 0.025)
+
+    def test_auto_tension_poll_interval_can_be_overridden(self):
+        with patch.dict(os.environ, {"QUADPOD_PRELOAD_AUTO_CONTINUOUS_POLL_SECONDS": "0.04"}):
+            loaded = importlib.reload(config)
+
+        self.assertEqual(loaded.PRELOAD_AUTO_CONTINUOUS_POLL_SECONDS, 0.04)
+
 
 if __name__ == "__main__":
     unittest.main()

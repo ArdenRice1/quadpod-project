@@ -47,6 +47,7 @@ from config import (
     PRELOAD_AUTO_CONTROL_MIN_VALID_LBS,
     PRELOAD_AUTO_CONTROL_SPIKE_RETRY_SECONDS,
     PRELOAD_AUTO_CONTROL_SPIKE_DELTA_LBS,
+    PRELOAD_AUTO_MOVING_CONTROL_SAMPLES,
     PRELOAD_AUTO_CONTINUOUS_BRAKE_MARGIN_LBS,
     PRELOAD_AUTO_CONTINUOUS_COAST_BRAKE_RATE_LBS_PER_SECOND,
     PRELOAD_AUTO_CONTINUOUS_COAST_BRAKE_START_LBS,
@@ -58,6 +59,7 @@ from config import (
     PRELOAD_AUTO_CONTINUOUS_FINAL_PULL_MIN_SPEED_PERCENT,
     PRELOAD_AUTO_CONTINUOUS_FINAL_PULL_STOP_MARGIN_LBS,
     PRELOAD_AUTO_CONTINUOUS_INTERVAL_SECONDS,
+    PRELOAD_AUTO_CONTINUOUS_POLL_SECONDS,
     PRELOAD_AUTO_CONTINUOUS_KD,
     PRELOAD_AUTO_CONTINUOUS_KP,
     PRELOAD_AUTO_CONTINUOUS_MAX_SPEED_PERCENT,
@@ -639,7 +641,7 @@ class QuadpodEngine:
                                 seconds=PRELOAD_AUTO_POST_ABORT_RECOVERY_SECONDS,
                             )
                             post_abort_recovery_started = True
-                        time.sleep(max(0.01, PRELOAD_AUTO_CONTINUOUS_INTERVAL_SECONDS))
+                        time.sleep(self._auto_preload_continuous_poll_seconds())
                         continue
                     if self.auto_preload_near_band_seen and load > PRELOAD_MAX_LBS:
                         if load <= PRELOAD_AUTO_POST_BAND_RECOVERY_MAX_LBS:
@@ -657,7 +659,7 @@ class QuadpodEngine:
                                 recovery_max_lbs=PRELOAD_AUTO_POST_BAND_RECOVERY_MAX_LBS,
                                 seconds=PRELOAD_AUTO_POST_ABORT_RECOVERY_SECONDS,
                             )
-                            time.sleep(max(0.01, PRELOAD_AUTO_CONTINUOUS_INTERVAL_SECONDS))
+                            time.sleep(self._auto_preload_continuous_poll_seconds())
                             continue
                         self.state["auto_preload_message"] = "Check tension"
                         self._record_auto_preload_trace_locked(
@@ -683,7 +685,7 @@ class QuadpodEngine:
                                 recovery_max_lbs=PRELOAD_AUTO_POST_BAND_RECOVERY_MAX_LBS,
                                 seconds=PRELOAD_AUTO_POST_ABORT_RECOVERY_SECONDS,
                             )
-                            time.sleep(max(0.01, PRELOAD_AUTO_CONTINUOUS_INTERVAL_SECONDS))
+                            time.sleep(self._auto_preload_continuous_poll_seconds())
                             continue
                         self.actuator.stop()
                         self.state["actuator_command"] = self.actuator.last_command
@@ -707,7 +709,7 @@ class QuadpodEngine:
                             )
                             self.auto_preload_control_hold_logged = True
                         last_update = now
-                        time.sleep(max(0.01, PRELOAD_AUTO_CONTINUOUS_INTERVAL_SECONDS))
+                        time.sleep(self._auto_preload_continuous_poll_seconds())
                         continue
                     self.auto_preload_control_hold_logged = False
 
@@ -825,7 +827,7 @@ class QuadpodEngine:
                                     desired_speed=desired_speed,
                                 )
                                 last_update = now
-                                time.sleep(max(0.01, PRELOAD_AUTO_CONTINUOUS_INTERVAL_SECONDS))
+                                time.sleep(self._auto_preload_continuous_poll_seconds())
                                 continue
                             command_speed = max(1, min(100, int(round(current_speed))))
                             self._move_preload_direction_locked(direction, command_speed)
@@ -845,7 +847,7 @@ class QuadpodEngine:
                                 )
                                 last_speed_command = command_speed
                 last_update = now
-                time.sleep(max(0.01, PRELOAD_AUTO_CONTINUOUS_INTERVAL_SECONDS))
+                time.sleep(self._auto_preload_continuous_poll_seconds())
             else:
                 with self.lock:
                     self.actuator.stop()
@@ -870,6 +872,9 @@ class QuadpodEngine:
                     load=self.state.get("current_load"),
                     message=self.state.get("auto_preload_message"),
                 )
+
+    def _auto_preload_continuous_poll_seconds(self):
+        return max(0.01, float(PRELOAD_AUTO_CONTINUOUS_POLL_SECONDS))
 
     def _auto_preload_pulse_loop(self):
         deadline = time.monotonic() + PRELOAD_AUTO_TIMEOUT_SECONDS
@@ -1898,7 +1903,12 @@ class QuadpodEngine:
         return base_delta + (max(0.0, float(elapsed_s)) * rate_lbs_per_s)
 
     def _read_auto_preload_control_load(self, previous_load, control_speed_percent=0.0, control_direction=None):
-        samples = [self.load_cell.get_control_force()]
+        samples = [
+            self._get_auto_preload_control_force(
+                control_speed_percent=control_speed_percent,
+                control_direction=control_direction,
+            )
+        ]
         if not self._auto_preload_control_sample_valid(samples[0]):
             self.auto_preload_control_rejects += 1
             rejected = self.auto_preload_control_rejects > PRELOAD_AUTO_CONTROL_MAX_TRANSIENT_REJECTS
@@ -1966,6 +1976,15 @@ class QuadpodEngine:
 
     def _auto_preload_valid_control_samples(self, samples):
         return [float(sample) for sample in samples if self._auto_preload_control_sample_valid(sample)]
+
+    def _get_auto_preload_control_force(self, control_speed_percent=0.0, control_direction=None):
+        moving = control_direction is not None and float(control_speed_percent or 0.0) > 0.0
+        if not moving:
+            return self.load_cell.get_control_force()
+        try:
+            return self.load_cell.get_control_force(samples=PRELOAD_AUTO_MOVING_CONTROL_SAMPLES)
+        except TypeError:
+            return self.load_cell.get_control_force()
 
     def _hold_auto_preload_after_discard_locked(self, load):
         settle_seconds = max(0.0, float(PRELOAD_AUTO_CONTROL_DISCARD_SETTLE_SECONDS))

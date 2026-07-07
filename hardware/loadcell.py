@@ -169,8 +169,9 @@ class LoadCell:
     def get_reading(self):
         return self.get_force()
 
-    def get_control_force(self):
-        return round(self._read_force(samples=self.control_samples), 3)
+    def get_control_force(self, samples=None):
+        sample_count = self.control_samples if samples is None else max(1, int(samples))
+        return round(self._read_force(samples=sample_count), 3)
 
     def _read_force(self, samples=None):
         if self.use_mock:
