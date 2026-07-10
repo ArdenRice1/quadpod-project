@@ -75,6 +75,19 @@ LOADCELL_TRIM_EXTREMES = env_bool("QUADPOD_LOADCELL_TRIM_EXTREMES", True)
 LOADCELL_RESET_SECONDS = env_float("QUADPOD_LOADCELL_RESET_SECONDS", 0.05)
 LOADCELL_RESET_BEFORE_TARE = env_bool("QUADPOD_LOADCELL_RESET_BEFORE_TARE", True)
 LOADCELL_RESET_ON_READ_ERROR = env_bool("QUADPOD_LOADCELL_RESET_ON_READ_ERROR", True)
+# Glitch rejection: the bit-banged HX711 occasionally returns a spurious reading
+# (~6 lb jump, clustering near a fixed desync value) that bounces back within a
+# few samples. Reject a single read that jumps more than MAX_JUMP lb from the
+# last good value; accept after MAX_CONSECUTIVE such reads so a genuine fast
+# change is never permanently blocked. Real motion is <=~2.4 lb/sample.
+LOADCELL_GLITCH_REJECT = env_bool("QUADPOD_LOADCELL_GLITCH_REJECT", True)
+LOADCELL_GLITCH_MAX_JUMP_LBS = env_float("QUADPOD_LOADCELL_GLITCH_MAX_JUMP_LBS", 3.5)
+LOADCELL_GLITCH_MAX_CONSECUTIVE = env_int("QUADPOD_LOADCELL_GLITCH_MAX_CONSECUTIVE", 3)
+# A sustained glitch (HX711 channel desync) persists for many reads and would
+# defeat the jump filter (it eventually accepts the bad value). On a sustained
+# burst, reset/re-sync the HX711 instead of trusting it -- up to MAX_RESETS
+# attempts, then accept as a fail-safe so we never get permanently stuck.
+LOADCELL_GLITCH_MAX_RESETS = env_int("QUADPOD_LOADCELL_GLITCH_MAX_RESETS", 3)
 LOADCELL_DISPLAY_ALPHA = env_float("QUADPOD_LOADCELL_DISPLAY_ALPHA", 0.35)
 LOADCELL_DISPLAY_SNAP_DELTA_LBS = env_float("QUADPOD_LOADCELL_DISPLAY_SNAP_DELTA_LBS", 3.0)
 
@@ -96,7 +109,7 @@ ACTUATOR_INVERT = env_bool("QUADPOD_ACTUATOR_INVERT", False)
 SAMPLE_RATE_HZ = env_float("QUADPOD_SAMPLE_RATE_HZ", 40.0)
 PULL_TARGET_IN_PER_MIN = env_float("QUADPOD_PULL_TARGET_IPM", 5.0)
 PRELOAD_TARGET_LBS = env_float("QUADPOD_PRELOAD_TARGET_LBS", 0.0)
-PRELOAD_MIN_LBS = env_float("QUADPOD_PRELOAD_MIN_LBS", -0.25)
+PRELOAD_MIN_LBS = env_float("QUADPOD_PRELOAD_MIN_LBS", -0.5)
 PRELOAD_MAX_LBS = env_float("QUADPOD_PRELOAD_MAX_LBS", 0.0)
 PRELOAD_AUTO_ABORT_LBS = env_float("QUADPOD_PRELOAD_AUTO_ABORT_LBS", 1.0)
 PRELOAD_READY_LATCH_MARGIN_LBS = env_float("QUADPOD_PRELOAD_READY_LATCH_MARGIN_LBS", 0.10)
@@ -261,7 +274,7 @@ PRELOAD_AUTO_POST_BAND_RECOVERY_MAX_LBS = env_float("QUADPOD_PRELOAD_AUTO_POST_B
 PRELOAD_AUTO_DOWN_PULSE_SECONDS = env_float("QUADPOD_PRELOAD_AUTO_DOWN_PULSE_SECONDS", 0.01)
 PRELOAD_AUTO_SETTLE_SECONDS = env_float("QUADPOD_PRELOAD_AUTO_SETTLE_SECONDS", 8.0)
 PRELOAD_AUTO_SETTLE_MAX_SECONDS = env_float("QUADPOD_PRELOAD_AUTO_SETTLE_MAX_SECONDS", 20.0)
-PRELOAD_AUTO_TARGET_LBS = env_float("QUADPOD_PRELOAD_AUTO_TARGET_LBS", -0.15)
+PRELOAD_AUTO_TARGET_LBS = env_float("QUADPOD_PRELOAD_AUTO_TARGET_LBS", -0.25)
 PRELOAD_AUTO_FINAL_APPROACH_STOP_LBS = env_float("QUADPOD_PRELOAD_AUTO_FINAL_APPROACH_STOP_LBS", -0.30)
 PRELOAD_AUTO_FINAL_REBRAKE_MARGIN_LBS = env_float("QUADPOD_PRELOAD_AUTO_FINAL_REBRAKE_MARGIN_LBS", 0.15)
 PRELOAD_AUTO_PREDICT_STOP_LBS = env_float("QUADPOD_PRELOAD_AUTO_PREDICT_STOP_LBS", -0.15)
@@ -269,6 +282,82 @@ PRELOAD_AUTO_PREDICT_ENABLE_LBS = env_float("QUADPOD_PRELOAD_AUTO_PREDICT_ENABLE
 PRELOAD_AUTO_PREDICT_LOOKAHEAD_SECONDS = env_float("QUADPOD_PRELOAD_AUTO_PREDICT_LOOKAHEAD_SECONDS", 1.5)
 PRELOAD_AUTO_RATE_WINDOW_SECONDS = env_float("QUADPOD_PRELOAD_AUTO_RATE_WINDOW_SECONDS", 1.0)
 PRELOAD_AUTO_MAX_RISE_RATE_LBS_PER_SECOND = env_float("QUADPOD_PRELOAD_AUTO_MAX_RISE_RATE_LBS_PER_SECOND", 0.15)
+
+# -----------------------------------------------------------------------------
+# Glide mode: smooth velocity Auto Tension for the compliant (spring-mass-damper)
+# rig. Never stops to read (stopping rings the system); trusts moving reads with
+# a light EMA, commands velocity proportional to the remaining force error so it
+# glides slower as it closes, slews smoothly, and eases to neutral before target
+# so the compliant string relaxes into band. Adaptive to attachment weight
+# because velocity tracks live error, not fixed lb zones.
+# Enable with QUADPOD_PRELOAD_AUTO_MODE=glide.
+# -----------------------------------------------------------------------------
+# Overshoot above 0 lb ruins the test, and the real (nailed/adhesive) specimen
+# has a steeper wall than the bench mock, so bias BELOW zero: land at/just under
+# 0 and never above. Undershooting slightly is acceptable; overshoot is not.
+PRELOAD_GLIDE_TARGET_LBS = env_float("QUADPOD_PRELOAD_GLIDE_TARGET_LBS", -0.25)
+PRELOAD_GLIDE_TOL_LBS = env_float("QUADPOD_PRELOAD_GLIDE_TOL_LBS", 0.25)
+# Hard ceiling: a settled reading above this counts as overshoot (relax-or-fail);
+# Ready is only declared at rest at or below READY_CEILING_LBS.
+PRELOAD_GLIDE_READY_CEILING_LBS = env_float("QUADPOD_PRELOAD_GLIDE_READY_CEILING_LBS", 0.0)
+PRELOAD_GLIDE_OVERSHOOT_LBS = env_float("QUADPOD_PRELOAD_GLIDE_OVERSHOOT_LBS", 0.10)
+# Once force-rate signals the wall, latch to a crawl and never re-accelerate.
+# Latch OFF by default: it was firing on normal slack-takeoff rate (far from the
+# target) and pinning speed to crawl for the whole run. The instantaneous rate
+# governor already slows near the wall and recovers when force stalls/drops.
+PRELOAD_GLIDE_WALL_LATCH = env_bool("QUADPOD_PRELOAD_GLIDE_WALL_LATCH", False)
+# Seated = at rest, stable, slack removed: load within [SEATED_FLOOR, READY_CEILING]
+# (i.e. just below 0). This IS the band the pull-start gate accepts, so once
+# seated it latches Ready and you can start the pull without re-running.
+PRELOAD_GLIDE_SEATED_FLOOR_LBS = env_float("QUADPOD_PRELOAD_GLIDE_SEATED_FLOOR_LBS", PRELOAD_MIN_LBS)
+PRELOAD_GLIDE_KP_PCT_PER_LB = env_float("QUADPOD_PRELOAD_GLIDE_KP_PCT_PER_LB", 12.0)
+# Min effective duty: below ~14% the Victor/actuator is in its dead-band (pulse
+# too close to the 1650us neutral) and does not move. Keep the floor above that.
+PRELOAD_GLIDE_MIN_MOVE_PCT = env_float("QUADPOD_PRELOAD_GLIDE_MIN_MOVE_PCT", 14.0)
+PRELOAD_GLIDE_MAX_PCT = env_float("QUADPOD_PRELOAD_GLIDE_MAX_PCT", 22.0)
+# Ease earlier so there's less momentum at stop -> smaller coast/jounce overshoot
+# past 0. Slight undershoot is fine; the micro-trim hold brings it back up.
+PRELOAD_GLIDE_EASE_MARGIN_LBS = env_float("QUADPOD_PRELOAD_GLIDE_EASE_MARGIN_LBS", 0.25)
+PRELOAD_GLIDE_RAMP_PCT_PER_S = env_float("QUADPOD_PRELOAD_GLIDE_RAMP_PCT_PER_S", 40.0)
+PRELOAD_GLIDE_RAMP_DOWN_PCT_PER_S = env_float("QUADPOD_PRELOAD_GLIDE_RAMP_DOWN_PCT_PER_S", 120.0)
+# Wall governor: slow by how fast force is RISING (proximity to the taut wall),
+# not just by error. Above RATE_CRAWL the drive drops to CRAWL_PCT.
+PRELOAD_GLIDE_RATE_SLOW_LBS_PER_S = env_float("QUADPOD_PRELOAD_GLIDE_RATE_SLOW_LBS_PER_S", 1.5)
+PRELOAD_GLIDE_RATE_CRAWL_LBS_PER_S = env_float("QUADPOD_PRELOAD_GLIDE_RATE_CRAWL_LBS_PER_S", 3.5)
+PRELOAD_GLIDE_CRAWL_PCT = env_float("QUADPOD_PRELOAD_GLIDE_CRAWL_PCT", 14.0)
+PRELOAD_GLIDE_RATE_WINDOW_S = env_float("QUADPOD_PRELOAD_GLIDE_RATE_WINDOW_S", 0.3)
+# Predict past feedback latency: ease/stop on load + rate*lookahead, using the
+# raw (unfiltered) reading so the filter lag can't hide the wall.
+PRELOAD_GLIDE_LOOKAHEAD_S = env_float("QUADPOD_PRELOAD_GLIDE_LOOKAHEAD_S", 0.25)
+# Keep logging after Auto Tension finishes to observe drift/creep/hold behavior.
+PRELOAD_GLIDE_POST_LOG_S = env_float("QUADPOD_PRELOAD_GLIDE_POST_LOG_S", 45.0)
+PRELOAD_GLIDE_POST_LOG_INTERVAL_S = env_float("QUADPOD_PRELOAD_GLIDE_POST_LOG_INTERVAL_S", 0.2)
+PRELOAD_GLIDE_EMA_ALPHA = env_float("QUADPOD_PRELOAD_GLIDE_EMA_ALPHA", 0.4)
+PRELOAD_GLIDE_READ_SAMPLES = env_int("QUADPOD_PRELOAD_GLIDE_READ_SAMPLES", 1)
+PRELOAD_GLIDE_STABLE_S = env_float("QUADPOD_PRELOAD_GLIDE_STABLE_S", 1.0)
+PRELOAD_GLIDE_STABLE_LBS = env_float("QUADPOD_PRELOAD_GLIDE_STABLE_LBS", 0.15)
+PRELOAD_GLIDE_MAX_LBS = env_float("QUADPOD_PRELOAD_GLIDE_MAX_LBS", 0.5)
+PRELOAD_GLIDE_ABORT_LBS = env_float("QUADPOD_PRELOAD_GLIDE_ABORT_LBS", PRELOAD_AUTO_ABORT_LBS)
+PRELOAD_GLIDE_TIMEOUT_S = env_float("QUADPOD_PRELOAD_GLIDE_TIMEOUT_S", 60.0)
+PRELOAD_GLIDE_POLL_S = env_float("QUADPOD_PRELOAD_GLIDE_POLL_S", 0.02)
+PRELOAD_GLIDE_RELAX_S = env_float("QUADPOD_PRELOAD_GLIDE_RELAX_S", 2.0)
+# Active hold via micro PWM trim: the actuator back-drives, so hold a tiny
+# sustained holding torque (a few us off neutral, in the tension direction) to
+# counter the slow bleed -- NOT a coarse move. Steps 1us at a time up to
+# TRIM_MAX_US; backs off toward neutral at/above CEILING so it can never push
+# past 0. Waits JOUNCE_SETTLE_S after seating (lets the stop ring-down settle)
+# before trimming. Reads are the glitch-filtered scan value.
+PRELOAD_GLIDE_HOLD_AFTER = env_bool("QUADPOD_PRELOAD_GLIDE_HOLD_AFTER", True)
+PRELOAD_GLIDE_HOLD_TARGET_LBS = env_float("QUADPOD_PRELOAD_GLIDE_HOLD_TARGET_LBS", -0.25)
+PRELOAD_GLIDE_HOLD_DEADBAND_LBS = env_float("QUADPOD_PRELOAD_GLIDE_HOLD_DEADBAND_LBS", 0.08)
+PRELOAD_GLIDE_HOLD_CEILING_LBS = env_float("QUADPOD_PRELOAD_GLIDE_HOLD_CEILING_LBS", 0.0)
+PRELOAD_GLIDE_HOLD_TRIM_STEP_US = env_int("QUADPOD_PRELOAD_GLIDE_HOLD_TRIM_STEP_US", 1)
+# Cap kept BELOW the observed ~19us creep threshold: above that the sustained
+# holding torque slowly walks the actuator into the taut wall and over-tensions.
+PRELOAD_GLIDE_HOLD_TRIM_MAX_US = env_int("QUADPOD_PRELOAD_GLIDE_HOLD_TRIM_MAX_US", 15)
+PRELOAD_GLIDE_HOLD_JOUNCE_SETTLE_S = env_float("QUADPOD_PRELOAD_GLIDE_HOLD_JOUNCE_SETTLE_S", 1.5)
+PRELOAD_GLIDE_HOLD_INTERVAL_S = env_float("QUADPOD_PRELOAD_GLIDE_HOLD_INTERVAL_S", 0.4)
+PRELOAD_GLIDE_HOLD_TIMEOUT_S = env_float("QUADPOD_PRELOAD_GLIDE_HOLD_TIMEOUT_S", 120.0)
 
 # Legacy pulse mode is retained as a fallback/test harness. These settings are
 # not used by the normal continuous Auto Tension mode unless mode is switched.

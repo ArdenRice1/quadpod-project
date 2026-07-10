@@ -57,6 +57,17 @@ class ConfigTests(unittest.TestCase):
 
         self.assertEqual(loaded.PRELOAD_AUTO_CONTINUOUS_POLL_SECONDS, 0.04)
 
+    def test_glide_defaults_match_wider_preload_band(self):
+        with patch.dict(os.environ, {}, clear=True):
+            loaded = importlib.reload(config)
+
+        self.assertEqual(loaded.PRELOAD_MIN_LBS, -0.5)
+        self.assertEqual(loaded.PRELOAD_MAX_LBS, 0.0)
+        self.assertEqual(loaded.PRELOAD_AUTO_TARGET_LBS, -0.25)
+        self.assertEqual(loaded.PRELOAD_GLIDE_TARGET_LBS, -0.25)
+        self.assertEqual(loaded.PRELOAD_GLIDE_SEATED_FLOOR_LBS, loaded.PRELOAD_MIN_LBS)
+        self.assertEqual(loaded.PRELOAD_GLIDE_HOLD_TARGET_LBS, -0.25)
+
 
 if __name__ == "__main__":
     unittest.main()

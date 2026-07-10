@@ -133,6 +133,43 @@ from config import (
     PRELOAD_AUTO_TENSION_STAGES,
     PRELOAD_AUTO_TRACE_DIR,
     PRELOAD_AUTO_TRACE_MAX_ENTRIES,
+    PRELOAD_GLIDE_ABORT_LBS,
+    PRELOAD_GLIDE_CRAWL_PCT,
+    PRELOAD_GLIDE_EASE_MARGIN_LBS,
+    PRELOAD_GLIDE_EMA_ALPHA,
+    PRELOAD_GLIDE_HOLD_AFTER,
+    PRELOAD_GLIDE_HOLD_CEILING_LBS,
+    PRELOAD_GLIDE_HOLD_DEADBAND_LBS,
+    PRELOAD_GLIDE_HOLD_INTERVAL_S,
+    PRELOAD_GLIDE_HOLD_JOUNCE_SETTLE_S,
+    PRELOAD_GLIDE_HOLD_TARGET_LBS,
+    PRELOAD_GLIDE_HOLD_TIMEOUT_S,
+    PRELOAD_GLIDE_HOLD_TRIM_MAX_US,
+    PRELOAD_GLIDE_HOLD_TRIM_STEP_US,
+    PRELOAD_GLIDE_KP_PCT_PER_LB,
+    PRELOAD_GLIDE_LOOKAHEAD_S,
+    PRELOAD_GLIDE_MAX_LBS,
+    PRELOAD_GLIDE_MAX_PCT,
+    PRELOAD_GLIDE_MIN_MOVE_PCT,
+    PRELOAD_GLIDE_OVERSHOOT_LBS,
+    PRELOAD_GLIDE_POLL_S,
+    PRELOAD_GLIDE_POST_LOG_INTERVAL_S,
+    PRELOAD_GLIDE_POST_LOG_S,
+    PRELOAD_GLIDE_READY_CEILING_LBS,
+    PRELOAD_GLIDE_SEATED_FLOOR_LBS,
+    PRELOAD_GLIDE_RAMP_DOWN_PCT_PER_S,
+    PRELOAD_GLIDE_RAMP_PCT_PER_S,
+    PRELOAD_GLIDE_RATE_CRAWL_LBS_PER_S,
+    PRELOAD_GLIDE_RATE_SLOW_LBS_PER_S,
+    PRELOAD_GLIDE_RATE_WINDOW_S,
+    PRELOAD_GLIDE_READ_SAMPLES,
+    PRELOAD_GLIDE_RELAX_S,
+    PRELOAD_GLIDE_STABLE_LBS,
+    PRELOAD_GLIDE_STABLE_S,
+    PRELOAD_GLIDE_TARGET_LBS,
+    PRELOAD_GLIDE_TIMEOUT_S,
+    PRELOAD_GLIDE_TOL_LBS,
+    PRELOAD_GLIDE_WALL_LATCH,
     PRELOAD_HOLD_TRIM_DROP_RATE_LBS_PER_SECOND,
     PRELOAD_HOLD_TRIM_ENABLED,
     PRELOAD_HOLD_TRIM_INTERVAL_SECONDS,
@@ -377,6 +414,9 @@ class QuadpodEngine:
                 sample_count=0,
                 software_version=APP_VERSION,
             )
+            # Pull force changes fast -> disable glitch rejection so no real
+            # reading is ever dropped/held during the actual test.
+            self.load_cell.pause_glitch_reject()
             self.actuator.stop()
             self.state["actuator_command"] = self.actuator.last_command
             ok = self.actuator.pull()
@@ -470,6 +510,11 @@ class QuadpodEngine:
     def _scan_once(self):
         with self.lock:
             self._update_mock_force_locked()
+            # While Auto Tension owns the load cell it drives its own reads and
+            # state updates; a second reader here only adds GPIO contention and
+            # halves the effective sample rate the controller sees.
+            if self.state.get("auto_preload_running"):
+                return
 
         load = self.load_cell.get_force()
         raw_counts = getattr(self.load_cell, "last_raw_counts", None)
@@ -549,10 +594,413 @@ class QuadpodEngine:
         return ""
 
     def _auto_preload_loop(self):
+        if PRELOAD_AUTO_MODE == "glide":
+            self._auto_preload_glide_loop()
+            return
         if PRELOAD_AUTO_MODE == "continuous":
             self._auto_preload_continuous_loop()
             return
         self._auto_preload_pulse_loop()
+
+    def _glide_read(self):
+        """One low-latency load-cell read for the glide loop (motor keeps moving)."""
+        samples = max(1, int(PRELOAD_GLIDE_READ_SAMPLES))
+        try:
+            raw = self.load_cell.get_control_force(samples=samples)
+        except TypeError:
+            raw = self.load_cell.get_control_force()
+        raw_counts = getattr(self.load_cell, "last_raw_counts", None)
+        if raw_counts is None:
+            raw_counts = getattr(self.load_cell, "last_raw_lbs", raw)
+        return float(raw), raw_counts
+
+    def _auto_preload_glide_loop(self):
+        """Smooth velocity Auto Tension for the compliant rig.
+
+        Never stops to read (stopping rings the spring-mass-damper). Trusts
+        moving reads through a light EMA, commands velocity proportional to the
+        remaining force error (so it glides slower as it closes), slews the
+        command smoothly, and eases to neutral before target so the compliant
+        string relaxes into band. Overshoot is limited by the velocity cap
+        (max_pct) chosen so cap x feedback-lag stays under the band.
+        """
+        target = float(PRELOAD_GLIDE_TARGET_LBS)
+        seated_hi = float(PRELOAD_GLIDE_READY_CEILING_LBS)
+        seated_lo = float(PRELOAD_GLIDE_SEATED_FLOOR_LBS)
+        overshoot_lbs = float(PRELOAD_GLIDE_OVERSHOOT_LBS)
+        wall_latch_enabled = bool(PRELOAD_GLIDE_WALL_LATCH)
+        ease_margin = max(0.0, float(PRELOAD_GLIDE_EASE_MARGIN_LBS))
+        kp = max(0.0, float(PRELOAD_GLIDE_KP_PCT_PER_LB))
+        min_move = max(1.0, float(PRELOAD_GLIDE_MIN_MOVE_PCT))
+        max_pct = max(min_move, float(PRELOAD_GLIDE_MAX_PCT))
+        ramp_up = max(1.0, float(PRELOAD_GLIDE_RAMP_PCT_PER_S))
+        ramp_down = max(1.0, float(PRELOAD_GLIDE_RAMP_DOWN_PCT_PER_S))
+        crawl_pct = max(1.0, float(PRELOAD_GLIDE_CRAWL_PCT))
+        rate_slow = max(0.05, float(PRELOAD_GLIDE_RATE_SLOW_LBS_PER_S))
+        rate_crawl = max(rate_slow + 0.05, float(PRELOAD_GLIDE_RATE_CRAWL_LBS_PER_S))
+        rate_window = max(0.1, float(PRELOAD_GLIDE_RATE_WINDOW_S))
+        lookahead = max(0.0, float(PRELOAD_GLIDE_LOOKAHEAD_S))
+        alpha = max(0.0, min(1.0, float(PRELOAD_GLIDE_EMA_ALPHA)))
+        poll = max(0.005, float(PRELOAD_GLIDE_POLL_S))
+        abort_lbs = float(PRELOAD_GLIDE_ABORT_LBS)
+        max_lbs = float(PRELOAD_GLIDE_MAX_LBS)
+        stable_s = max(0.0, float(PRELOAD_GLIDE_STABLE_S))
+        stable_lbs = max(0.0, float(PRELOAD_GLIDE_STABLE_LBS))
+        relax_s = max(0.0, float(PRELOAD_GLIDE_RELAX_S))
+        deadline = time.monotonic() + max(1.0, float(PRELOAD_GLIDE_TIMEOUT_S))
+
+        ema = None
+        vel = 0.0
+        moving = False
+        last_update = time.monotonic()
+        in_band_since = None
+        over_since = None
+        wall_latched = False
+        hold_should_start = False
+        recent = deque()
+        raw_hist = deque()
+
+        with self.lock:
+            self._record_auto_preload_trace_locked(
+                "glide_start",
+                load=self.state.get("current_load"),
+                target_lbs=target,
+                seated_lo=seated_lo,
+                seated_hi=seated_hi,
+                ease_margin_lbs=ease_margin,
+                kp=kp,
+                max_pct=max_pct,
+                crawl_pct=crawl_pct,
+            )
+        try:
+            while time.monotonic() < deadline:
+                raw, raw_counts = self._glide_read()
+                now = time.monotonic()
+                ema = raw if ema is None else (alpha * raw + (1.0 - alpha) * ema)
+                load = ema
+                stop_loop = False
+
+                with self.lock:
+                    if self.state.get("auto_preload_sensor_fault"):
+                        self.actuator.stop()
+                        self.state["actuator_command"] = self.actuator.last_command
+                        self.state["auto_preload_message"] = "Check tension"
+                        self._record_auto_preload_trace_locked("sensor_fault_stop", load=load)
+                        break
+                    if self.auto_preload_cancel_requested or not self.state.get("auto_preload_running") or self.state["test_running"]:
+                        self.actuator.stop()
+                        self.state["actuator_command"] = self.actuator.last_command
+                        self.state["auto_preload_message"] = "Check tension"
+                        self._record_auto_preload_trace_locked("cancelled", load=load)
+                        break
+
+                    self._set_load_state_locked(load, raw_counts)
+                    recent.append((now, load))
+                    while recent and recent[0][0] < now - max(stable_s, 0.5):
+                        recent.popleft()
+
+                    if load > abort_lbs:
+                        self.actuator.stop()
+                        self.state["actuator_command"] = self.actuator.last_command
+                        self.state["auto_preload_message"] = "Check tension"
+                        self._record_auto_preload_trace_locked("abort", load=load, abort_lbs=abort_lbs)
+                        break
+
+                    # Rate of rise from RAW readings (responsive; the EMA would
+                    # lag the taut wall). Predict past feedback latency so we ease
+                    # before the real force blows through the band.
+                    raw_hist.append((now, raw))
+                    while raw_hist and raw_hist[0][0] < now - rate_window:
+                        raw_hist.popleft()
+                    rate = 0.0
+                    if len(raw_hist) >= 2:
+                        rt = raw_hist[-1][0] - raw_hist[0][0]
+                        if rt > 0:
+                            rate = (raw_hist[-1][1] - raw_hist[0][1]) / rt
+                    predicted = raw + max(0.0, rate) * lookahead
+
+                    error = target - load
+                    at_rest = (not moving) and vel <= min_move * 0.5
+
+                    if load > overshoot_lbs:
+                        # Genuinely above 0 (past the noise band): overshoot. Ease
+                        # and let the compliant string relax back down; if it can't
+                        # within relax_s, fail so a ruined pull is flagged.
+                        in_band_since = None
+                        desired = 0.0
+                        if over_since is None:
+                            over_since = now
+                            self._record_auto_preload_trace_locked(
+                                "glide_overshoot", load=load, raw=raw, overshoot_lbs=overshoot_lbs
+                            )
+                        if now - over_since >= relax_s:
+                            self.actuator.stop()
+                            self.state["actuator_command"] = self.actuator.last_command
+                            self.state["auto_preload_message"] = "Check tension"
+                            self._record_auto_preload_trace_locked(
+                                "glide_overshoot_fail", load=load, overshoot_lbs=overshoot_lbs
+                            )
+                            break
+                        self.state["auto_preload_message"] = "Settling"
+                    elif load >= seated_lo:
+                        # Seated band (slack removed, at/just below 0). Come to
+                        # rest, confirm stable, then latch Ready = pull can start.
+                        # Latch on the window MEAN (not a single noisy sample) and
+                        # only if that mean is at/below 0.
+                        over_since = None
+                        desired = 0.0
+                        if in_band_since is None:
+                            in_band_since = now
+                        band_vals = [v for t, v in recent if t >= in_band_since]
+                        stable_ok = len(band_vals) >= 3 and (max(band_vals) - min(band_vals)) <= stable_lbs
+                        window_mean = sum(band_vals) / len(band_vals) if band_vals else load
+                        if at_rest and stable_ok and now - in_band_since >= stable_s and window_mean <= seated_hi:
+                            self._set_preload_ready_latch_locked(load)
+                            self.state["auto_preload_message"] = "Ready"
+                            hold_should_start = bool(PRELOAD_GLIDE_HOLD_AFTER)
+                            self._record_auto_preload_trace_locked(
+                                "glide_ready", load=load, seconds=now - in_band_since,
+                                seated_lo=seated_lo, seated_hi=seated_hi,
+                            )
+                            stop_loop = True
+                        else:
+                            self.state["auto_preload_message"] = "Settling"
+                    else:
+                        # Below the band: still slack -> drive up. Governed by how
+                        # fast force rises (proximity to the wall) and eased on the
+                        # latency-predicted reading so it never blows through 0.
+                        in_band_since = None
+                        over_since = None
+                        if wall_latch_enabled and rate >= rate_slow:
+                            wall_latched = True
+                        # While below the seated band, only stop/coast when the
+                        # predicted load reaches the seated floor. This prevents
+                        # target/ease tuning from creating a dead zone where the
+                        # actuator stops below the Ready band and times out.
+                        if predicted >= seated_lo:
+                            desired = 0.0
+                            self.state["auto_preload_message"] = "Settling"
+                        else:
+                            base = max(min_move, min(max_pct, kp * max(0.0, error)))
+                            # Wall governor: the faster force is rising, the closer
+                            # we are to taut -> cap speed down toward a crawl (and
+                            # once latched, stay at crawl - never re-accelerate).
+                            if wall_latched or rate >= rate_crawl:
+                                cap = crawl_pct
+                            elif rate <= rate_slow:
+                                cap = max_pct
+                            else:
+                                frac = (rate - rate_slow) / (rate_crawl - rate_slow)
+                                cap = max_pct + (crawl_pct - max_pct) * frac
+                            desired = min(base, cap)
+                            self.state["auto_preload_message"] = "Auto Tension"
+
+                    # Decelerate faster than we accelerate: quick to back off the
+                    # wall, gentle to spin up (smooth motion avoids exciting the
+                    # resonance).
+                    ramp = ramp_up if desired >= vel else ramp_down
+                    max_step = ramp * max(0.0, now - last_update)
+                    delta = desired - vel
+                    if max_step <= 0 or abs(delta) <= max_step:
+                        vel = desired
+                    else:
+                        vel = vel + (max_step if delta > 0 else -max_step)
+
+                    applied_cmd = 0
+                    if desired <= 0.0 and vel < min_move:
+                        vel = 0.0
+                        if moving:
+                            self.actuator.stop()
+                            self.state["actuator_command"] = self.actuator.last_command
+                            moving = False
+                    else:
+                        applied_cmd = max(1, min(100, int(round(vel))))
+                        self._move_preload_direction_locked(increase=True, speed_percent=applied_cmd)
+                        self.state["actuator_command"] = self.actuator.last_command
+                        moving = True
+
+                    # Full per-cycle record: raw vs filtered load, error, desired
+                    # vs commanded speed, and dt (also measures the true achieved
+                    # sample interval on real hardware).
+                    self._record_auto_preload_trace_locked(
+                        "glide",
+                        load=load,
+                        raw=raw,
+                        err=error,
+                        rate=rate,
+                        pred=predicted,
+                        des=desired,
+                        vel=vel,
+                        cmd=applied_cmd,
+                        wall=wall_latched,
+                        pulse_us=self.actuator.last_pulse_us,
+                        dt=now - last_update,
+                    )
+
+                last_update = now
+                if stop_loop:
+                    break
+                time.sleep(poll)
+            else:
+                with self.lock:
+                    self.actuator.stop()
+                    self.state["actuator_command"] = self.actuator.last_command
+                    self.state["auto_preload_message"] = "Check tension"
+                    self._record_auto_preload_trace_locked(
+                        "glide_timeout", load=self.state.get("current_load"),
+                        seconds=PRELOAD_GLIDE_TIMEOUT_S,
+                    )
+        finally:
+            with self.lock:
+                self.actuator.stop()
+                self.state["actuator_command"] = self.actuator.last_command
+                self.state["auto_preload_running"] = False
+                if self.state.get("auto_preload_message", "") == "Ready":
+                    self.state["auto_preload_message"] = ""
+                if hold_should_start:
+                    self._start_glide_hold_locked()
+                self._record_auto_preload_trace_locked(
+                    "finish", load=self.state.get("current_load"),
+                    message=self.state.get("auto_preload_message"),
+                )
+                self._start_glide_post_monitor_locked()
+
+    def _start_glide_hold_locked(self):
+        if not PRELOAD_GLIDE_HOLD_AFTER or self.state.get("test_running"):
+            return
+        if self.preload_hold_active:
+            return
+        self.preload_hold_active = True
+        self.preload_hold_thread = threading.Thread(target=self._glide_hold_loop, daemon=True)
+        self.preload_hold_thread.start()
+        self._record_auto_preload_trace_locked(
+            "glide_hold_start", load=self.state.get("current_load"),
+            hold_target=PRELOAD_GLIDE_HOLD_TARGET_LBS, trim_max_us=PRELOAD_GLIDE_HOLD_TRIM_MAX_US,
+            settle_s=PRELOAD_GLIDE_HOLD_JOUNCE_SETTLE_S,
+        )
+
+    def _glide_hold_loop(self):
+        """Hold seated tension against back-drive with tiny PWM trim.
+
+        Waits out the stop ring-down (jounce), then holds a small sustained
+        holding torque (a few us off neutral, tension direction) that steps 1us
+        at a time to keep force near HOLD_TARGET. Backs the trim off toward
+        neutral at/above CEILING so it can never push past 0. Reads are the
+        glitch-filtered scan value. Stopped by jog/tare/start-pull/cancel.
+        """
+        tgt = float(PRELOAD_GLIDE_HOLD_TARGET_LBS)
+        dead = max(0.0, float(PRELOAD_GLIDE_HOLD_DEADBAND_LBS))
+        ceiling = float(PRELOAD_GLIDE_HOLD_CEILING_LBS)
+        step = max(1, int(PRELOAD_GLIDE_HOLD_TRIM_STEP_US))
+        max_trim = max(0, int(PRELOAD_GLIDE_HOLD_TRIM_MAX_US))
+        settle = max(0.0, float(PRELOAD_GLIDE_HOLD_JOUNCE_SETTLE_S))
+        interval = max(0.05, float(PRELOAD_GLIDE_HOLD_INTERVAL_S))
+        deadline = time.monotonic() + max(1.0, float(PRELOAD_GLIDE_HOLD_TIMEOUT_S))
+        # "Increase tension" is a pulse BELOW neutral on this pull-up rig; derive
+        # the sign from the actuator config so the trim can't push the wrong way.
+        physical_tension = self.actuator._maybe_invert(self.actuator.pull_direction)
+        sign = 1 if physical_tension == "down" else -1
+        trim = 0  # magnitude in us, applied in the tension direction
+
+        def should_stop_locked():
+            return (
+                not self.preload_hold_active
+                or self.state.get("test_running")
+                or self.state.get("auto_preload_running")
+                or self.state.get("auto_preload_sensor_fault")
+            )
+
+        # Jounce settle: sit at neutral while the stop ring-down decays.
+        settle_end = time.monotonic() + settle
+        while time.monotonic() < settle_end:
+            time.sleep(min(interval, max(0.01, settle_end - time.monotonic())))
+            with self.lock:
+                if should_stop_locked():
+                    self.actuator.stop()
+                    self.state["actuator_command"] = self.actuator.last_command
+                    self.preload_hold_active = False
+                    return
+
+        while time.monotonic() < deadline:
+            time.sleep(interval)
+            with self.lock:
+                if should_stop_locked():
+                    self.actuator.stop()
+                    self.state["actuator_command"] = self.actuator.last_command
+                    self.preload_hold_active = False
+                    return
+                load = float(self.state.get("current_load") or 0.0)
+                prev = trim
+                if load >= ceiling or load > tgt + dead:
+                    # Rising above target/ceiling -> cut ALL torque immediately.
+                    # Creep guard: don't ramp down 1us at a time (by the time it
+                    # unwinds, the actuator has already walked into over-tension).
+                    trim = 0
+                elif load < tgt - dead:
+                    trim = min(max_trim, trim + step)   # bled low -> add torque 1us/step
+                # else within deadband: hold current trim
+                hold_us = VICTOR_NEUTRAL_US + sign * trim
+                self.actuator.set_pulse_us(hold_us, command="hold_trim" if trim else "neutral")
+                self.state["actuator_command"] = self.actuator.last_command
+                self.preload_hold_trim_us = sign * trim
+                if trim != prev:
+                    self._record_auto_preload_trace_locked(
+                        "hold_trim", load=load, trim_us=trim, pulse_us=hold_us,
+                    )
+
+        with self.lock:
+            self.actuator.stop()
+            self.state["actuator_command"] = self.actuator.last_command
+            self.preload_hold_active = False
+            self._record_auto_preload_trace_locked("hold_timeout", load=self.state.get("current_load"))
+
+    def _start_glide_post_monitor_locked(self):
+        """Keep logging load/actuator state to the trace after Auto Tension ends,
+        to reveal post-tension drift, creep, gravity, or hold-trim behavior."""
+        post_s = max(0.0, float(PRELOAD_GLIDE_POST_LOG_S))
+        if post_s <= 0 or self.auto_preload_trace_file is None:
+            return
+        trace_file = self.auto_preload_trace_file
+        deadline = time.monotonic() + post_s
+        self._record_auto_preload_trace_locked(
+            "post_start", load=self.state.get("current_load"), seconds=post_s
+        )
+        thread = threading.Thread(
+            target=self._glide_post_monitor, args=(trace_file, deadline), daemon=True
+        )
+        self._glide_post_thread = thread
+        thread.start()
+
+    def _glide_post_monitor(self, trace_file, deadline):
+        interval = max(0.05, float(PRELOAD_GLIDE_POST_LOG_INTERVAL_S))
+        while time.monotonic() < deadline:
+            time.sleep(interval)
+            with self.lock:
+                # Stop if a new Auto Tension rotated the trace file / is running,
+                # or a pull test started.
+                if self.auto_preload_trace_file is not trace_file:
+                    return
+                if self.state.get("auto_preload_running"):
+                    return
+                load = self.state.get("current_load")
+                self._record_auto_preload_trace_locked(
+                    "post",
+                    load=load,
+                    command=self.actuator.last_command,
+                    pulse_us=self.actuator.last_pulse_us,
+                    hold_active=self.preload_hold_active,
+                    hold_trim_us=self.preload_hold_trim_us,
+                )
+                if self.state.get("test_running"):
+                    self._record_auto_preload_trace_locked(
+                        "post_end", load=load, reason="test_started"
+                    )
+                    return
+        with self.lock:
+            if self.auto_preload_trace_file is trace_file and not self.state.get("auto_preload_running"):
+                self._record_auto_preload_trace_locked(
+                    "post_end", load=self.state.get("current_load"), reason="timeout"
+                )
 
     def _auto_preload_continuous_loop(self):
         deadline = time.monotonic() + PRELOAD_AUTO_TIMEOUT_SECONDS
@@ -2381,6 +2829,7 @@ class QuadpodEngine:
         self.state["stop_pending"] = False
         self.state["stop_pending_started_at"] = None
         self.state["stop_reason"] = reason
+        self.load_cell.resume_glitch_reject()
         self._clear_auto_preload_status_locked()
         self._reset_auto_preload_control_locked()
 

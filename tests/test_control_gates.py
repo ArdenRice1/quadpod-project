@@ -478,9 +478,9 @@ class ControlGateTests(unittest.TestCase):
         self.engine.auto_preload_final_approach_stop_seen = True
 
         should_brake = self.engine._auto_preload_continuous_should_brake_locked(
-            engine_module.PRELOAD_AUTO_FINAL_APPROACH_STOP_LBS - engine_module.PRELOAD_AUTO_FINAL_REBRAKE_MARGIN_LBS - 0.2,
+            engine_module.PRELOAD_MIN_LBS - engine_module.PRELOAD_AUTO_FINAL_REBRAKE_MARGIN_LBS - 0.2,
             0.0,
-            engine_module.PRELOAD_AUTO_FINAL_APPROACH_STOP_LBS + 0.01,
+            engine_module.PRELOAD_MIN_LBS - 0.01,
         )
 
         self.assertFalse(should_brake)
@@ -558,14 +558,14 @@ class ControlGateTests(unittest.TestCase):
     def test_auto_preload_continuous_final_brake_target_after_initial_stop(self):
         self.assertEqual(
             self.engine._auto_preload_continuous_brake_target_locked(),
-            engine_module.PRELOAD_AUTO_FINAL_APPROACH_STOP_LBS,
+            min(engine_module.PRELOAD_AUTO_FINAL_APPROACH_STOP_LBS, engine_module.PRELOAD_MIN_LBS),
         )
 
         self.engine.auto_preload_initial_stop_seen = True
 
         self.assertEqual(
             self.engine._auto_preload_continuous_brake_target_locked(),
-            engine_module.PRELOAD_AUTO_FINAL_APPROACH_STOP_LBS,
+            min(engine_module.PRELOAD_AUTO_FINAL_APPROACH_STOP_LBS, engine_module.PRELOAD_MIN_LBS),
         )
 
     def test_auto_preload_continuous_brakes_at_bottom_of_allowed_band(self):
@@ -654,11 +654,12 @@ class ControlGateTests(unittest.TestCase):
         self.assertTrue(should_brake)
 
     def test_preload_hold_trim_increases_only_in_lower_half_while_dropping(self):
-        self.engine.state["current_load"] = -0.2
+        hold_load = engine_module.PRELOAD_AUTO_TARGET_LBS - 0.05
+        self.engine.state["current_load"] = hold_load
         self._set_load_history([
-            (0.50, -0.12),
-            (0.25, -0.16),
-            (0.00, -0.20),
+            (0.50, hold_load + 0.08),
+            (0.25, hold_load + 0.04),
+            (0.00, hold_load),
         ])
 
         self.engine._preload_hold_update_locked()
@@ -842,7 +843,11 @@ class ControlGateTests(unittest.TestCase):
         engine_module.PRELOAD_AUTO_SCAN_VERIFY_SECONDS = 0.5
         now = time.monotonic()
         self.engine.scan_load_history.clear()
-        for seconds_ago, value in [(0.45, -0.2), (0.25, -0.3), (0.0, -0.46)]:
+        for seconds_ago, value in [
+            (0.45, engine_module.PRELOAD_MIN_LBS + 0.1),
+            (0.25, engine_module.PRELOAD_MIN_LBS + 0.05),
+            (0.0, engine_module.PRELOAD_MIN_LBS - 0.05),
+        ]:
             self.engine.scan_load_history.append((now - seconds_ago, value))
 
         self.assertFalse(self.engine._auto_preload_scan_ready_locked())
@@ -925,8 +930,8 @@ class ControlGateTests(unittest.TestCase):
 
         load = self.engine._refresh_auto_preload_load()
 
-        self.assertEqual(load, dropped_load)
-        self.assertEqual(self.engine.state["current_load"], dropped_load)
+        self.assertAlmostEqual(load, dropped_load)
+        self.assertAlmostEqual(self.engine.state["current_load"], dropped_load)
         self.assertFalse(self.engine.state["auto_preload_sensor_fault"])
         self.assertEqual(len(self.engine.auto_preload_trace), 0)
 
@@ -1358,8 +1363,8 @@ class ControlGateTests(unittest.TestCase):
     def test_auto_preload_does_not_wait_when_prediction_stays_below_band(self):
         self.engine.state["current_load"] = -1.3
         self._set_load_history([
-            (0.60, -1.1),
-            (0.30, -1.45),
+            (0.60, -1.35),
+            (0.30, -1.32),
             (0.00, -1.3),
         ])
 

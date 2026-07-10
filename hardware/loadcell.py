@@ -1,4 +1,5 @@
 import random
+import threading
 import time
 from collections import deque
 
@@ -7,6 +8,10 @@ from config import (
     LOADCELL_CONTROL_SAMPLES,
     LOADCELL_DOUT_PIN,
     LOADCELL_FILTER_WINDOW,
+    LOADCELL_GLITCH_MAX_CONSECUTIVE,
+    LOADCELL_GLITCH_MAX_JUMP_LBS,
+    LOADCELL_GLITCH_MAX_RESETS,
+    LOADCELL_GLITCH_REJECT,
     LOADCELL_PD_SCK_PIN,
     LOADCELL_REFERENCE_UNIT,
     LOADCELL_RESET_BEFORE_TARE,
@@ -43,6 +48,21 @@ class LoadCell:
         self.reset_seconds = max(0.0001, float(reset_seconds))
         self.reset_before_tare = bool(reset_before_tare)
         self.reset_on_read_error = bool(reset_on_read_error)
+        # Serializes bit-banged HX711 access. The scan loop and the auto-tension
+        # loop both read the load cell from different threads; without this they
+        # can interleave clock pulses on the shared GPIO and corrupt readings.
+        self._io_lock = threading.RLock()
+        # Glitch rejection state (see _guard_glitch).
+        self.glitch_reject = bool(LOADCELL_GLITCH_REJECT)
+        self.glitch_max_jump = float(LOADCELL_GLITCH_MAX_JUMP_LBS)
+        self.glitch_max_consecutive = max(1, int(LOADCELL_GLITCH_MAX_CONSECUTIVE))
+        self.glitch_max_resets = max(0, int(LOADCELL_GLITCH_MAX_RESETS))
+        self._last_good_lbs = None
+        self._glitch_rejects = 0
+        self._glitch_resets = 0
+        self._glitch_total = 0
+        self._glitch_reset_total = 0
+        self.last_glitch = False
         self.samples = deque(maxlen=self.filter_window)
         self.last_raw_lbs = 0.0
         self.last_raw_counts = 0.0
@@ -97,6 +117,10 @@ class LoadCell:
         return value - 0x800000
 
     def _read_raw_counts(self, samples=None):
+        with self._io_lock:
+            return self._read_raw_counts_unlocked(samples=samples)
+
+    def _read_raw_counts_unlocked(self, samples=None):
         sample_count = max(1, int(samples or self.average_samples))
         values = []
         for _ in range(sample_count):
@@ -113,14 +137,32 @@ class LoadCell:
             values = sorted(values)[1:-1]
         return sum(values) / len(values)
 
+    def _quick_resync(self):
+        """Fast HX711 re-sync for glitch recovery: a brief PD_SCK-high pulse
+        (>60us) powers the chip down and it wakes to channel A gain 128, so the
+        clock/channel is back in phase. Far shorter than reset_hardware()'s full
+        reset, so it barely perturbs the read cadence."""
+        if self.use_mock:
+            return True
+        try:
+            with self._io_lock:
+                self._init_hardware()
+                self.gpio.output(self.pd_sck_pin, True)
+                time.sleep(0.001)
+                self.gpio.output(self.pd_sck_pin, False)
+            return True
+        except Exception:
+            return False
+
     def reset_hardware(self):
         if self.use_mock:
             return True
         try:
-            self._init_hardware()
-            self.gpio.output(self.pd_sck_pin, True)
-            time.sleep(self.reset_seconds)
-            self.gpio.output(self.pd_sck_pin, False)
+            with self._io_lock:
+                self._init_hardware()
+                self.gpio.output(self.pd_sck_pin, True)
+                time.sleep(self.reset_seconds)
+                self.gpio.output(self.pd_sck_pin, False)
             self.last_error = ""
             return True
         except Exception as exc:
@@ -142,12 +184,28 @@ class LoadCell:
             self._zero_counts = self._read_raw_counts()
             self.last_raw_counts = self._zero_counts
             self.last_raw_lbs = 0.0
+            # Let the first post-tare reading establish the baseline. The
+            # attachment may be lowered after tare and legitimately jump several
+            # pounds negative.
+            self._last_good_lbs = None
+            self._glitch_rejects = 0
             self.last_error = ""
             return True
         except Exception as exc:
             self.hardware_ready = False
             self.last_error = f"HX711 tare failed: {exc}"
             return False
+
+    def pause_glitch_reject(self):
+        """Disable jump-rejection (e.g. during a pull test, where force changes
+        fast and every real reading must be faithful)."""
+        self.glitch_reject = False
+
+    def resume_glitch_reject(self):
+        self.glitch_reject = bool(LOADCELL_GLITCH_REJECT)
+        self._last_good_lbs = None
+        self._glitch_rejects = 0
+        self._glitch_resets = 0
 
     def set_reference_unit(self, reference_unit):
         self.reference_unit = float(reference_unit)
@@ -186,7 +244,8 @@ class LoadCell:
         try:
             raw_counts = self._read_raw_counts(samples=samples)
             self.last_raw_counts = raw_counts
-            self.last_raw_lbs = (raw_counts - self._zero_counts) / self.reference_unit
+            lbs = (raw_counts - self._zero_counts) / self.reference_unit
+            self.last_raw_lbs = self._guard_glitch(lbs)
             self.last_error = ""
             return self.last_raw_lbs
         except Exception as exc:
@@ -194,6 +253,46 @@ class LoadCell:
                 self.reset_hardware()
             self.last_error = f"HX711 read failed: {exc}"
             return self.last_raw_lbs
+
+    def _guard_glitch(self, lbs):
+        """Reject a single physically-impossible jump (HX711 desync glitch).
+
+        Real motion is a fraction of a lb per read; a glitch is a ~6 lb jump that
+        bounces back. Reject reads that jump more than glitch_max_jump from the
+        last good value, but accept after glitch_max_consecutive so a genuine fast
+        change is never permanently blocked.
+        """
+        if not self.glitch_reject or self._last_good_lbs is None:
+            self._last_good_lbs = lbs
+            self.last_glitch = False
+            return lbs
+        if abs(lbs - self._last_good_lbs) > self.glitch_max_jump:
+            self._glitch_rejects += 1
+            self._glitch_total += 1
+            self.last_glitch = True
+            if self._glitch_rejects < self.glitch_max_consecutive:
+                return self._last_good_lbs
+            # Sustained burst: try to re-sync the HX711 rather than trust it.
+            if self._glitch_resets < self.glitch_max_resets:
+                self._glitch_resets += 1
+                self._glitch_reset_total += 1
+                self._glitch_rejects = 0
+                try:
+                    self._quick_resync()
+                except Exception:
+                    pass
+                return self._last_good_lbs
+            # Resets exhausted -> accept as a fail-safe (don't get stuck).
+            self._glitch_rejects = 0
+            self._glitch_resets = 0
+            self._last_good_lbs = lbs
+            self.last_glitch = False
+            return lbs
+        self._glitch_rejects = 0
+        self._glitch_resets = 0
+        self._last_good_lbs = lbs
+        self.last_glitch = False
+        return lbs
 
     def health(self):
         return {
@@ -208,4 +307,7 @@ class LoadCell:
             "last_raw_counts": self.last_raw_counts,
             "last_raw_range_counts": self.last_raw_range_counts,
             "zero_counts": self._zero_counts,
+            "glitch_rejects_total": self._glitch_total,
+            "glitch_resets_total": self._glitch_reset_total,
+            "last_glitch": self.last_glitch,
         }
