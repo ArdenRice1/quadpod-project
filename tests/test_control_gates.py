@@ -830,12 +830,14 @@ class ControlGateTests(unittest.TestCase):
         engine_module.PRELOAD_AUTO_TIMEOUT_SECONDS = 1.0
         self.engine.state["auto_preload_running"] = True
         self._set_load(0.0)
+        self.engine.load_cell.samples.extend([-8.0, -8.0, -8.0, -8.0])
         self.engine._auto_preload_ready_locked = lambda: True
 
         self.engine._auto_preload_loop()
 
         self.assertFalse(self.engine.state["auto_preload_running"])
         self.assertEqual(self.engine.actuator.last_command, "neutral")
+        self.assertEqual(list(self.engine.load_cell.samples), [])
         self.assertIn("in_band_complete", [entry["event"] for entry in self.engine.auto_preload_trace])
         self.assertNotEqual(self.engine.state["auto_preload_message"], "Check tension")
 

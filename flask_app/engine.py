@@ -854,6 +854,7 @@ class QuadpodEngine:
             with self.lock:
                 self.actuator.stop()
                 self.state["actuator_command"] = self.actuator.last_command
+                self.load_cell.samples.clear()
                 self.state["auto_preload_running"] = False
                 if self.state.get("auto_preload_message", "") == "Ready":
                     self.state["auto_preload_message"] = ""
@@ -1310,6 +1311,7 @@ class QuadpodEngine:
             with self.lock:
                 self.actuator.stop()
                 self.state["actuator_command"] = self.actuator.last_command
+                self.load_cell.samples.clear()
                 self.state["auto_preload_running"] = False
                 if self.state.get("auto_preload_message", "") == "Ready":
                     self.state["auto_preload_message"] = ""
@@ -1459,6 +1461,7 @@ class QuadpodEngine:
             with self.lock:
                 self.actuator.stop()
                 self.state["actuator_command"] = self.actuator.last_command
+                self.load_cell.samples.clear()
                 self.state["auto_preload_running"] = False
                 if self.state.get("auto_preload_message", "") == "Ready":
                     self.state["auto_preload_message"] = ""
