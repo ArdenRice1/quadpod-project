@@ -879,6 +879,9 @@ class QuadpodEngine:
         self._record_auto_preload_trace_locked(
             "glide_hold_start", load=self.state.get("current_load"),
             hold_target=PRELOAD_GLIDE_HOLD_TARGET_LBS, trim_max_us=PRELOAD_GLIDE_HOLD_TRIM_MAX_US,
+            trim_step_us=PRELOAD_GLIDE_HOLD_TRIM_STEP_US,
+            interval_s=PRELOAD_GLIDE_HOLD_INTERVAL_S,
+            deadband_lbs=PRELOAD_GLIDE_HOLD_DEADBAND_LBS,
             settle_s=PRELOAD_GLIDE_HOLD_JOUNCE_SETTLE_S,
         )
 

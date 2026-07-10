@@ -351,12 +351,13 @@ PRELOAD_GLIDE_HOLD_AFTER = env_bool("QUADPOD_PRELOAD_GLIDE_HOLD_AFTER", True)
 PRELOAD_GLIDE_HOLD_TARGET_LBS = env_float("QUADPOD_PRELOAD_GLIDE_HOLD_TARGET_LBS", -0.25)
 PRELOAD_GLIDE_HOLD_DEADBAND_LBS = env_float("QUADPOD_PRELOAD_GLIDE_HOLD_DEADBAND_LBS", 0.08)
 PRELOAD_GLIDE_HOLD_CEILING_LBS = env_float("QUADPOD_PRELOAD_GLIDE_HOLD_CEILING_LBS", 0.0)
-PRELOAD_GLIDE_HOLD_TRIM_STEP_US = env_int("QUADPOD_PRELOAD_GLIDE_HOLD_TRIM_STEP_US", 1)
-# Cap kept BELOW the observed ~19us creep threshold: above that the sustained
-# holding torque slowly walks the actuator into the taut wall and over-tensions.
-PRELOAD_GLIDE_HOLD_TRIM_MAX_US = env_int("QUADPOD_PRELOAD_GLIDE_HOLD_TRIM_MAX_US", 15)
-PRELOAD_GLIDE_HOLD_JOUNCE_SETTLE_S = env_float("QUADPOD_PRELOAD_GLIDE_HOLD_JOUNCE_SETTLE_S", 1.5)
-PRELOAD_GLIDE_HOLD_INTERVAL_S = env_float("QUADPOD_PRELOAD_GLIDE_HOLD_INTERVAL_S", 0.4)
+PRELOAD_GLIDE_HOLD_TRIM_STEP_US = env_int("QUADPOD_PRELOAD_GLIDE_HOLD_TRIM_STEP_US", 2)
+# The actuator back-drives under the hanging fixture. 15us was not enough to
+# hold the band in field traces; cap remains small and backs off immediately
+# above the hold target/ceiling.
+PRELOAD_GLIDE_HOLD_TRIM_MAX_US = env_int("QUADPOD_PRELOAD_GLIDE_HOLD_TRIM_MAX_US", 30)
+PRELOAD_GLIDE_HOLD_JOUNCE_SETTLE_S = env_float("QUADPOD_PRELOAD_GLIDE_HOLD_JOUNCE_SETTLE_S", 0.75)
+PRELOAD_GLIDE_HOLD_INTERVAL_S = env_float("QUADPOD_PRELOAD_GLIDE_HOLD_INTERVAL_S", 0.25)
 PRELOAD_GLIDE_HOLD_TIMEOUT_S = env_float("QUADPOD_PRELOAD_GLIDE_HOLD_TIMEOUT_S", 120.0)
 
 # Legacy pulse mode is retained as a fallback/test harness. These settings are
