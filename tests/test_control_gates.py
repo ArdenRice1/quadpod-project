@@ -170,6 +170,28 @@ class ControlGateTests(unittest.TestCase):
 
         self.assertFalse(self.engine.state["preload_ready_latched"])
 
+    def test_jog_stop_does_not_cancel_preload_hold(self):
+        self.engine.preload_hold_active = True
+        self.engine.preload_hold_trim_us = 3
+        self.engine.actuator.set_pulse_us(engine_module.VICTOR_NEUTRAL_US - 3, command="hold_trim")
+
+        ok, message = self.engine.jog("stop")
+
+        self.assertTrue(ok, message)
+        self.assertTrue(self.engine.preload_hold_active)
+        self.assertEqual(self.engine.preload_hold_trim_us, 3)
+        self.assertEqual(self.engine.actuator.last_command, "hold_trim")
+
+    def test_jog_up_cancels_preload_hold(self):
+        self.engine.preload_hold_active = True
+        self.engine.preload_hold_trim_us = 3
+
+        ok, message = self.engine.jog("up")
+
+        self.assertTrue(ok, message)
+        self.assertFalse(self.engine.preload_hold_active)
+        self.assertEqual(self.engine.preload_hold_trim_us, 0)
+
     def test_tare_rejects_while_auto_preload_running(self):
         self.engine.state["auto_preload_running"] = True
         ok, message = self.engine.tare()

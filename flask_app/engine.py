@@ -285,7 +285,7 @@ class QuadpodEngine:
                 return False, "Cannot jog while a pull test is running."
             if action in {"up", "down"}:
                 self._clear_preload_ready_latch_locked()
-            self._stop_preload_hold_locked()
+                self._stop_preload_hold_locked()
             if speed_percent is not None:
                 self.state["jog_speed_percent"] = max(1, min(100, int(float(speed_percent))))
             speed = self.state["jog_speed_percent"]
@@ -294,6 +294,8 @@ class QuadpodEngine:
             elif action == "down":
                 ok = self.actuator.move_down(fast=True, speed_percent=speed)
             elif action == "stop":
+                if self.preload_hold_active:
+                    return True, self.actuator.last_error
                 ok = self.actuator.stop()
             else:
                 return False, "Unknown jog action."
