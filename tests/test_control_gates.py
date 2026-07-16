@@ -1668,6 +1668,7 @@ class ControlGateTests(unittest.TestCase):
         self.engine.state["auto_preload_sensor_fault"] = True
         self.engine.state["auto_preload_short_stable"] = True
         self.engine.state["auto_preload_drift_stable"] = True
+        self.engine.auto_preload_cancel_requested = False
         self.engine.auto_preload_contact_detected = True
 
         ok, message = self.engine.start_pull(self.test_id)
@@ -1678,6 +1679,7 @@ class ControlGateTests(unittest.TestCase):
         self.assertFalse(self.engine.state["auto_preload_sensor_fault"])
         self.assertFalse(self.engine.state["auto_preload_short_stable"])
         self.assertFalse(self.engine.state["auto_preload_drift_stable"])
+        self.assertTrue(self.engine.auto_preload_cancel_requested)
         self.assertFalse(self.engine.auto_preload_contact_detected)
 
     def test_start_pull_ignores_jog_speed_slider(self):
@@ -1737,6 +1739,38 @@ class ControlGateTests(unittest.TestCase):
         self.assertFalse(self.engine.preload_hold_active)
         self.assertEqual(self.engine.actuator.last_command, "up_pull")
         self.assertEqual(self.engine.state["actuator_command"], "up_pull")
+
+    def test_auto_preload_move_does_not_override_active_pull(self):
+        self.engine.actuator.pull_direction = "up"
+        self._set_load(-0.10)
+
+        ok, message = self.engine.start_pull(self.test_id)
+        self.assertTrue(ok, message)
+        pull_pulse = self.engine.actuator.last_pulse_us
+
+        moved = self.engine._move_preload_direction_locked(increase=True, speed_percent=50)
+
+        self.assertFalse(moved)
+        self.assertEqual(self.engine.actuator.last_command, "up_pull")
+        self.assertEqual(self.engine.actuator.last_pulse_us, pull_pulse)
+        self.assertEqual(self.engine.state["actuator_command"], "up_pull")
+        self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "auto_move_ignored_during_pull")
+
+    def test_auto_preload_stop_does_not_override_active_pull(self):
+        self.engine.actuator.pull_direction = "up"
+        self._set_load(-0.10)
+
+        ok, message = self.engine.start_pull(self.test_id)
+        self.assertTrue(ok, message)
+        pull_pulse = self.engine.actuator.last_pulse_us
+
+        stopped = self.engine._auto_preload_stop_actuator_locked()
+
+        self.assertFalse(stopped)
+        self.assertEqual(self.engine.actuator.last_command, "up_pull")
+        self.assertEqual(self.engine.actuator.last_pulse_us, pull_pulse)
+        self.assertEqual(self.engine.state["actuator_command"], "up_pull")
+        self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "auto_stop_ignored_during_pull")
 
     def test_start_rejects_angle_outside_allowed_range(self):
         storage.update_test(self.test_id, form={"angle_degrees": "101"})

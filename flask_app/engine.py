@@ -388,6 +388,9 @@ class QuadpodEngine:
             self.failure_drop_samples = 0
             self.load_history.clear()
             self._reset_auto_preload_control_locked()
+            self.auto_preload_cancel_requested = True
+            self.preload_hold_active = False
+            self.preload_hold_trim_us = 0
             self.state.update(
                 {
                     "peak_load": max(load, 0.0),
@@ -684,14 +687,12 @@ class QuadpodEngine:
 
                 with self.lock:
                     if self.state.get("auto_preload_sensor_fault"):
-                        self.actuator.stop()
-                        self.state["actuator_command"] = self.actuator.last_command
+                        self._auto_preload_stop_actuator_locked()
                         self.state["auto_preload_message"] = "Check tension"
                         self._record_auto_preload_trace_locked("sensor_fault_stop", load=load)
                         break
                     if self.auto_preload_cancel_requested or not self.state.get("auto_preload_running") or self.state["test_running"]:
-                        self.actuator.stop()
-                        self.state["actuator_command"] = self.actuator.last_command
+                        self._auto_preload_stop_actuator_locked()
                         self.state["auto_preload_message"] = "Check tension"
                         self._record_auto_preload_trace_locked("cancelled", load=load)
                         break
@@ -702,8 +703,7 @@ class QuadpodEngine:
                         recent.popleft()
 
                     if load > abort_lbs:
-                        self.actuator.stop()
-                        self.state["actuator_command"] = self.actuator.last_command
+                        self._auto_preload_stop_actuator_locked()
                         self.state["auto_preload_message"] = "Check tension"
                         self._record_auto_preload_trace_locked("abort", load=load, abort_lbs=abort_lbs)
                         break
@@ -736,8 +736,7 @@ class QuadpodEngine:
                                 "glide_overshoot", load=load, raw=raw, overshoot_lbs=overshoot_lbs
                             )
                         if now - over_since >= relax_s:
-                            self.actuator.stop()
-                            self.state["actuator_command"] = self.actuator.last_command
+                            self._auto_preload_stop_actuator_locked()
                             self.state["auto_preload_message"] = "Check tension"
                             self._record_auto_preload_trace_locked(
                                 "glide_overshoot_fail", load=load, overshoot_lbs=overshoot_lbs
@@ -812,14 +811,13 @@ class QuadpodEngine:
                     if desired <= 0.0 and vel < min_move:
                         vel = 0.0
                         if moving:
-                            self.actuator.stop()
-                            self.state["actuator_command"] = self.actuator.last_command
+                            self._auto_preload_stop_actuator_locked()
                             moving = False
                     else:
                         applied_cmd = max(1, min(100, int(round(vel))))
-                        self._move_preload_direction_locked(increase=True, speed_percent=applied_cmd)
-                        self.state["actuator_command"] = self.actuator.last_command
-                        moving = True
+                        moving = self._move_preload_direction_locked(increase=True, speed_percent=applied_cmd)
+                        if moving:
+                            self.state["actuator_command"] = self.actuator.last_command
 
                     # Full per-cycle record: raw vs filtered load, error, desired
                     # vs commanded speed, and dt (also measures the true achieved
@@ -845,8 +843,7 @@ class QuadpodEngine:
                 time.sleep(poll)
             else:
                 with self.lock:
-                    self.actuator.stop()
-                    self.state["actuator_command"] = self.actuator.last_command
+                    self._auto_preload_stop_actuator_locked()
                     self.state["auto_preload_message"] = "Check tension"
                     self._record_auto_preload_trace_locked(
                         "glide_timeout", load=self.state.get("current_load"),
@@ -854,8 +851,7 @@ class QuadpodEngine:
                     )
         finally:
             with self.lock:
-                self.actuator.stop()
-                self.state["actuator_command"] = self.actuator.last_command
+                self._auto_preload_stop_actuator_locked()
                 self.load_cell.samples.clear()
                 self.state["auto_preload_running"] = False
                 if self.state.get("auto_preload_message", "") == "Ready":
@@ -1064,8 +1060,7 @@ class QuadpodEngine:
                 direction = None
                 with self.lock:
                     if self.state.get("auto_preload_sensor_fault"):
-                        self.actuator.stop()
-                        self.state["actuator_command"] = self.actuator.last_command
+                        self._auto_preload_stop_actuator_locked()
                         self.state["auto_preload_message"] = "Check tension"
                         command_direction = None
                         self._record_auto_preload_trace_locked(
@@ -1074,8 +1069,7 @@ class QuadpodEngine:
                         )
                         break
                     if self.auto_preload_cancel_requested or not self.state.get("auto_preload_running"):
-                        self.actuator.stop()
-                        self.state["actuator_command"] = self.actuator.last_command
+                        self._auto_preload_stop_actuator_locked()
                         self.state["auto_preload_message"] = "Check tension"
                         command_direction = None
                         self._record_auto_preload_trace_locked("cancelled", load=self.state.get("current_load"))
@@ -1096,8 +1090,7 @@ class QuadpodEngine:
                     else:
                         remembered_up_rate = 0.0
                     if post_abort_recovery_until > 0:
-                        self.actuator.stop()
-                        self.state["actuator_command"] = self.actuator.last_command
+                        self._auto_preload_stop_actuator_locked()
                         current_speed = 0.0
                         command_direction = None
                         last_speed_command = None
@@ -1132,8 +1125,7 @@ class QuadpodEngine:
                         continue
                     if self.auto_preload_near_band_seen and load > PRELOAD_MAX_LBS:
                         if load <= PRELOAD_AUTO_POST_BAND_RECOVERY_MAX_LBS:
-                            self.actuator.stop()
-                            self.state["actuator_command"] = self.actuator.last_command
+                            self._auto_preload_stop_actuator_locked()
                             current_speed = 0.0
                             command_direction = None
                             last_speed_command = None
@@ -1157,8 +1149,7 @@ class QuadpodEngine:
                         break
                     if load > PRELOAD_AUTO_ABORT_LBS:
                         if self._auto_preload_can_recover_post_band_locked(load):
-                            self.actuator.stop()
-                            self.state["actuator_command"] = self.actuator.last_command
+                            self._auto_preload_stop_actuator_locked()
                             current_speed = 0.0
                             command_direction = None
                             last_speed_command = None
@@ -1174,16 +1165,14 @@ class QuadpodEngine:
                             )
                             time.sleep(self._auto_preload_continuous_poll_seconds())
                             continue
-                        self.actuator.stop()
-                        self.state["actuator_command"] = self.actuator.last_command
+                        self._auto_preload_stop_actuator_locked()
                         self.state["auto_preload_message"] = "Check tension"
                         command_direction = None
                         self._record_auto_preload_trace_locked("abort", load=load, abort_lbs=PRELOAD_AUTO_ABORT_LBS)
                         break
 
                     if self.auto_preload_control_hold_until > now:
-                        self.actuator.stop()
-                        self.state["actuator_command"] = self.actuator.last_command
+                        self._auto_preload_stop_actuator_locked()
                         current_speed = 0.0
                         command_direction = None
                         last_speed_command = None
@@ -1204,8 +1193,7 @@ class QuadpodEngine:
                     if in_band:
                         no_progress_since = None
                         self.auto_preload_near_band_seen = True
-                        self.actuator.stop()
-                        self.state["actuator_command"] = self.actuator.last_command
+                        self._auto_preload_stop_actuator_locked()
                         current_speed = 0.0
                         command_direction = None
                         last_speed_command = None
@@ -1247,8 +1235,7 @@ class QuadpodEngine:
                         predicted_load = self._auto_preload_continuous_predicted_load_locked(load, rate, current_speed)
                         if load < PRELOAD_MIN_LBS:
                             if self._auto_preload_continuous_should_brake_locked(load, rate, predicted_load):
-                                self.actuator.stop()
-                                self.state["actuator_command"] = self.actuator.last_command
+                                self._auto_preload_stop_actuator_locked()
                                 current_speed = 0.0
                                 command_direction = None
                                 last_speed_command = None
@@ -1299,8 +1286,7 @@ class QuadpodEngine:
                                     ),
                                 )
                             if current_speed < max(0.0, float(PRELOAD_AUTO_CONTINUOUS_CRAWL_STOP_SPEED_PERCENT)):
-                                self.actuator.stop()
-                                self.state["actuator_command"] = self.actuator.last_command
+                                self._auto_preload_stop_actuator_locked()
                                 current_speed = 0.0
                                 command_direction = None
                                 last_speed_command = None
@@ -1317,9 +1303,9 @@ class QuadpodEngine:
                                 time.sleep(self._auto_preload_continuous_poll_seconds())
                                 continue
                             command_speed = max(1, min(100, int(round(current_speed))))
-                            self._move_preload_direction_locked(direction, command_speed)
-                            command_direction = direction
-                            self.state["actuator_command"] = self.actuator.last_command
+                            if self._move_preload_direction_locked(direction, command_speed):
+                                command_direction = direction
+                                self.state["actuator_command"] = self.actuator.last_command
                             self.state["auto_preload_message"] = "Auto Tension"
                             if last_speed_command != command_speed:
                                 self._record_auto_preload_trace_locked(
@@ -1337,8 +1323,7 @@ class QuadpodEngine:
                 time.sleep(self._auto_preload_continuous_poll_seconds())
             else:
                 with self.lock:
-                    self.actuator.stop()
-                    self.state["actuator_command"] = self.actuator.last_command
+                    self._auto_preload_stop_actuator_locked()
                     self.state["auto_preload_message"] = "Check tension"
                     self._record_auto_preload_trace_locked(
                         "timeout",
@@ -1347,8 +1332,7 @@ class QuadpodEngine:
                     )
         finally:
             with self.lock:
-                self.actuator.stop()
-                self.state["actuator_command"] = self.actuator.last_command
+                self._auto_preload_stop_actuator_locked()
                 self.load_cell.samples.clear()
                 self.state["auto_preload_running"] = False
                 if self.state.get("auto_preload_message", "") == "Ready":
@@ -1375,8 +1359,7 @@ class QuadpodEngine:
                 self._refresh_auto_preload_load()
                 with self.lock:
                     if self.state.get("auto_preload_sensor_fault"):
-                        self.actuator.stop()
-                        self.state["actuator_command"] = self.actuator.last_command
+                        self._auto_preload_stop_actuator_locked()
                         self.state["auto_preload_message"] = "Check tension"
                         self._record_auto_preload_trace_locked(
                             "sensor_fault_stop",
@@ -1384,8 +1367,7 @@ class QuadpodEngine:
                         )
                         break
                     if self.auto_preload_cancel_requested or not self.state.get("auto_preload_running"):
-                        self.actuator.stop()
-                        self.state["actuator_command"] = self.actuator.last_command
+                        self._auto_preload_stop_actuator_locked()
                         self.state["auto_preload_message"] = "Check tension"
                         self._record_auto_preload_trace_locked("cancelled", load=self.state.get("current_load"))
                         break
@@ -1396,16 +1378,14 @@ class QuadpodEngine:
 
                     load = float(self.state.get("current_load") or 0.0)
                     if load > PRELOAD_AUTO_ABORT_LBS:
-                        self.actuator.stop()
-                        self.state["actuator_command"] = self.actuator.last_command
+                        self._auto_preload_stop_actuator_locked()
                         self.state["auto_preload_message"] = "Check tension"
                         self._record_auto_preload_trace_locked("abort", load=load, abort_lbs=PRELOAD_AUTO_ABORT_LBS)
                         break
 
                     direction = self._auto_preload_direction_for_load(load)
                     if direction is None:
-                        self.actuator.stop()
-                        self.state["actuator_command"] = self.actuator.last_command
+                        self._auto_preload_stop_actuator_locked()
                         now = time.monotonic()
                         in_band = PRELOAD_MIN_LBS <= load <= PRELOAD_MAX_LBS
                         near_band_hold = self._auto_preload_near_band_hold_locked(load)
@@ -1453,8 +1433,7 @@ class QuadpodEngine:
                         predicted_load = self._auto_preload_predicted_load_locked(load, direction)
                         direction = None
                         stable_since = None
-                        self.actuator.stop()
-                        self.state["actuator_command"] = self.actuator.last_command
+                        self._auto_preload_stop_actuator_locked()
                         self.state["auto_preload_message"] = "Settling"
                         self._record_auto_preload_trace_locked(
                             "waiting_load_stable",
@@ -1469,7 +1448,8 @@ class QuadpodEngine:
                         self._move_preload_direction_locked(
                             increase=direction, speed_percent=stage["speed_percent"]
                         )
-                        self.state["actuator_command"] = self.actuator.last_command
+                        if not self.state.get("test_running"):
+                            self.state["actuator_command"] = self.actuator.last_command
                         stable_since = None
                         self.state["auto_preload_message"] = stage["message"]
 
@@ -1487,8 +1467,7 @@ class QuadpodEngine:
                 )
             else:
                 with self.lock:
-                    self.actuator.stop()
-                    self.state["actuator_command"] = self.actuator.last_command
+                    self._auto_preload_stop_actuator_locked()
                     self.state["auto_preload_message"] = "Check tension"
                     self._record_auto_preload_trace_locked(
                         "timeout",
@@ -1497,8 +1476,7 @@ class QuadpodEngine:
                     )
         finally:
             with self.lock:
-                self.actuator.stop()
-                self.state["actuator_command"] = self.actuator.last_command
+                self._auto_preload_stop_actuator_locked()
                 self.load_cell.samples.clear()
                 self.state["auto_preload_running"] = False
                 if self.state.get("auto_preload_message", "") == "Ready":
@@ -1524,6 +1502,19 @@ class QuadpodEngine:
         self.auto_preload_control_hold_logged = False
         self.auto_preload_control_last_load = None
         self.auto_preload_control_last_time = None
+
+    def _auto_preload_stop_actuator_locked(self):
+        if self.state.get("test_running"):
+            self._record_auto_preload_trace_locked(
+                "auto_stop_ignored_during_pull",
+                load=self.state.get("current_load"),
+                command=self.actuator.last_command,
+                pulse_us=self.actuator.last_pulse_us,
+            )
+            return False
+        ok = self.actuator.stop()
+        self.state["actuator_command"] = self.actuator.last_command
+        return ok
 
     def _clear_auto_preload_status_locked(self):
         self.state["auto_preload_running"] = False
@@ -2127,8 +2118,7 @@ class QuadpodEngine:
                 time.sleep(min(check_interval, max(0.0, end_time - time.monotonic())))
 
             with self.lock:
-                self.actuator.stop()
-                self.state["actuator_command"] = self.actuator.last_command
+                self._auto_preload_stop_actuator_locked()
             self._refresh_auto_preload_load()
 
             with self.lock:
@@ -2223,8 +2213,7 @@ class QuadpodEngine:
             return True
         finally:
             with self.lock:
-                self.actuator.stop()
-                self.state["actuator_command"] = self.actuator.last_command
+                self._auto_preload_stop_actuator_locked()
 
     def _auto_preload_note_contact_locked(self, delta_lbs, load):
         if self.auto_preload_contact_detected or delta_lbs < PRELOAD_AUTO_CONTACT_DELTA_LBS:
@@ -2382,8 +2371,7 @@ class QuadpodEngine:
 
         with self.lock:
             if self.actuator.last_command != "neutral" and PRELOAD_AUTO_STOP_DURING_LOAD_READ:
-                self.actuator.stop()
-                self.state["actuator_command"] = self.actuator.last_command
+                self._auto_preload_stop_actuator_locked()
                 self._record_auto_preload_trace_locked(
                     "control_read_stop",
                     previous_load=previous_load,
@@ -2442,8 +2430,7 @@ class QuadpodEngine:
         settle_seconds = max(0.0, float(PRELOAD_AUTO_CONTROL_DISCARD_SETTLE_SECONDS))
         if settle_seconds <= 0:
             return
-        self.actuator.stop()
-        self.state["actuator_command"] = self.actuator.last_command
+        self._auto_preload_stop_actuator_locked()
         self.auto_preload_control_hold_until = max(
             self.auto_preload_control_hold_until,
             time.monotonic() + settle_seconds,
@@ -2617,6 +2604,16 @@ class QuadpodEngine:
         )
 
     def _move_preload_direction_locked(self, increase, speed_percent):
+        if self.state.get("test_running"):
+            self._record_auto_preload_trace_locked(
+                "auto_move_ignored_during_pull",
+                load=self.state.get("current_load"),
+                increase=bool(increase),
+                speed_percent=speed_percent,
+                command=self.actuator.last_command,
+                pulse_us=self.actuator.last_pulse_us,
+            )
+            return False
         pull_direction = self.actuator.pull_direction
         direction = pull_direction if increase else ("down" if pull_direction == "up" else "up")
         speed = max(1, min(100, int(float(speed_percent))))
