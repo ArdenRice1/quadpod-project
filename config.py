@@ -347,7 +347,7 @@ PRELOAD_GLIDE_RELAX_S = env_float("QUADPOD_PRELOAD_GLIDE_RELAX_S", 2.0)
 # TRIM_MAX_US; backs off toward neutral at/above CEILING so it can never push
 # past 0. Waits JOUNCE_SETTLE_S after seating (lets the stop ring-down settle)
 # before trimming. Reads are the glitch-filtered scan value.
-PRELOAD_GLIDE_HOLD_AFTER = env_bool("QUADPOD_PRELOAD_GLIDE_HOLD_AFTER", True)
+PRELOAD_GLIDE_HOLD_AFTER = env_bool("QUADPOD_PRELOAD_GLIDE_HOLD_AFTER", False)
 PRELOAD_GLIDE_HOLD_TARGET_LBS = env_float("QUADPOD_PRELOAD_GLIDE_HOLD_TARGET_LBS", -0.25)
 PRELOAD_GLIDE_HOLD_DEADBAND_LBS = env_float("QUADPOD_PRELOAD_GLIDE_HOLD_DEADBAND_LBS", 0.08)
 PRELOAD_GLIDE_HOLD_CEILING_LBS = env_float("QUADPOD_PRELOAD_GLIDE_HOLD_CEILING_LBS", 0.0)

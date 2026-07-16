@@ -45,6 +45,10 @@ class ControlGateTests(unittest.TestCase):
         self.original_plausibility_base = engine_module.PRELOAD_AUTO_PLAUSIBILITY_BASE_DELTA_LBS
         self.original_plausibility_rate = engine_module.PRELOAD_AUTO_PLAUSIBILITY_LBS_PER_SECOND_AT_100
         self.original_trace_dir = engine_module.PRELOAD_AUTO_TRACE_DIR
+        self.original_hold_interval = engine_module.PRELOAD_HOLD_TRIM_INTERVAL_SECONDS
+        self.original_glide_hold_interval = engine_module.PRELOAD_GLIDE_HOLD_INTERVAL_S
+        self.original_glide_hold_settle = engine_module.PRELOAD_GLIDE_HOLD_JOUNCE_SETTLE_S
+        self.original_glide_hold_timeout = engine_module.PRELOAD_GLIDE_HOLD_TIMEOUT_S
         engine_module.PRELOAD_AUTO_DRIFT_WINDOW_SECONDS = 5.0
         engine_module.PRELOAD_AUTO_DIRECT_LOAD_READ = False
         engine_module.PRELOAD_AUTO_TRACE_DIR = self.root / "auto_tension_traces"
@@ -75,6 +79,10 @@ class ControlGateTests(unittest.TestCase):
         engine_module.PRELOAD_AUTO_PLAUSIBILITY_BASE_DELTA_LBS = self.original_plausibility_base
         engine_module.PRELOAD_AUTO_PLAUSIBILITY_LBS_PER_SECOND_AT_100 = self.original_plausibility_rate
         engine_module.PRELOAD_AUTO_TRACE_DIR = self.original_trace_dir
+        engine_module.PRELOAD_HOLD_TRIM_INTERVAL_SECONDS = self.original_hold_interval
+        engine_module.PRELOAD_GLIDE_HOLD_INTERVAL_S = self.original_glide_hold_interval
+        engine_module.PRELOAD_GLIDE_HOLD_JOUNCE_SETTLE_S = self.original_glide_hold_settle
+        engine_module.PRELOAD_GLIDE_HOLD_TIMEOUT_S = self.original_glide_hold_timeout
         self.tempdir.cleanup()
 
     def _job_form(self, **updates):
@@ -1699,6 +1707,36 @@ class ControlGateTests(unittest.TestCase):
         self.assertFalse(self.engine.preload_hold_active)
         self.assertEqual(self.engine.preload_hold_trim_us, 0)
         self.assertIn(self.engine.actuator.last_command, {"up_pull", "down_pull"})
+
+    def test_preload_hold_loop_does_not_override_active_pull(self):
+        engine_module.PRELOAD_HOLD_TRIM_INTERVAL_SECONDS = 0.01
+        self.engine.actuator.pull_direction = "up"
+        self.engine.preload_hold_active = True
+        self.engine.state["test_running"] = True
+        self.engine.actuator.pull()
+        self.engine.state["actuator_command"] = self.engine.actuator.last_command
+
+        self.engine._preload_hold_loop()
+
+        self.assertFalse(self.engine.preload_hold_active)
+        self.assertEqual(self.engine.actuator.last_command, "up_pull")
+        self.assertEqual(self.engine.state["actuator_command"], "up_pull")
+
+    def test_glide_hold_loop_does_not_override_active_pull(self):
+        engine_module.PRELOAD_GLIDE_HOLD_JOUNCE_SETTLE_S = 0.0
+        engine_module.PRELOAD_GLIDE_HOLD_INTERVAL_S = 0.01
+        engine_module.PRELOAD_GLIDE_HOLD_TIMEOUT_S = 0.05
+        self.engine.actuator.pull_direction = "up"
+        self.engine.preload_hold_active = True
+        self.engine.state["test_running"] = True
+        self.engine.actuator.pull()
+        self.engine.state["actuator_command"] = self.engine.actuator.last_command
+
+        self.engine._glide_hold_loop()
+
+        self.assertFalse(self.engine.preload_hold_active)
+        self.assertEqual(self.engine.actuator.last_command, "up_pull")
+        self.assertEqual(self.engine.state["actuator_command"], "up_pull")
 
     def test_start_rejects_angle_outside_allowed_range(self):
         storage.update_test(self.test_id, form={"angle_degrees": "101"})

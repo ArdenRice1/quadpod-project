@@ -924,8 +924,9 @@ class QuadpodEngine:
             time.sleep(min(interval, max(0.01, settle_end - time.monotonic())))
             with self.lock:
                 if should_stop_locked():
-                    self.actuator.stop()
-                    self.state["actuator_command"] = self.actuator.last_command
+                    if not self.state.get("test_running"):
+                        self.actuator.stop()
+                        self.state["actuator_command"] = self.actuator.last_command
                     self.preload_hold_active = False
                     return
 
@@ -933,8 +934,9 @@ class QuadpodEngine:
             time.sleep(interval)
             with self.lock:
                 if should_stop_locked():
-                    self.actuator.stop()
-                    self.state["actuator_command"] = self.actuator.last_command
+                    if not self.state.get("test_running"):
+                        self.actuator.stop()
+                        self.state["actuator_command"] = self.actuator.last_command
                     self.preload_hold_active = False
                     return
                 load = float(self.state.get("current_load") or 0.0)
@@ -1569,8 +1571,9 @@ class QuadpodEngine:
                     or self.state.get("auto_preload_running")
                     or self.state.get("auto_preload_sensor_fault")
                 ):
-                    self.actuator.stop()
-                    self.state["actuator_command"] = self.actuator.last_command
+                    if not self.state.get("test_running"):
+                        self.actuator.stop()
+                        self.state["actuator_command"] = self.actuator.last_command
                     self.preload_hold_active = False
                     return
                 self._preload_hold_update_locked()

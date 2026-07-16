@@ -66,6 +66,7 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(loaded.PRELOAD_AUTO_TARGET_LBS, -0.25)
         self.assertEqual(loaded.PRELOAD_GLIDE_TARGET_LBS, -0.25)
         self.assertEqual(loaded.PRELOAD_GLIDE_SEATED_FLOOR_LBS, loaded.PRELOAD_MIN_LBS)
+        self.assertFalse(loaded.PRELOAD_GLIDE_HOLD_AFTER)
         self.assertEqual(loaded.PRELOAD_GLIDE_HOLD_TARGET_LBS, -0.25)
         self.assertEqual(loaded.PRELOAD_GLIDE_HOLD_TRIM_STEP_US, 2)
         self.assertEqual(loaded.PRELOAD_GLIDE_HOLD_TRIM_MAX_US, 24)
