@@ -907,6 +907,8 @@ class QuadpodEngine:
         physical_tension = self.actuator._maybe_invert(self.actuator.pull_direction)
         sign = 1 if physical_tension == "down" else -1
         trim = 0  # magnitude in us, applied in the tension direction
+        previous_load = None
+        previous_load_time = None
 
         def should_stop_locked():
             return (
@@ -936,22 +938,31 @@ class QuadpodEngine:
                     self.preload_hold_active = False
                     return
                 load = float(self.state.get("current_load") or 0.0)
+                now = time.monotonic()
+                rate = 0.0
+                if previous_load is not None and previous_load_time is not None:
+                    elapsed = max(0.001, now - previous_load_time)
+                    rate = (load - previous_load) / elapsed
                 prev = trim
-                if load >= ceiling or load > tgt + dead:
-                    # Rising above target/ceiling -> cut ALL torque immediately.
-                    # Creep guard: don't ramp down 1us at a time (by the time it
-                    # unwinds, the actuator has already walked into over-tension).
-                    trim = 0
-                elif load < tgt - dead:
-                    trim = min(max_trim, trim + step)   # bled low -> add torque 1us/step
-                # else within deadband: hold current trim
+                trim = self._glide_hold_next_trim(
+                    load=load,
+                    rate=rate,
+                    trim=trim,
+                    target=tgt,
+                    deadband=dead,
+                    ceiling=ceiling,
+                    step=step,
+                    max_trim=max_trim,
+                )
+                previous_load = load
+                previous_load_time = now
                 hold_us = VICTOR_NEUTRAL_US + sign * trim
                 self.actuator.set_pulse_us(hold_us, command="hold_trim" if trim else "neutral")
                 self.state["actuator_command"] = self.actuator.last_command
                 self.preload_hold_trim_us = sign * trim
                 if trim != prev:
                     self._record_auto_preload_trace_locked(
-                        "hold_trim", load=load, trim_us=trim, pulse_us=hold_us,
+                        "hold_trim", load=load, trim_us=trim, pulse_us=hold_us, rate_lbs_per_s=rate,
                     )
 
         with self.lock:
@@ -959,6 +970,26 @@ class QuadpodEngine:
             self.state["actuator_command"] = self.actuator.last_command
             self.preload_hold_active = False
             self._record_auto_preload_trace_locked("hold_timeout", load=self.state.get("current_load"))
+
+    def _glide_hold_next_trim(self, *, load, rate, trim, target, deadband, ceiling, step, max_trim):
+        load = float(load)
+        rate = float(rate)
+        trim = max(0, int(trim))
+        step = max(1, int(step))
+        max_trim = max(0, int(max_trim))
+        target = float(target)
+        deadband = max(0.0, float(deadband))
+        ceiling = float(ceiling)
+
+        if load >= ceiling or load > target + deadband:
+            return 0
+        if load >= target - deadband:
+            return max(0, trim - step)
+        if rate > max(0.02, deadband):
+            return max(0, trim - step)
+        if rate > 0.0:
+            return trim
+        return min(max_trim, trim + step)
 
     def _start_glide_post_monitor_locked(self):
         """Keep logging load/actuator state to the trace after Auto Tension ends,

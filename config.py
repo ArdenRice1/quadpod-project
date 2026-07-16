@@ -353,9 +353,9 @@ PRELOAD_GLIDE_HOLD_DEADBAND_LBS = env_float("QUADPOD_PRELOAD_GLIDE_HOLD_DEADBAND
 PRELOAD_GLIDE_HOLD_CEILING_LBS = env_float("QUADPOD_PRELOAD_GLIDE_HOLD_CEILING_LBS", 0.0)
 PRELOAD_GLIDE_HOLD_TRIM_STEP_US = env_int("QUADPOD_PRELOAD_GLIDE_HOLD_TRIM_STEP_US", 2)
 # The actuator back-drives under the hanging fixture. 15us was not enough to
-# hold the band in field traces; cap remains small and backs off immediately
-# above the hold target/ceiling.
-PRELOAD_GLIDE_HOLD_TRIM_MAX_US = env_int("QUADPOD_PRELOAD_GLIDE_HOLD_TRIM_MAX_US", 30)
+# hold the band, but 30us crossed the breakaway point in field traces. Keep the
+# cap modest and let the rate guard below prevent ratcheting into overshoot.
+PRELOAD_GLIDE_HOLD_TRIM_MAX_US = env_int("QUADPOD_PRELOAD_GLIDE_HOLD_TRIM_MAX_US", 24)
 PRELOAD_GLIDE_HOLD_JOUNCE_SETTLE_S = env_float("QUADPOD_PRELOAD_GLIDE_HOLD_JOUNCE_SETTLE_S", 0.75)
 PRELOAD_GLIDE_HOLD_INTERVAL_S = env_float("QUADPOD_PRELOAD_GLIDE_HOLD_INTERVAL_S", 0.25)
 PRELOAD_GLIDE_HOLD_TIMEOUT_S = env_float("QUADPOD_PRELOAD_GLIDE_HOLD_TIMEOUT_S", 120.0)

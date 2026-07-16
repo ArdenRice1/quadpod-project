@@ -192,6 +192,62 @@ class ControlGateTests(unittest.TestCase):
         self.assertFalse(self.engine.preload_hold_active)
         self.assertEqual(self.engine.preload_hold_trim_us, 0)
 
+    def test_glide_hold_trim_increases_only_when_still_falling(self):
+        trim = self.engine._glide_hold_next_trim(
+            load=-0.6,
+            rate=-0.03,
+            trim=10,
+            target=-0.25,
+            deadband=0.08,
+            ceiling=0.0,
+            step=2,
+            max_trim=24,
+        )
+
+        self.assertEqual(trim, 12)
+
+    def test_glide_hold_trim_holds_when_load_is_recovering_slowly(self):
+        trim = self.engine._glide_hold_next_trim(
+            load=-0.6,
+            rate=0.03,
+            trim=10,
+            target=-0.25,
+            deadband=0.08,
+            ceiling=0.0,
+            step=2,
+            max_trim=24,
+        )
+
+        self.assertEqual(trim, 10)
+
+    def test_glide_hold_trim_backs_off_when_load_is_recovering_fast(self):
+        trim = self.engine._glide_hold_next_trim(
+            load=-0.42,
+            rate=0.5,
+            trim=24,
+            target=-0.25,
+            deadband=0.08,
+            ceiling=0.0,
+            step=2,
+            max_trim=24,
+        )
+
+        self.assertEqual(trim, 22)
+
+    def test_glide_hold_trim_backs_off_inside_band(self):
+        trim = self.engine._glide_hold_next_trim(
+            load=-0.3,
+            rate=0.0,
+            trim=12,
+            target=-0.25,
+            deadband=0.08,
+            ceiling=0.0,
+            step=2,
+            max_trim=24,
+        )
+
+        self.assertEqual(trim, 10)
+
     def test_tare_rejects_while_auto_preload_running(self):
         self.engine.state["auto_preload_running"] = True
         ok, message = self.engine.tare()
