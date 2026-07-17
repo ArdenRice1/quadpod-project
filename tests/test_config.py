@@ -38,6 +38,17 @@ class ConfigTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 importlib.reload(config)
 
+    def test_scalar_env_falls_back_on_garbage_instead_of_crashing(self):
+        # A typo in /etc/quadpod.env must not crash the service at import, or a
+        # headless field unit loses its whole UI with no way to recover.
+        with patch.dict(os.environ, {
+            "QUADPOD_VICTOR_NEUTRAL_US": "not-a-number",
+            "QUADPOD_PRELOAD_GLIDE_HOLD_ABORT_LBS": "1.0lb",
+        }):
+            loaded = importlib.reload(config)
+        self.assertEqual(loaded.VICTOR_NEUTRAL_US, 1650)
+        self.assertEqual(loaded.PRELOAD_GLIDE_HOLD_ABORT_LBS, 1.0)
+
     def test_auto_tension_poll_interval_defaults_to_sample_period(self):
         with patch.dict(
             os.environ,

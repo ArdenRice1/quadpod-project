@@ -144,14 +144,25 @@ class ControlGateTests(unittest.TestCase):
         self.assertTrue(ok, message)
         self.assertTrue(self.engine.state["test_running"])
 
-    def test_start_accepts_positive_recovery_after_auto_preload_ready_latch(self):
+    def test_start_accepts_small_positive_recovery_within_ready_latch_margin(self):
+        # A little load-cell noise above the band ceiling is tolerated.
         self.engine._set_preload_ready_latch_locked(0.0)
-        self._set_load(0.8)
+        self._set_load(0.1)
 
         ok, message = self.engine.start_pull(self.test_id)
 
         self.assertTrue(ok, message)
         self.assertTrue(self.engine.state["test_running"])
+
+    def test_start_rejects_large_positive_pretension_after_ready_latch(self):
+        # A pull must not begin on a pre-tensioned specimen -- it biases the peak.
+        self.engine._set_preload_ready_latch_locked(0.0)
+        self._set_load(0.8)
+
+        ok, message = self.engine.start_pull(self.test_id)
+
+        self.assertFalse(ok)
+        self.assertIn("tension", message)
 
     def test_start_rejects_drift_outside_ready_latch_margin(self):
         self.engine._set_preload_ready_latch_locked(0.0)
@@ -248,7 +259,7 @@ class ControlGateTests(unittest.TestCase):
         self.engine._move_auto_preload_direction_locked(increase=True)
         self.assertEqual(self.engine.actuator.last_command, "up_fast")
         self.assertGreater(self.engine.actuator.last_pulse_us, 1200)
-        self.assertLess(self.engine.actuator.last_pulse_us, 1500)
+        self.assertLess(self.engine.actuator.last_pulse_us, engine_module.VICTOR_NEUTRAL_US)
         self.engine._move_auto_preload_direction_locked(increase=False)
         self.assertEqual(self.engine.actuator.last_command, "down_fast")
 

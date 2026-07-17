@@ -861,7 +861,9 @@ class QuadpodEngine:
                 self.state["auto_preload_running"] = False
                 if self.state.get("auto_preload_message", "") == "Ready":
                     self.state["auto_preload_message"] = ""
-                if hold_should_start:
+                # Don't spawn the post-tension hold if the operator pressed Stop
+                # during the ready->finally hand-off (Stop must be absolute).
+                if hold_should_start and not self.auto_preload_cancel_requested:
                     self._start_glide_hold_locked()
                 self._record_auto_preload_trace_locked(
                     "finish", load=self.state.get("current_load"),
@@ -972,6 +974,10 @@ class QuadpodEngine:
                 with self.lock:
                     self.actuator.stop()
                     self.state["actuator_command"] = self.actuator.last_command
+                    # Real over-tension: invalidate the seat so a pull can't start on
+                    # a pre-tensioned specimen, and tell the operator to check tension.
+                    self._clear_preload_ready_latch_locked()
+                    self.state["auto_preload_message"] = "Check tension"
                     self._record_auto_preload_trace_locked("hold_abort_high", load=m)
                 break
             if aim_lo <= m <= aim_hi:
@@ -1383,7 +1389,7 @@ class QuadpodEngine:
                 self.state["auto_preload_running"] = False
                 if self.state.get("auto_preload_message", "") == "Ready":
                     self.state["auto_preload_message"] = ""
-                if hold_should_start:
+                if hold_should_start and not self.auto_preload_cancel_requested:
                     self._start_preload_hold_locked()
                 self._record_auto_preload_trace_locked(
                     "finish",
@@ -1527,7 +1533,7 @@ class QuadpodEngine:
                 self.state["auto_preload_running"] = False
                 if self.state.get("auto_preload_message", "") == "Ready":
                     self.state["auto_preload_message"] = ""
-                if hold_should_start:
+                if hold_should_start and not self.auto_preload_cancel_requested:
                     self._start_preload_hold_locked()
                 self._record_auto_preload_trace_locked(
                     "finish",

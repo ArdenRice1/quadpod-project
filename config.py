@@ -1,4 +1,5 @@
 import os
+import sys
 from pathlib import Path
 
 
@@ -24,14 +25,25 @@ def env_float(name, default):
     value = os.getenv(name)
     if value in (None, ""):
         return float(default)
-    return float(value)
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        # A bad value in /etc/quadpod.env must not crash the whole service at
+        # import (that would leave a headless unit with no UI to recover). Warn
+        # and fall back to the safe default.
+        sys.stderr.write(f"[config] {name}={value!r} is not a valid number; using default {default}\n")
+        return float(default)
 
 
 def env_int(name, default):
     value = os.getenv(name)
     if value in (None, ""):
         return int(default)
-    return int(value)
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        sys.stderr.write(f"[config] {name}={value!r} is not a valid integer; using default {default}\n")
+        return int(default)
 
 
 def env_stage_overrides(name, default):
@@ -96,7 +108,10 @@ PWM_I2C_ADDRESS = env_int("QUADPOD_PWM_I2C_ADDRESS", 0x40)
 PWM_I2C_BUSNUM = env_int("QUADPOD_PWM_I2C_BUSNUM", 1)
 PWM_FREQUENCY_HZ = env_int("QUADPOD_PWM_FREQUENCY_HZ", 50)
 VICTOR_CHANNEL = env_int("QUADPOD_VICTOR_CHANNEL", 0)
-VICTOR_NEUTRAL_US = env_int("QUADPOD_VICTOR_NEUTRAL_US", 1500)
+# True motor-stop for this Victor+PA-17P is 1650us (field-measured); the whole
+# glide dead-band is tuned to it. A unit that boots without /etc/quadpod.env must
+# still command real neutral, so the default matches the measured value.
+VICTOR_NEUTRAL_US = env_int("QUADPOD_VICTOR_NEUTRAL_US", 1650)
 VICTOR_FORWARD_US = env_int("QUADPOD_VICTOR_FORWARD_US", 2004)
 VICTOR_REVERSE_US = env_int("QUADPOD_VICTOR_REVERSE_US", 250)
 VICTOR_JOG_US = env_int("QUADPOD_VICTOR_JOG_US", VICTOR_FORWARD_US)
@@ -113,7 +128,11 @@ PRELOAD_MIN_LBS = env_float("QUADPOD_PRELOAD_MIN_LBS", -0.5)
 PRELOAD_MAX_LBS = env_float("QUADPOD_PRELOAD_MAX_LBS", 0.0)
 PRELOAD_AUTO_ABORT_LBS = env_float("QUADPOD_PRELOAD_AUTO_ABORT_LBS", 1.0)
 PRELOAD_READY_LATCH_MARGIN_LBS = env_float("QUADPOD_PRELOAD_READY_LATCH_MARGIN_LBS", 0.10)
-PRELOAD_READY_LATCH_POSITIVE_MARGIN_LBS = env_float("QUADPOD_PRELOAD_READY_LATCH_POSITIVE_MARGIN_LBS", 1.25)
+# A pull must not begin with real pre-tension on the specimen (it biases the peak).
+# Allow only load-cell noise above the band ceiling; a larger positive drift forces
+# a re-seat rather than starting the pull. (Over-tension >1 lb is caught by the hold
+# abort below.)
+PRELOAD_READY_LATCH_POSITIVE_MARGIN_LBS = env_float("QUADPOD_PRELOAD_READY_LATCH_POSITIVE_MARGIN_LBS", 0.15)
 PRELOAD_AUTO_POST_ABORT_RECOVERY_SECONDS = env_float("QUADPOD_PRELOAD_AUTO_POST_ABORT_RECOVERY_SECONDS", 5.0)
 PRELOAD_TOLERANCE_LBS = env_float(
     "QUADPOD_PRELOAD_TOLERANCE_LBS",
@@ -361,7 +380,10 @@ PRELOAD_GLIDE_HOLD_PULSE_MS = env_int("QUADPOD_PRELOAD_GLIDE_HOLD_PULSE_MS", 70)
 PRELOAD_GLIDE_HOLD_PULSE_MS_MAX = env_int("QUADPOD_PRELOAD_GLIDE_HOLD_PULSE_MS_MAX", 110)
 PRELOAD_GLIDE_HOLD_REST_S = env_float("QUADPOD_PRELOAD_GLIDE_HOLD_REST_S", 3.5)
 PRELOAD_GLIDE_HOLD_MAX_ITERS = env_int("QUADPOD_PRELOAD_GLIDE_HOLD_MAX_ITERS", 12)
-PRELOAD_GLIDE_HOLD_ABORT_LBS = env_float("QUADPOD_PRELOAD_GLIDE_HOLD_ABORT_LBS", 0.15)
+# Real over-tension abort. The load cell is noisy (physics), so tolerate up to ~1 lb
+# before treating a positive reading as genuine over-tension; above this the hold
+# stops, clears Ready, and tells the operator to check tension.
+PRELOAD_GLIDE_HOLD_ABORT_LBS = env_float("QUADPOD_PRELOAD_GLIDE_HOLD_ABORT_LBS", 1.0)
 PRELOAD_GLIDE_HOLD_GENTLE_GAP_LBS = env_float("QUADPOD_PRELOAD_GLIDE_HOLD_GENTLE_GAP_LBS", 0.20)
 
 # Legacy pulse mode is retained as a fallback/test harness. These settings are

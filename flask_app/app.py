@@ -422,7 +422,17 @@ def api_jog():
     if guard:
         return guard
     data = request.get_json(silent=True) or {}
-    ok, message = quadpod_engine.jog(data.get("action", "stop"), data.get("speed_percent"))
+    speed = data.get("speed_percent")
+    if speed is not None:
+        try:
+            speed = float(speed)
+        except (TypeError, ValueError):
+            return (
+                jsonify({"ok": False, "message": "speed_percent must be a number.",
+                         "status": quadpod_engine.snapshot()}),
+                400,
+            )
+    ok, message = quadpod_engine.jog(data.get("action", "stop"), speed)
     return jsonify({"ok": ok, "message": message, "status": quadpod_engine.snapshot()})
 
 
