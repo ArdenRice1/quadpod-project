@@ -117,5 +117,35 @@ class LoadCellHardwareCompatibilityTests(unittest.TestCase):
         self.assertEqual(FakeGPIO.outputs[-1], ("output", load_cell.pd_sck_pin, False))
 
 
+class LoadCellLivenessTests(unittest.TestCase):
+    def test_flags_stuck_sensor_after_full_window(self):
+        lc = LoadCell(use_mock=True)
+        lc._liveness_window = 4
+        self.assertFalse(lc._note_liveness(1000.0))
+        self.assertFalse(lc._note_liveness(1000.0))
+        self.assertFalse(lc._note_liveness(1000.0))
+        self.assertTrue(lc._note_liveness(1000.0))  # 4 byte-for-byte identical -> stuck
+
+    def test_ok_when_readings_dither(self):
+        lc = LoadCell(use_mock=True)
+        lc._liveness_window = 4
+        for i in range(12):
+            self.assertFalse(lc._note_liveness(1000.0 + (i % 2)))
+
+    def test_recovers_after_dither_resumes(self):
+        lc = LoadCell(use_mock=True)
+        lc._liveness_window = 3
+        self.assertFalse(lc._note_liveness(5.0))
+        self.assertFalse(lc._note_liveness(5.0))
+        self.assertTrue(lc._note_liveness(5.0))    # stuck
+        self.assertFalse(lc._note_liveness(6.0))   # dither returns -> recovered
+
+    def test_disabled_when_window_zero(self):
+        lc = LoadCell(use_mock=True)
+        lc._liveness_window = 0
+        for _ in range(50):
+            self.assertFalse(lc._note_liveness(1000.0))
+
+
 if __name__ == "__main__":
     unittest.main()

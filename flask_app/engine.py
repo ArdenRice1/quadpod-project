@@ -691,6 +691,10 @@ class QuadpodEngine:
                 stop_loop = False
 
                 with self.lock:
+                    # A stuck/disconnected load cell (liveness) or a read failure
+                    # must stop the moving actuator, not be trusted as a real force.
+                    if self.load_cell.last_error:
+                        self.state["auto_preload_sensor_fault"] = True
                     if self.state.get("auto_preload_sensor_fault"):
                         self._auto_preload_stop_actuator_locked()
                         self.state["auto_preload_message"] = "Check tension"

@@ -12,6 +12,7 @@ from config import (
     LOADCELL_GLITCH_MAX_JUMP_LBS,
     LOADCELL_GLITCH_MAX_RESETS,
     LOADCELL_GLITCH_REJECT,
+    LOADCELL_LIVENESS_WINDOW,
     LOADCELL_PD_SCK_PIN,
     LOADCELL_REFERENCE_UNIT,
     LOADCELL_RESET_BEFORE_TARE,
@@ -68,6 +69,8 @@ class LoadCell:
         self.last_raw_counts = 0.0
         self.last_raw_range_counts = 0.0
         self.last_error = ""
+        self._liveness_window = max(0, int(LOADCELL_LIVENESS_WINDOW))
+        self._raw_history = deque(maxlen=self._liveness_window or 1)
         self._mock_force = 0.0
         self._mock_zero = 0.0
         self._zero_counts = 0.0
@@ -231,6 +234,21 @@ class LoadCell:
         sample_count = self.control_samples if samples is None else max(1, int(samples))
         return round(self._read_force(samples=sample_count), 3)
 
+    def _note_liveness(self, raw_counts):
+        """Track raw counts across reads; return True if the amp looks stuck.
+
+        A working HX711 always dithers a few counts, so a full window of
+        byte-for-byte identical reads means a shorted/floating/frozen sensor
+        (a dead DOUT reads a constant 0 or -1). Recovers automatically once the
+        readings start dithering again.
+        """
+        if self._liveness_window <= 0:
+            return False
+        self._raw_history.append(float(raw_counts))
+        if len(self._raw_history) < self._liveness_window:
+            return False
+        return (max(self._raw_history) - min(self._raw_history)) == 0.0
+
     def _read_force(self, samples=None):
         if self.use_mock:
             noise = random.uniform(-0.08, 0.08)
@@ -244,6 +262,9 @@ class LoadCell:
         try:
             raw_counts = self._read_raw_counts(samples=samples)
             self.last_raw_counts = raw_counts
+            if self._note_liveness(raw_counts):
+                self.last_error = "Load cell not responding -- check the connection."
+                return self.last_raw_lbs
             lbs = (raw_counts - self._zero_counts) / self.reference_unit
             self.last_raw_lbs = self._guard_glitch(lbs)
             self.last_error = ""

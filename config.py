@@ -87,6 +87,11 @@ LOADCELL_TRIM_EXTREMES = env_bool("QUADPOD_LOADCELL_TRIM_EXTREMES", True)
 LOADCELL_RESET_SECONDS = env_float("QUADPOD_LOADCELL_RESET_SECONDS", 0.05)
 LOADCELL_RESET_BEFORE_TARE = env_bool("QUADPOD_LOADCELL_RESET_BEFORE_TARE", True)
 LOADCELL_RESET_ON_READ_ERROR = env_bool("QUADPOD_LOADCELL_RESET_ON_READ_ERROR", True)
+# Liveness: a live HX711 always dithers a few counts. If this many consecutive
+# reads are byte-for-byte identical the amp is stuck/disconnected (a shorted or
+# floating DOUT reads a constant 0 or -1), so flag a fault instead of trusting it.
+# Set 0 to disable. Large enough that a real steady load never trips it.
+LOADCELL_LIVENESS_WINDOW = env_int("QUADPOD_LOADCELL_LIVENESS_WINDOW", 24)
 # Glitch rejection: the bit-banged HX711 occasionally returns a spurious reading
 # (~6 lb jump, clustering near a fixed desync value) that bounces back within a
 # few samples. Reject a single read that jumps more than MAX_JUMP lb from the
