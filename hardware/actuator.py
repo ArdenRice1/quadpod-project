@@ -1,3 +1,6 @@
+import atexit
+import time
+
 from config import (
     ACTUATOR_INVERT,
     ACTUATOR_PULL_DIRECTION,
@@ -36,10 +39,15 @@ class Actuator:
         self.last_command = "neutral"
         self.last_pulse_us = VICTOR_NEUTRAL_US
         self.last_error = ""
+        self._mock_pwm_fail = 0  # test hook: simulate N consecutive PWM failures
 
         if not self.use_mock:
             self._init_hardware()
         self.stop()
+        if not self.use_mock:
+            # If the process ever exits or crashes, force the actuator to neutral so
+            # the PCA9685 can't be left latching a moving pulse with no software running.
+            atexit.register(self.close)
 
     def _init_hardware(self):
         try:
@@ -64,7 +72,16 @@ class Actuator:
         return self.move_down(fast=False)
 
     def stop(self):
-        return self.set_pulse_us(VICTOR_NEUTRAL_US, command="neutral")
+        # Retry the neutral command: a single I2C hiccup must not leave the
+        # actuator latched in a moving pulse.
+        return self.set_pulse_us(VICTOR_NEUTRAL_US, command="neutral", retries=3)
+
+    def close(self):
+        """Best-effort force to neutral (shutdown / atexit backstop)."""
+        try:
+            self.set_pulse_us(VICTOR_NEUTRAL_US, command="neutral", retries=3)
+        except Exception:
+            pass
 
     def _move(self, direction, fast=False, speed_percent=100):
         physical_direction = self._maybe_invert(direction)
@@ -87,23 +104,33 @@ class Actuator:
         percent = max(1.0, min(100.0, float(speed_percent or 100))) / 100.0
         return int(round(VICTOR_NEUTRAL_US + ((int(target_us) - VICTOR_NEUTRAL_US) * percent)))
 
-    def set_pulse_us(self, pulse_us, command="custom"):
+    def _apply_pulse(self, pulse_us):
+        """Push one pulse to the PWM hardware (or the mock). Raises on failure."""
+        if self.use_mock:
+            if self._mock_pwm_fail > 0:
+                self._mock_pwm_fail -= 1
+                raise RuntimeError("simulated PWM failure")
+            return
+        ticks = self.microseconds_to_ticks(pulse_us)
+        self.pwm.set_pwm(self.channel, 0, ticks)
+
+    def set_pulse_us(self, pulse_us, command="custom", retries=0):
         pulse_us = int(max(min(pulse_us, VICTOR_FORWARD_US), VICTOR_REVERSE_US))
         self.last_command = command
         self.last_pulse_us = pulse_us
 
-        if self.use_mock:
-            self.last_error = ""
-            return True
-
-        try:
-            ticks = self.microseconds_to_ticks(pulse_us)
-            self.pwm.set_pwm(self.channel, 0, ticks)
-            self.last_error = ""
-            return True
-        except Exception as exc:
-            self.last_error = f"PWM command failed: {exc}"
-            return False
+        attempt = 0
+        while True:
+            try:
+                self._apply_pulse(pulse_us)
+                self.last_error = ""
+                return True
+            except Exception as exc:
+                self.last_error = f"PWM command failed: {exc}"
+                if attempt >= retries:
+                    return False
+                attempt += 1
+                time.sleep(0.01)
 
     def microseconds_to_ticks(self, pulse_us):
         period_us = 1_000_000.0 / self.frequency_hz

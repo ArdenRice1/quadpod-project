@@ -68,6 +68,33 @@ class ActuatorTests(unittest.TestCase):
         self.assertEqual(actuator.pwm.busnum, 1)
         self.assertEqual(actuator.pwm.frequency, 50)
 
+    def test_stop_retries_transient_pwm_failure(self):
+        actuator = Actuator(use_mock=True)
+        actuator._mock_pwm_fail = 2  # fail twice, then succeed within stop()'s retries
+        self.assertTrue(actuator.stop())
+        self.assertEqual(actuator.last_error, "")
+        self.assertEqual(actuator.last_command, "neutral")
+
+    def test_stop_reports_failure_after_exhausting_retries(self):
+        actuator = Actuator(use_mock=True)
+        actuator._mock_pwm_fail = 99  # exceeds stop()'s retry budget
+        self.assertFalse(actuator.stop())
+        self.assertIn("PWM command failed", actuator.last_error)
+
+    def test_close_forces_neutral(self):
+        actuator = Actuator(use_mock=True)
+        actuator.move_down(fast=True)
+        actuator.close()
+        self.assertEqual(actuator.last_command, "neutral")
+        self.assertEqual(actuator.last_pulse_us, 1650)
+
+    def test_movement_command_does_not_retry_by_default(self):
+        # Only stop()/close() retry; movement commands keep the old fail-fast behavior.
+        actuator = Actuator(use_mock=True)
+        actuator._mock_pwm_fail = 1
+        self.assertFalse(actuator.set_pulse_us(1700, command="test"))
+        self.assertIn("PWM command failed", actuator.last_error)
+
 
 if __name__ == "__main__":
     unittest.main()
