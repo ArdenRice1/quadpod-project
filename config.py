@@ -341,24 +341,28 @@ PRELOAD_GLIDE_ABORT_LBS = env_float("QUADPOD_PRELOAD_GLIDE_ABORT_LBS", PRELOAD_A
 PRELOAD_GLIDE_TIMEOUT_S = env_float("QUADPOD_PRELOAD_GLIDE_TIMEOUT_S", 60.0)
 PRELOAD_GLIDE_POLL_S = env_float("QUADPOD_PRELOAD_GLIDE_POLL_S", 0.02)
 PRELOAD_GLIDE_RELAX_S = env_float("QUADPOD_PRELOAD_GLIDE_RELAX_S", 2.0)
-# Active hold via micro PWM trim: the actuator back-drives, so hold a tiny
-# sustained holding torque (a few us off neutral, in the tension direction) to
-# counter the slow bleed -- NOT a coarse move. Steps 1us at a time up to
-# TRIM_MAX_US; backs off toward neutral at/above CEILING so it can never push
-# past 0. Waits JOUNCE_SETTLE_S after seating (lets the stop ring-down settle)
-# before trimming. Reads are the glitch-filtered scan value.
+# Post-glide seating: settle-then-verify with open-loop micro-pulses. The actuator
+# back-drives (slack returns) after the glide stops; a continuous integral trim can't
+# correct that on this stick-slip actuator -- below the breakaway it does nothing, above
+# it the slow load cell can't catch the motion before it runs away (windup -> lurch into
+# over-tension). Instead: wait out the fast slack-return (SETTLE_S), then nudge the load
+# into [AIM_LO, AIM_HI] with short OPEN-LOOP micro-pulses (PULSE_US for PULSE_MS), stopping
+# to re-measure AT REST (REST_S) between each -- so the slow sensor is an asset. Pulse size
+# adapts to the random stick-slip. Validated 2026-07-16 across full and partial slack.
 PRELOAD_GLIDE_HOLD_AFTER = env_bool("QUADPOD_PRELOAD_GLIDE_HOLD_AFTER", False)
-PRELOAD_GLIDE_HOLD_TARGET_LBS = env_float("QUADPOD_PRELOAD_GLIDE_HOLD_TARGET_LBS", -0.25)
-PRELOAD_GLIDE_HOLD_DEADBAND_LBS = env_float("QUADPOD_PRELOAD_GLIDE_HOLD_DEADBAND_LBS", 0.08)
-PRELOAD_GLIDE_HOLD_CEILING_LBS = env_float("QUADPOD_PRELOAD_GLIDE_HOLD_CEILING_LBS", 0.0)
-PRELOAD_GLIDE_HOLD_TRIM_STEP_US = env_int("QUADPOD_PRELOAD_GLIDE_HOLD_TRIM_STEP_US", 2)
-# The actuator back-drives under the hanging fixture. 15us was not enough to
-# hold the band, but 30us crossed the breakaway point in field traces. Keep the
-# cap modest and let the rate guard below prevent ratcheting into overshoot.
-PRELOAD_GLIDE_HOLD_TRIM_MAX_US = env_int("QUADPOD_PRELOAD_GLIDE_HOLD_TRIM_MAX_US", 24)
-PRELOAD_GLIDE_HOLD_JOUNCE_SETTLE_S = env_float("QUADPOD_PRELOAD_GLIDE_HOLD_JOUNCE_SETTLE_S", 0.75)
-PRELOAD_GLIDE_HOLD_INTERVAL_S = env_float("QUADPOD_PRELOAD_GLIDE_HOLD_INTERVAL_S", 0.25)
 PRELOAD_GLIDE_HOLD_TIMEOUT_S = env_float("QUADPOD_PRELOAD_GLIDE_HOLD_TIMEOUT_S", 120.0)
+PRELOAD_GLIDE_HOLD_SETTLE_S = env_float("QUADPOD_PRELOAD_GLIDE_HOLD_SETTLE_S", 15.0)
+PRELOAD_GLIDE_HOLD_AIM_LO_LBS = env_float("QUADPOD_PRELOAD_GLIDE_HOLD_AIM_LO_LBS", -0.35)
+PRELOAD_GLIDE_HOLD_AIM_HI_LBS = env_float("QUADPOD_PRELOAD_GLIDE_HOLD_AIM_HI_LBS", -0.10)
+PRELOAD_GLIDE_HOLD_PULSE_US = env_int("QUADPOD_PRELOAD_GLIDE_HOLD_PULSE_US", 35)
+PRELOAD_GLIDE_HOLD_PULSE_MIN_US = env_int("QUADPOD_PRELOAD_GLIDE_HOLD_PULSE_MIN_US", 24)
+PRELOAD_GLIDE_HOLD_PULSE_MAX_US = env_int("QUADPOD_PRELOAD_GLIDE_HOLD_PULSE_MAX_US", 55)
+PRELOAD_GLIDE_HOLD_PULSE_MS = env_int("QUADPOD_PRELOAD_GLIDE_HOLD_PULSE_MS", 70)
+PRELOAD_GLIDE_HOLD_PULSE_MS_MAX = env_int("QUADPOD_PRELOAD_GLIDE_HOLD_PULSE_MS_MAX", 110)
+PRELOAD_GLIDE_HOLD_REST_S = env_float("QUADPOD_PRELOAD_GLIDE_HOLD_REST_S", 3.5)
+PRELOAD_GLIDE_HOLD_MAX_ITERS = env_int("QUADPOD_PRELOAD_GLIDE_HOLD_MAX_ITERS", 12)
+PRELOAD_GLIDE_HOLD_ABORT_LBS = env_float("QUADPOD_PRELOAD_GLIDE_HOLD_ABORT_LBS", 0.15)
+PRELOAD_GLIDE_HOLD_GENTLE_GAP_LBS = env_float("QUADPOD_PRELOAD_GLIDE_HOLD_GENTLE_GAP_LBS", 0.20)
 
 # Legacy pulse mode is retained as a fallback/test harness. These settings are
 # not used by the normal continuous Auto Tension mode unless mode is switched.
