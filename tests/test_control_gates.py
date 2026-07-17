@@ -180,6 +180,108 @@ class ControlGateTests(unittest.TestCase):
         self.assertTrue(self.engine.state["preload_ready"])
         self.assertTrue(self.engine.state["preload_ready_latched"])
 
+    # --- Safety envelope: _stop_reason_locked (auto-stop triggers during a pull) ---
+
+    def _prime_pull(self, peak):
+        """State of a healthy running pull: connected, no fault, below limits."""
+        self.engine.last_client_poll = time.monotonic()
+        self.engine.load_cell.last_error = ""
+        self.engine.failure_drop_samples = 0
+        self.engine.state["peak_load"] = peak
+
+    def _failure_drop_load(self, peak):
+        """A load low enough to count as a failure drop from `peak`."""
+        required = max(engine_module.FAILURE_DROP_LBS, peak * engine_module.FAILURE_DROP_PERCENT)
+        return peak - required - 1.0
+
+    def test_stop_reason_phone_disconnect(self):
+        self._prime_pull(peak=5.0)
+        self.engine.last_client_poll = time.monotonic() - (engine_module.DISCONNECT_STOP_SECONDS + 1)
+        self.assertEqual(self.engine._stop_reason_locked(5.0, 1.0), "phone/app disconnected")
+
+    def test_stop_reason_load_cell_fault(self):
+        self._prime_pull(peak=5.0)
+        self.engine.load_cell.last_error = "HX711 read timeout"
+        self.assertEqual(self.engine._stop_reason_locked(5.0, 1.0), "load cell fault")
+
+    def test_stop_reason_max_force(self):
+        self._prime_pull(peak=engine_module.MAX_FORCE_LBS)
+        self.assertEqual(self.engine._stop_reason_locked(10.0, 1.0), "maximum force limit")
+
+    def test_stop_reason_max_time(self):
+        self._prime_pull(peak=5.0)
+        self.assertEqual(
+            self.engine._stop_reason_locked(5.0, engine_module.MAX_TEST_SECONDS),
+            "maximum run time/end of travel timeout",
+        )
+
+    def test_stop_reason_none_when_healthy(self):
+        self._prime_pull(peak=5.0)  # peak below FAILURE_MIN_PEAK_LBS
+        self.assertEqual(self.engine._stop_reason_locked(5.0, 1.0), "")
+
+    def test_stop_reason_failure_drop_requires_confirm_samples(self):
+        peak = engine_module.FAILURE_MIN_PEAK_LBS + 30.0
+        self._prime_pull(peak=peak)
+        dropped = self._failure_drop_load(peak)
+        confirm = max(1, engine_module.FAILURE_CONFIRM_SAMPLES)
+        for _ in range(confirm - 1):
+            self.assertEqual(self.engine._stop_reason_locked(dropped, 1.0), "")
+        self.assertEqual(self.engine._stop_reason_locked(dropped, 1.0), "confirmed load drop/failure")
+
+    def test_stop_reason_failure_drop_resets_on_recovery(self):
+        peak = engine_module.FAILURE_MIN_PEAK_LBS + 30.0
+        self._prime_pull(peak=peak)
+        dropped = self._failure_drop_load(peak)
+        self.engine._stop_reason_locked(dropped, 1.0)
+        self.assertEqual(self.engine.failure_drop_samples, 1)
+        self.engine._stop_reason_locked(peak, 1.0)  # load recovered -> debounce resets
+        self.assertEqual(self.engine.failure_drop_samples, 0)
+
+    def test_stop_reason_ignores_small_drop_and_low_peak(self):
+        # A small drop below a high peak never confirms...
+        peak = engine_module.FAILURE_MIN_PEAK_LBS + 30.0
+        self._prime_pull(peak=peak)
+        for _ in range(engine_module.FAILURE_CONFIRM_SAMPLES + 2):
+            self.assertEqual(self.engine._stop_reason_locked(peak - 1.0, 1.0), "")
+        # ...and a big drop below FAILURE_MIN_PEAK_LBS is ignored (grip/seat noise).
+        self._prime_pull(peak=engine_module.FAILURE_MIN_PEAK_LBS - 1.0)
+        for _ in range(engine_module.FAILURE_CONFIRM_SAMPLES + 2):
+            self.assertEqual(self.engine._stop_reason_locked(0.0, 1.0), "")
+
+    # --- Glide post-tension hold (the shipping seating controller) ---
+
+    def test_glide_hold_aborts_and_clears_ready_on_over_tension(self):
+        engine_module.PRELOAD_GLIDE_HOLD_SETTLE_S = 0.0
+        engine_module.PRELOAD_GLIDE_HOLD_TIMEOUT_S = 5.0
+        self.engine._set_preload_ready_latch_locked(0.0)
+        self.assertTrue(self.engine.state["preload_ready_latched"])
+        # Load sits above the over-tension abort (default 1.0 lb).
+        self.engine.state["current_load"] = engine_module.PRELOAD_GLIDE_HOLD_ABORT_LBS + 0.5
+        self.engine.preload_hold_active = True
+
+        self.engine._glide_hold_loop()
+
+        self.assertFalse(self.engine.state["preload_ready_latched"])
+        self.assertEqual(self.engine.state["auto_preload_message"], "Check tension")
+        self.assertFalse(self.engine.preload_hold_active)
+        events = [e["event"] for e in self.engine.auto_preload_trace]
+        self.assertIn("hold_abort_high", events)
+
+    def test_glide_hold_settles_in_aim_without_pulsing(self):
+        engine_module.PRELOAD_GLIDE_HOLD_SETTLE_S = 0.0
+        engine_module.PRELOAD_GLIDE_HOLD_TIMEOUT_S = 5.0
+        # Load already inside the aim band -> no correction pulse should fire.
+        mid = (engine_module.PRELOAD_GLIDE_HOLD_AIM_LO_LBS + engine_module.PRELOAD_GLIDE_HOLD_AIM_HI_LBS) / 2
+        self.engine.state["current_load"] = mid
+        self.engine.preload_hold_active = True
+
+        self.engine._glide_hold_loop()
+
+        events = [e["event"] for e in self.engine.auto_preload_trace]
+        self.assertIn("hold_in_aim", events)
+        self.assertNotIn("hold_pulse", events)
+        self.assertFalse(self.engine.preload_hold_active)
+
     def test_jog_clears_preload_ready_latch(self):
         self.engine._set_preload_ready_latch_locked(0.0)
 
