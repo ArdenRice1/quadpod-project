@@ -1,9 +1,12 @@
+import json
+import os
 import random
 import threading
 import time
 from collections import deque
 
 from config import (
+    CALIBRATION_PATH,
     LOADCELL_AVERAGE_SAMPLES,
     LOADCELL_CONTROL_SAMPLES,
     LOADCELL_DOUT_PIN,
@@ -76,6 +79,12 @@ class LoadCell:
         self._zero_counts = 0.0
         self.gpio = None
         self.hardware_ready = self.use_mock
+        self._calibration_path = CALIBRATION_PATH
+        self.calibrated_at = None
+        if not self.use_mock:
+            # Restore a persisted calibration/tare so a service restart doesn't
+            # force the operator to re-tare.
+            self._boot_restore()
 
     def _init_hardware(self):
         if self.gpio is not None:
@@ -193,6 +202,7 @@ class LoadCell:
             self._last_good_lbs = None
             self._glitch_rejects = 0
             self.last_error = ""
+            self._save_calibration()  # persist the new tare zero across restarts
             return True
         except Exception as exc:
             self.hardware_ready = False
@@ -217,7 +227,63 @@ class LoadCell:
         if known_lbs == 0:
             raise ValueError("known_lbs must be non-zero")
         self.set_reference_unit(float(raw_delta) / float(known_lbs))
+        if not self.use_mock:
+            self._save_calibration()
         return self.reference_unit
+
+    def _save_calibration(self):
+        """Persist reference_unit + tare zero (atomically) so they survive a restart."""
+        path = self._calibration_path
+        if not path:
+            return False
+        data = {
+            "reference_unit": float(self.reference_unit),
+            "zero_counts": float(self._zero_counts),
+            "saved_at": time.time(),
+        }
+        try:
+            directory = os.path.dirname(path)
+            if directory:
+                os.makedirs(directory, exist_ok=True)
+            tmp = f"{path}.tmp"
+            with open(tmp, "w") as handle:
+                json.dump(data, handle)
+            os.replace(tmp, path)  # atomic: never leaves a half-written file
+            self.calibrated_at = data["saved_at"]
+            return True
+        except OSError as exc:
+            self.last_error = f"calibration save failed: {exc}"
+            return False
+
+    def _load_calibration(self):
+        """Restore reference_unit + tare zero from disk. Returns True if applied."""
+        path = self._calibration_path
+        if not path:
+            return False
+        try:
+            with open(path) as handle:
+                data = json.load(handle)
+        except (FileNotFoundError, ValueError, OSError):
+            return False
+        ref = data.get("reference_unit")
+        if not ref:  # 0 or None would divide-by-zero on every read
+            return False
+        self.reference_unit = float(ref)
+        self._zero_counts = float(data.get("zero_counts") or 0.0)
+        self.calibrated_at = data.get("saved_at")
+        return True
+
+    def _boot_restore(self):
+        """Real-hardware boot: restore a saved calibration and bring GPIO up so the
+        cell is ready to read without a re-tare."""
+        if not self._load_calibration():
+            return
+        try:
+            self._init_hardware()
+            self.hardware_ready = True
+            self.last_error = ""
+        except Exception:
+            self.hardware_ready = False
 
     def set_mock_force(self, force_lbs):
         self._mock_force = max(0.0, float(force_lbs))

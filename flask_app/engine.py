@@ -6,6 +6,7 @@ from collections import deque
 
 from config import (
     APP_VERSION,
+    CALIBRATION_MAX_AGE_DAYS,
     DISCONNECT_STOP_SECONDS,
     FAILURE_CONFIRM_SAMPLES,
     FAILURE_DROP_LBS,
@@ -470,8 +471,9 @@ class QuadpodEngine:
             ("load_cell_calibration_date", "load cell calibration date"),
             ("ir_temp_gun_calibration_date", "IR temp gun calibration date"),
         ]:
-            if not _date_is_recorded(job_form.get(field, "")):
-                errors.append(f"{label} must be recorded")
+            ok, reason = _calibration_date_status(job_form.get(field, ""))
+            if not ok:
+                errors.append(f"{label} {reason}")
         angle_value = test_form.get("angle_degrees")
         if not angle_value:
             errors.append("pull angle must be recorded")
@@ -2964,9 +2966,15 @@ def log_test_to_db(data_dict):
 quadpod_state = quadpod_engine.state
 
 
-def _date_is_recorded(value):
+def _calibration_date_status(value):
+    """(ok, reason) for a calibration date: present, not future, and recent enough."""
     try:
-        dt.date.fromisoformat(str(value))
-        return True
+        recorded = dt.date.fromisoformat(str(value))
     except (TypeError, ValueError):
-        return False
+        return False, "must be recorded"
+    today = dt.date.today()
+    if recorded > today:
+        return False, "cannot be in the future"
+    if CALIBRATION_MAX_AGE_DAYS > 0 and (today - recorded).days > CALIBRATION_MAX_AGE_DAYS:
+        return False, "is out of date -- recalibrate"
+    return True, ""

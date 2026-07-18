@@ -1,7 +1,11 @@
+import json
+import os
 import sys
+import tempfile
 import types
 import unittest
 
+import hardware.loadcell as loadcell_module
 from hardware.loadcell import LoadCell
 
 
@@ -44,6 +48,11 @@ class LoadCellHardwareCompatibilityTests(unittest.TestCase):
     def setUp(self):
         self.original_rpi = sys.modules.get("RPi")
         self.original_gpio = sys.modules.get("RPi.GPIO")
+        # Isolate the persisted-calibration path so these real-GPIO tests neither
+        # read nor write the actual calibration file.
+        self._calib_tmp = tempfile.TemporaryDirectory()
+        self._orig_calibration_path = loadcell_module.CALIBRATION_PATH
+        loadcell_module.CALIBRATION_PATH = os.path.join(self._calib_tmp.name, "calibration.json")
 
         rpi_module = types.ModuleType("RPi")
         gpio_module = types.ModuleType("RPi.GPIO")
@@ -55,6 +64,8 @@ class LoadCellHardwareCompatibilityTests(unittest.TestCase):
         FakeGPIO.reset()
 
     def tearDown(self):
+        loadcell_module.CALIBRATION_PATH = self._orig_calibration_path
+        self._calib_tmp.cleanup()
         self._restore_module("RPi", self.original_rpi)
         self._restore_module("RPi.GPIO", self.original_gpio)
 
@@ -145,6 +156,55 @@ class LoadCellLivenessTests(unittest.TestCase):
         lc._liveness_window = 0
         for _ in range(50):
             self.assertFalse(lc._note_liveness(1000.0))
+
+
+class LoadCellCalibrationPersistenceTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.path = os.path.join(self.tmp.name, "calibration.json")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _cell(self):
+        lc = LoadCell(use_mock=True)
+        lc._calibration_path = self.path
+        return lc
+
+    def test_save_and_load_round_trip(self):
+        lc = self._cell()
+        lc.reference_unit = 10077.0
+        lc._zero_counts = 12345.0
+        self.assertTrue(lc._save_calibration())
+
+        lc2 = self._cell()
+        lc2.reference_unit = 1.0
+        lc2._zero_counts = 0.0
+        self.assertTrue(lc2._load_calibration())
+        self.assertEqual(lc2.reference_unit, 10077.0)
+        self.assertEqual(lc2._zero_counts, 12345.0)
+
+    def test_load_missing_file_leaves_values_untouched(self):
+        lc = self._cell()
+        lc._calibration_path = os.path.join(self.tmp.name, "does-not-exist.json")
+        lc.reference_unit = 999.0
+        self.assertFalse(lc._load_calibration())
+        self.assertEqual(lc.reference_unit, 999.0)
+
+    def test_load_rejects_zero_reference_unit(self):
+        lc = self._cell()
+        lc.reference_unit = 5.0
+        with open(self.path, "w") as handle:
+            json.dump({"reference_unit": 0, "zero_counts": 1.0}, handle)
+        self.assertFalse(lc._load_calibration())  # would divide-by-zero otherwise
+        self.assertEqual(lc.reference_unit, 5.0)
+
+    def test_save_is_atomic_no_tmp_left_behind(self):
+        lc = self._cell()
+        lc.reference_unit = 42.0
+        self.assertTrue(lc._save_calibration())
+        self.assertTrue(os.path.exists(self.path))
+        self.assertFalse(os.path.exists(self.path + ".tmp"))
 
 
 if __name__ == "__main__":

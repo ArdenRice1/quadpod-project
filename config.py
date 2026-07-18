@@ -8,6 +8,9 @@ APP_DIR = BASE_DIR / "flask_app"
 DATA_DIR = APP_DIR / "data"
 EXPORT_DIR = APP_DIR / "static" / "exports"
 PHOTO_DIR = APP_DIR / "static" / "photos"
+# Load-cell calibration (reference_unit + tare zero) is persisted here so it
+# survives a service restart -- the operator shouldn't have to re-tare every reboot.
+CALIBRATION_PATH = os.getenv("QUADPOD_CALIBRATION_PATH", str(DATA_DIR / "calibration.json"))
 USB_EXPORT_ROOT = os.getenv("QUADPOD_USB_EXPORT_ROOT", "")
 
 APP_VERSION = "0.3.0-field"
@@ -92,6 +95,9 @@ LOADCELL_RESET_ON_READ_ERROR = env_bool("QUADPOD_LOADCELL_RESET_ON_READ_ERROR", 
 # floating DOUT reads a constant 0 or -1), so flag a fault instead of trusting it.
 # Set 0 to disable. Large enough that a real steady load never trips it.
 LOADCELL_LIVENESS_WINDOW = env_int("QUADPOD_LOADCELL_LIVENESS_WINDOW", 24)
+# A pull is blocked if a recorded calibration date is in the future or older than
+# this many days (recalibrate). 0 = only require a date to be present (no recency).
+CALIBRATION_MAX_AGE_DAYS = env_int("QUADPOD_CALIBRATION_MAX_AGE_DAYS", 365)
 # Glitch rejection: the bit-banged HX711 occasionally returns a spurious reading
 # (~6 lb jump, clustering near a fixed desync value) that bounces back within a
 # few samples. Reject a single read that jumps more than MAX_JUMP lb from the

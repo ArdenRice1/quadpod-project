@@ -1,3 +1,4 @@
+import datetime as dt
 import sys
 import tempfile
 import threading
@@ -88,9 +89,9 @@ class ControlGateTests(unittest.TestCase):
             "project_name": "Gate Job",
             "job_number": "G-001",
             "load_cell_id": "LC-1",
-            "load_cell_calibration_date": "2099-01-01",
+            "load_cell_calibration_date": dt.date.today().isoformat(),
             "ir_temp_gun_id": "IR-1",
-            "ir_temp_gun_calibration_date": "2099-01-01",
+            "ir_temp_gun_calibration_date": dt.date.today().isoformat(),
         }
         form.update(updates)
         return form
@@ -163,6 +164,41 @@ class ControlGateTests(unittest.TestCase):
 
         self.assertFalse(ok)
         self.assertIn("tension", message)
+
+    # --- Calibration-date recency gate ---
+
+    def test_calibration_date_status_accepts_recent(self):
+        ok, _ = engine_module._calibration_date_status(dt.date.today().isoformat())
+        self.assertTrue(ok)
+
+    def test_calibration_date_status_rejects_missing(self):
+        ok, reason = engine_module._calibration_date_status("")
+        self.assertFalse(ok)
+        self.assertIn("recorded", reason)
+
+    def test_calibration_date_status_rejects_future(self):
+        future = (dt.date.today() + dt.timedelta(days=10)).isoformat()
+        ok, reason = engine_module._calibration_date_status(future)
+        self.assertFalse(ok)
+        self.assertIn("future", reason)
+
+    def test_calibration_date_status_rejects_stale(self):
+        old = (dt.date.today() - dt.timedelta(days=engine_module.CALIBRATION_MAX_AGE_DAYS + 5)).isoformat()
+        ok, reason = engine_module._calibration_date_status(old)
+        self.assertFalse(ok)
+        self.assertIn("out of date", reason)
+
+    def test_start_pull_blocked_by_out_of_date_calibration(self):
+        old = (dt.date.today() - dt.timedelta(days=engine_module.CALIBRATION_MAX_AGE_DAYS + 5)).isoformat()
+        job_id = storage.create_job(self._job_form(load_cell_calibration_date=old))
+        test_id = storage.create_test(job_id, self._test_form())
+        self.engine._set_preload_ready_latch_locked(0.0)
+        self._set_load(-0.25)
+
+        ok, message = self.engine.start_pull(test_id)
+
+        self.assertFalse(ok)
+        self.assertIn("out of date", message)
 
     def test_start_rejects_drift_outside_ready_latch_margin(self):
         self.engine._set_preload_ready_latch_locked(0.0)
@@ -1833,12 +1869,13 @@ class ControlGateTests(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIn("80 and 100", message)
 
-    def test_start_accepts_recorded_past_calibration_dates(self):
+    def test_start_accepts_recorded_recent_calibration_dates(self):
+        recent = (dt.date.today() - dt.timedelta(days=30)).isoformat()
         storage.update_job(
             self.job_id,
             form={
-                "load_cell_calibration_date": "2024-01-01",
-                "ir_temp_gun_calibration_date": "2024-01-01",
+                "load_cell_calibration_date": recent,
+                "ir_temp_gun_calibration_date": recent,
             },
         )
         self._set_load(0.0)
