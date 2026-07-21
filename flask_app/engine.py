@@ -228,6 +228,15 @@ class QuadpodEngine:
         self.preload_hold_thread = None
         self.preload_hold_active = False
         self.preload_hold_trim_us = 0
+        # Actuator ownership token. Bumped on every ownership transfer (jog,
+        # start_pull, stop, a new auto-tension run, hold start). A background
+        # loop captures the epoch it started under and refuses to command the
+        # actuator -- even to neutral/stop -- once the epoch has moved on, so a
+        # jog/pull/Stop that lands mid-loop is never stomped by a late command.
+        self.actuator_epoch = 0
+        # Epoch owned by the current auto-tension run (its command helpers only
+        # act while this still matches actuator_epoch).
+        self.auto_preload_epoch = 0
         self.state = {
             "current_load": 0.0,
             "scan_load": 0.0,
@@ -284,6 +293,15 @@ class QuadpodEngine:
         with self.lock:
             return list(self.auto_preload_trace)
 
+    def _bump_actuator_epoch_locked(self):
+        """Take actuator ownership: invalidate any background loop's epoch."""
+        self.actuator_epoch += 1
+        return self.actuator_epoch
+
+    def _owns_actuator_locked(self, epoch):
+        """True if the caller's captured epoch is still the current owner."""
+        return self.actuator_epoch == epoch
+
     def jog(self, action, speed_percent=None):
         with self.lock:
             if self.state["test_running"]:
@@ -301,6 +319,7 @@ class QuadpodEngine:
             elif action == "stop":
                 if self.preload_hold_active:
                     return True, self.actuator.last_error
+                self._bump_actuator_epoch_locked()
                 ok = self.actuator.stop()
             else:
                 return False, "Unknown jog action."
@@ -337,6 +356,7 @@ class QuadpodEngine:
                 max_lbs=PRELOAD_MAX_LBS,
                 abort_lbs=PRELOAD_AUTO_ABORT_LBS,
             )
+            self.auto_preload_epoch = self._bump_actuator_epoch_locked()
             self.auto_preload_thread = threading.Thread(target=self._auto_preload_loop, daemon=True)
             self.auto_preload_thread.start()
             return True, self.state["auto_preload_message"]
@@ -492,6 +512,7 @@ class QuadpodEngine:
         with self.lock:
             if self.state.get("auto_preload_running"):
                 self.auto_preload_cancel_requested = True
+                self._bump_actuator_epoch_locked()
                 self.actuator.stop()
                 self.state["actuator_command"] = self.actuator.last_command
                 self.state["auto_preload_message"] = "Check tension"
@@ -703,7 +724,7 @@ class QuadpodEngine:
                         self.state["auto_preload_message"] = "Check tension"
                         self._record_auto_preload_trace_locked("sensor_fault_stop", load=load)
                         break
-                    if self.auto_preload_cancel_requested or not self.state.get("auto_preload_running") or self.state["test_running"]:
+                    if self.auto_preload_cancel_requested or not self.state.get("auto_preload_running") or self.state["test_running"] or not self._owns_actuator_locked(self.auto_preload_epoch):
                         self._auto_preload_stop_actuator_locked()
                         self.state["auto_preload_message"] = "Check tension"
                         self._record_auto_preload_trace_locked("cancelled", load=load)
@@ -870,7 +891,7 @@ class QuadpodEngine:
                     self.state["auto_preload_message"] = ""
                 # Don't spawn the post-tension hold if the operator pressed Stop
                 # during the ready->finally hand-off (Stop must be absolute).
-                if hold_should_start and not self.auto_preload_cancel_requested:
+                if hold_should_start and not self.auto_preload_cancel_requested and self._owns_actuator_locked(self.auto_preload_epoch):
                     self._start_glide_hold_locked()
                 self._record_auto_preload_trace_locked(
                     "finish", load=self.state.get("current_load"),
@@ -884,7 +905,10 @@ class QuadpodEngine:
         if self.preload_hold_active:
             return
         self.preload_hold_active = True
-        self.preload_hold_thread = threading.Thread(target=self._glide_hold_loop, daemon=True)
+        epoch = self._bump_actuator_epoch_locked()
+        self.preload_hold_thread = threading.Thread(
+            target=self._glide_hold_loop, args=(epoch,), daemon=True
+        )
         self.preload_hold_thread.start()
         self._record_auto_preload_trace_locked(
             "glide_hold_start", load=self.state.get("current_load"),
@@ -893,7 +917,7 @@ class QuadpodEngine:
             pulse_us=PRELOAD_GLIDE_HOLD_PULSE_US, pulse_ms=PRELOAD_GLIDE_HOLD_PULSE_MS,
         )
 
-    def _glide_hold_loop(self):
+    def _glide_hold_loop(self, epoch):
         """Seat the tension with settle-then-verify (open-loop micro-pulses).
 
         The actuator back-drives (slack returns) after the glide stops. A
@@ -923,26 +947,45 @@ class QuadpodEngine:
         physical_tension = self.actuator._maybe_invert(self.actuator.pull_direction)
         sign = 1 if physical_tension == "down" else -1
 
-        def should_stop_locked():
+        def pull_or_lost_ownership_locked():
+            # A pull owns the actuator (test_running), or ownership has moved on
+            # (a jog/Stop/new-auto bumped the epoch, or the hold was cancelled).
+            # In every case the hold must hand off and command NOTHING -- issuing
+            # even a neutral/stop would stomp the new owner (the jog-stomp bug).
             return (
-                not self.preload_hold_active
-                or self.state.get("test_running")
+                self.state.get("test_running")
+                or not self._owns_actuator_locked(epoch)
+                or not self.preload_hold_active
                 or self.state.get("auto_preload_running")
-                or self.state.get("auto_preload_sensor_fault")
             )
 
+        def sensor_fault_locked():
+            # We still own the actuator but the load cell went bad: self-stop.
+            return self.state.get("auto_preload_sensor_fault")
+
+        def handoff_or_selfstop_locked():
+            """Under lock: yield the hold if needed. Returns 'handoff' (command
+            NOTHING -- a new owner has the actuator), 'selfstop' (we still own and
+            stopped it for a sensor fault), or None to keep holding."""
+            if pull_or_lost_ownership_locked():
+                self.preload_hold_trim_us = 0
+                self.preload_hold_active = False
+                return "handoff"
+            if sensor_fault_locked():
+                self.actuator.stop()
+                self.state["actuator_command"] = self.actuator.last_command
+                self.preload_hold_trim_us = 0
+                self.preload_hold_active = False
+                return "selfstop"
+            return None
+
         def sleep_checked(seconds):
-            """Sleep in slices; on a stop request, quiesce and return True."""
+            """Sleep in slices; yield (return True) if ownership changed / fault."""
             end = time.monotonic() + seconds
             while time.monotonic() < end:
                 time.sleep(min(0.2, max(0.01, end - time.monotonic())))
                 with self.lock:
-                    if should_stop_locked():
-                        if not self.state.get("test_running"):
-                            self.actuator.stop()
-                            self.state["actuator_command"] = self.actuator.last_command
-                        self.preload_hold_trim_us = 0
-                        self.preload_hold_active = False
+                    if handoff_or_selfstop_locked():
                         return True
             return False
 
@@ -969,16 +1012,17 @@ class QuadpodEngine:
             if time.monotonic() > deadline:
                 break
             with self.lock:
-                if should_stop_locked():
-                    if not self.state.get("test_running"):
-                        self.actuator.stop()
-                        self.state["actuator_command"] = self.actuator.last_command
-                    self.preload_hold_trim_us = 0
-                    self.preload_hold_active = False
+                if handoff_or_selfstop_locked():
                     return
             m = settled_load()
             if m > abort_hi:
                 with self.lock:
+                    # A jog/Stop/pull may have taken over during settled_load();
+                    # only act on the over-tension while we still own the actuator.
+                    if pull_or_lost_ownership_locked():
+                        self.preload_hold_trim_us = 0
+                        self.preload_hold_active = False
+                        return
                     self.actuator.stop()
                     self.state["actuator_command"] = self.actuator.last_command
                     # Real over-tension: invalidate the seat so a pull can't start on
@@ -998,9 +1042,7 @@ class QuadpodEngine:
             pulse_dir = sign if take_up else -sign
             pulse_val = VICTOR_NEUTRAL_US + pulse_dir * pulse_us
             with self.lock:
-                if should_stop_locked():
-                    self.preload_hold_trim_us = 0
-                    self.preload_hold_active = False
+                if handoff_or_selfstop_locked():
                     return
                 self.actuator.set_pulse_us(pulse_val, command="hold_pulse")
                 self.state["actuator_command"] = self.actuator.last_command
@@ -1011,14 +1053,10 @@ class QuadpodEngine:
                 )
             time.sleep(this_ms / 1000.0)  # OPEN-LOOP fixed-duration pulse (no lock)
             with self.lock:
-                # If a pull/jog/cancel landed during the pulse, DON'T stomp its
-                # command with neutral -- leave the actuator to the new owner.
-                if should_stop_locked():
-                    if not self.state.get("test_running"):
-                        self.actuator.stop()
-                        self.state["actuator_command"] = self.actuator.last_command
-                    self.preload_hold_trim_us = 0
-                    self.preload_hold_active = False
+                # If a pull/jog/Stop/cancel landed during the open-loop pulse,
+                # hand off WITHOUT commanding -- a neutral here would stomp the new
+                # owner's command. This is the jog-stomp (BUG2) fix.
+                if handoff_or_selfstop_locked():
                     return
                 self.actuator.set_pulse_us(VICTOR_NEUTRAL_US, command="neutral")
                 self.state["actuator_command"] = self.actuator.last_command
@@ -1041,7 +1079,9 @@ class QuadpodEngine:
                 pulse_us = max(pulse_min, pulse_us - 4)
 
         with self.lock:
-            if not self.state.get("test_running"):
+            # Finished on our own terms: neutral the actuator only if we still own
+            # it and no pull has taken over; otherwise hand off silently.
+            if not pull_or_lost_ownership_locked():
                 self.actuator.set_pulse_us(VICTOR_NEUTRAL_US, command="neutral")
                 self.state["actuator_command"] = self.actuator.last_command
             self.preload_hold_trim_us = 0
@@ -1127,7 +1167,7 @@ class QuadpodEngine:
                             load=self.state.get("current_load"),
                         )
                         break
-                    if self.auto_preload_cancel_requested or not self.state.get("auto_preload_running"):
+                    if self.auto_preload_cancel_requested or not self.state.get("auto_preload_running") or not self._owns_actuator_locked(self.auto_preload_epoch):
                         self._auto_preload_stop_actuator_locked()
                         self.state["auto_preload_message"] = "Check tension"
                         command_direction = None
@@ -1396,7 +1436,7 @@ class QuadpodEngine:
                 self.state["auto_preload_running"] = False
                 if self.state.get("auto_preload_message", "") == "Ready":
                     self.state["auto_preload_message"] = ""
-                if hold_should_start and not self.auto_preload_cancel_requested:
+                if hold_should_start and not self.auto_preload_cancel_requested and self._owns_actuator_locked(self.auto_preload_epoch):
                     self._start_preload_hold_locked()
                 self._record_auto_preload_trace_locked(
                     "finish",
@@ -1425,7 +1465,7 @@ class QuadpodEngine:
                             load=self.state.get("current_load"),
                         )
                         break
-                    if self.auto_preload_cancel_requested or not self.state.get("auto_preload_running"):
+                    if self.auto_preload_cancel_requested or not self.state.get("auto_preload_running") or not self._owns_actuator_locked(self.auto_preload_epoch):
                         self._auto_preload_stop_actuator_locked()
                         self.state["auto_preload_message"] = "Check tension"
                         self._record_auto_preload_trace_locked("cancelled", load=self.state.get("current_load"))
@@ -1540,7 +1580,7 @@ class QuadpodEngine:
                 self.state["auto_preload_running"] = False
                 if self.state.get("auto_preload_message", "") == "Ready":
                     self.state["auto_preload_message"] = ""
-                if hold_should_start and not self.auto_preload_cancel_requested:
+                if hold_should_start and not self.auto_preload_cancel_requested and self._owns_actuator_locked(self.auto_preload_epoch):
                     self._start_preload_hold_locked()
                 self._record_auto_preload_trace_locked(
                     "finish",
@@ -1571,6 +1611,15 @@ class QuadpodEngine:
                 pulse_us=self.actuator.last_pulse_us,
             )
             return False
+        if not self._owns_actuator_locked(self.auto_preload_epoch):
+            # A jog/Stop/new run took the actuator (bumped the epoch) after this
+            # auto run started: don't command it -- the new owner already has it.
+            self._record_auto_preload_trace_locked(
+                "auto_stop_ignored_lost_ownership",
+                load=self.state.get("current_load"),
+                command=self.actuator.last_command,
+            )
+            return False
         ok = self.actuator.stop()
         self.state["actuator_command"] = self.actuator.last_command
         return ok
@@ -1591,7 +1640,10 @@ class QuadpodEngine:
             return
         self.preload_hold_active = True
         self.preload_hold_trim_us = 0
-        self.preload_hold_thread = threading.Thread(target=self._preload_hold_loop, daemon=True)
+        epoch = self._bump_actuator_epoch_locked()
+        self.preload_hold_thread = threading.Thread(
+            target=self._preload_hold_loop, args=(epoch,), daemon=True
+        )
         self.preload_hold_thread.start()
         self._record_auto_preload_trace_locked(
             "hold_start",
@@ -1608,22 +1660,31 @@ class QuadpodEngine:
             )
         self.preload_hold_active = False
         self.preload_hold_trim_us = 0
+        self._bump_actuator_epoch_locked()
         self.actuator.stop()
         self.state["actuator_command"] = self.actuator.last_command
 
-    def _preload_hold_loop(self):
+    def _preload_hold_loop(self, epoch):
         while True:
             time.sleep(max(0.05, PRELOAD_HOLD_TRIM_INTERVAL_SECONDS))
             with self.lock:
+                # Pull owns the actuator, or ownership moved on (jog/Stop/new-auto
+                # bumped the epoch, or the hold was cancelled): hand off, command
+                # NOTHING -- a stop here would stomp the new owner (jog-stomp bug).
                 if (
-                    not self.preload_hold_active
-                    or self.state.get("test_running")
+                    self.state.get("test_running")
+                    or not self._owns_actuator_locked(epoch)
+                    or not self.preload_hold_active
                     or self.state.get("auto_preload_running")
-                    or self.state.get("auto_preload_sensor_fault")
                 ):
-                    if not self.state.get("test_running"):
-                        self.actuator.stop()
-                        self.state["actuator_command"] = self.actuator.last_command
+                    self.preload_hold_trim_us = 0
+                    self.preload_hold_active = False
+                    return
+                # We still own it but the load cell went bad: self-stop.
+                if self.state.get("auto_preload_sensor_fault"):
+                    self.actuator.stop()
+                    self.state["actuator_command"] = self.actuator.last_command
+                    self.preload_hold_trim_us = 0
                     self.preload_hold_active = False
                     return
                 self._preload_hold_update_locked()
@@ -2673,6 +2734,17 @@ class QuadpodEngine:
                 pulse_us=self.actuator.last_pulse_us,
             )
             return False
+        if not self._owns_actuator_locked(self.auto_preload_epoch):
+            # A jog/Stop/new run took the actuator (bumped the epoch) after this
+            # auto run started: don't move it -- the new owner already has it.
+            self._record_auto_preload_trace_locked(
+                "auto_move_ignored_lost_ownership",
+                load=self.state.get("current_load"),
+                increase=bool(increase),
+                speed_percent=speed_percent,
+                command=self.actuator.last_command,
+            )
+            return False
         pull_direction = self.actuator.pull_direction
         direction = pull_direction if increase else ("down" if pull_direction == "up" else "up")
         speed = max(1, min(100, int(float(speed_percent))))
@@ -2906,6 +2978,7 @@ class QuadpodEngine:
     def _begin_stop_locked(self, reason):
         if self.state.get("stop_pending"):
             return
+        self._bump_actuator_epoch_locked()
         self.actuator.stop()
         self.state["actuator_command"] = self.actuator.last_command
         self.state["stop_pending"] = True

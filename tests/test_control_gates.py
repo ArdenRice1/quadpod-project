@@ -262,7 +262,7 @@ class ControlGateTests(unittest.TestCase):
         self.engine.state["current_load"] = engine_module.PRELOAD_GLIDE_HOLD_ABORT_LBS + 0.5
         self.engine.preload_hold_active = True
 
-        self.engine._glide_hold_loop()
+        self.engine._glide_hold_loop(self.engine.actuator_epoch)
 
         self.assertFalse(self.engine.state["preload_ready_latched"])
         self.assertEqual(self.engine.state["auto_preload_message"], "Check tension")
@@ -278,7 +278,7 @@ class ControlGateTests(unittest.TestCase):
         self.engine.state["current_load"] = mid
         self.engine.preload_hold_active = True
 
-        self.engine._glide_hold_loop()
+        self.engine._glide_hold_loop(self.engine.actuator_epoch)
 
         events = [e["event"] for e in self.engine.auto_preload_trace]
         self.assertIn("hold_in_aim", events)
@@ -1776,7 +1776,7 @@ class ControlGateTests(unittest.TestCase):
         self.engine.actuator.pull()
         self.engine.state["actuator_command"] = self.engine.actuator.last_command
 
-        self.engine._preload_hold_loop()
+        self.engine._preload_hold_loop(self.engine.actuator_epoch)
 
         self.assertFalse(self.engine.preload_hold_active)
         self.assertEqual(self.engine.actuator.last_command, "up_pull")
@@ -1791,11 +1791,72 @@ class ControlGateTests(unittest.TestCase):
         self.engine.actuator.pull()
         self.engine.state["actuator_command"] = self.engine.actuator.last_command
 
-        self.engine._glide_hold_loop()
+        self.engine._glide_hold_loop(self.engine.actuator_epoch)
 
         self.assertFalse(self.engine.preload_hold_active)
         self.assertEqual(self.engine.actuator.last_command, "up_pull")
         self.assertEqual(self.engine.state["actuator_command"], "up_pull")
+
+    # --- Actuator ownership / epoch (jog-stomp BUG2) ---
+
+    def test_actuator_epoch_advances_on_ownership_transfer(self):
+        e0 = self.engine.actuator_epoch
+        self.engine.jog("up")
+        self.assertGreater(self.engine.actuator_epoch, e0)
+        e1 = self.engine.actuator_epoch
+        self.engine.jog("stop")
+        self.assertGreater(self.engine.actuator_epoch, e1)
+        e2 = self.engine.actuator_epoch
+        self._set_load(-0.10)
+        ok, message = self.engine.start_pull(self.test_id)
+        self.assertTrue(ok, message)
+        self.assertGreater(self.engine.actuator_epoch, e2)
+
+    def test_glide_hold_hands_off_without_stomping_a_jog(self):
+        engine_module.PRELOAD_GLIDE_HOLD_SETTLE_S = 0.0
+        engine_module.PRELOAD_GLIDE_HOLD_TIMEOUT_S = 5.0
+        # A glide hold is running under this epoch...
+        old_epoch = self.engine.actuator_epoch
+        self.engine.preload_hold_active = True
+        # ...then the operator jogs up: ownership moves on and the actuator moves.
+        self.engine.jog("up")
+        self.assertEqual(self.engine.actuator.last_command, "up_fast")
+        self.assertGreater(self.engine.actuator_epoch, old_epoch)
+        # Simulate a hold loop that has not yet noticed: its flag is still set,
+        # only the epoch has moved -- the epoch check ALONE must force a handoff.
+        self.engine.preload_hold_active = True
+        self.engine._glide_hold_loop(old_epoch)
+        self.assertEqual(self.engine.actuator.last_command, "up_fast")
+        self.assertFalse(self.engine.preload_hold_active)
+
+    def test_preload_hold_hands_off_without_stomping_a_jog(self):
+        engine_module.PRELOAD_HOLD_TRIM_INTERVAL_SECONDS = 0.01
+        old_epoch = self.engine.actuator_epoch
+        self.engine.preload_hold_active = True
+        self.engine.jog("up")
+        self.assertEqual(self.engine.actuator.last_command, "up_fast")
+        # Flag still set, only the epoch has moved -> epoch check forces handoff.
+        self.engine.preload_hold_active = True
+        self.engine._preload_hold_loop(old_epoch)
+        self.assertEqual(self.engine.actuator.last_command, "up_fast")
+        self.assertFalse(self.engine.preload_hold_active)
+
+    def test_glide_hold_self_stops_on_sensor_fault(self):
+        engine_module.PRELOAD_GLIDE_HOLD_SETTLE_S = 0.0
+        engine_module.PRELOAD_GLIDE_HOLD_TIMEOUT_S = 5.0
+        # We still own the actuator (epoch matches) but the load cell faults:
+        epoch = self.engine._bump_actuator_epoch_locked()
+        self.engine.preload_hold_active = True
+        self.engine.state["auto_preload_sensor_fault"] = True
+        self.engine.actuator.move_up(fast=True, speed_percent=50)
+        self.assertEqual(self.engine.actuator.last_command, "up_fast")
+
+        self.engine._glide_hold_loop(epoch)
+
+        # Self-stop (neutral) rather than hand off, because we still own it.
+        self.assertEqual(self.engine.actuator.last_command, "neutral")
+        self.assertEqual(self.engine.actuator.last_pulse_us, engine_module.VICTOR_NEUTRAL_US)
+        self.assertFalse(self.engine.preload_hold_active)
 
     def test_auto_preload_move_does_not_override_active_pull(self):
         self.engine.actuator.pull_direction = "up"
