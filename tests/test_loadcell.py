@@ -1,8 +1,16 @@
+import datetime as dt
+import os
 import sys
+import tempfile
 import types
 import unittest
+from pathlib import Path
 
-from hardware.loadcell import LoadCell
+from hardware.loadcell import (
+    LoadCell,
+    load_calibration_record,
+    save_calibration_record,
+)
 
 
 class FakeGPIO(types.SimpleNamespace):
@@ -145,6 +153,37 @@ class LoadCellLivenessTests(unittest.TestCase):
         lc._liveness_window = 0
         for _ in range(50):
             self.assertFalse(lc._note_liveness(1000.0))
+
+
+class CalibrationRecordTests(unittest.TestCase):
+    def setUp(self):
+        self.tempdir = tempfile.TemporaryDirectory()
+        self.path = Path(self.tempdir.name) / "calibration.json"
+
+    def tearDown(self):
+        self.tempdir.cleanup()
+
+    def test_round_trip(self):
+        record = save_calibration_record(
+            10077.0, "bench-script", path=self.path, today=dt.date(2026, 7, 21)
+        )
+        self.assertEqual(record["reference_unit"], 10077.0)
+        self.assertEqual(record["calibrated_at"], "2026-07-21")
+        self.assertEqual(record["source"], "bench-script")
+        loaded = load_calibration_record(path=self.path)
+        self.assertEqual(loaded, record)
+
+    def test_write_is_atomic_no_temp_left(self):
+        save_calibration_record(1.0, "runtime", path=self.path)
+        siblings = list(Path(self.tempdir.name).iterdir())
+        self.assertEqual([p.name for p in siblings], ["calibration.json"])
+
+    def test_load_missing_returns_empty(self):
+        self.assertEqual(load_calibration_record(path=self.path), {})
+
+    def test_load_corrupt_returns_empty(self):
+        self.path.write_text("{not json", encoding="utf-8")
+        self.assertEqual(load_calibration_record(path=self.path), {})
 
 
 if __name__ == "__main__":

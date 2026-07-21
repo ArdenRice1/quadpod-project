@@ -1,9 +1,13 @@
+import datetime as dt
+import json
+import os
 import random
 import threading
 import time
 from collections import deque
 
 from config import (
+    CALIBRATION_PATH,
     LOADCELL_AVERAGE_SAMPLES,
     LOADCELL_CONTROL_SAMPLES,
     LOADCELL_DOUT_PIN,
@@ -21,6 +25,44 @@ from config import (
     LOADCELL_TRIM_EXTREMES,
     USE_MOCK_HARDWARE,
 )
+
+
+def save_calibration_record(reference_unit, source, path=CALIBRATION_PATH, today=None):
+    """Record device calibration provenance atomically.
+
+    reference_unit stays canonical in /etc/quadpod.env; this file only records
+    the value, the date it was last set on THIS unit, and where it came from, so
+    support/status can see when the load cell was last calibrated. Written via a
+    temp file + os.replace so a crash mid-write can't leave a half-written JSON.
+    """
+    day = (today or dt.date.today()).isoformat()
+    record = {
+        "reference_unit": float(reference_unit),
+        "calibrated_at": day,
+        "source": str(source),
+    }
+    path = str(path)
+    directory = os.path.dirname(path) or "."
+    try:
+        os.makedirs(directory, exist_ok=True)
+        tmp = f"{path}.tmp"
+        with open(tmp, "w", encoding="utf-8") as handle:
+            json.dump(record, handle)
+        os.replace(tmp, path)
+    except OSError:
+        # Provenance is best-effort; never let it break a calibration.
+        return record
+    return record
+
+
+def load_calibration_record(path=CALIBRATION_PATH):
+    """Return the persisted calibration record, or {} if absent/unreadable."""
+    try:
+        with open(str(path), "r", encoding="utf-8") as handle:
+            data = json.load(handle)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
 
 
 class LoadCell:
@@ -74,6 +116,7 @@ class LoadCell:
         self._mock_force = 0.0
         self._mock_zero = 0.0
         self._zero_counts = 0.0
+        self.calibrated_at = load_calibration_record().get("calibrated_at", "")
         self.gpio = None
         self.hardware_ready = self.use_mock
 
@@ -213,6 +256,12 @@ class LoadCell:
     def set_reference_unit(self, reference_unit):
         self.reference_unit = float(reference_unit)
 
+    def persist_calibration(self, source):
+        """Record current reference_unit + today's date as device provenance."""
+        record = save_calibration_record(self.reference_unit, source)
+        self.calibrated_at = record.get("calibrated_at", self.calibrated_at)
+        return record
+
     def calibrate_from_known_weight(self, raw_delta, known_lbs):
         if known_lbs == 0:
             raise ValueError("known_lbs must be non-zero")
@@ -321,6 +370,7 @@ class LoadCell:
             "ok": not self.last_error,
             "last_error": self.last_error,
             "reference_unit": self.reference_unit,
+            "calibrated_at": self.calibrated_at,
             "control_samples": self.control_samples,
             "filter_window": self.filter_window,
             "trim_extremes": self.trim_extremes,

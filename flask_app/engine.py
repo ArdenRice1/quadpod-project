@@ -370,6 +370,7 @@ class QuadpodEngine:
                 return False, "Known weight did not create enough raw load-cell change after tare."
             reference_unit = self.load_cell.calibrate_from_known_weight(raw_delta, known_lbs)
             self.load_cell.samples.clear()
+            self.load_cell.persist_calibration("runtime")
             return True, f"Runtime reference unit set to {reference_unit:.6f}. Update QUADPOD_LOADCELL_REFERENCE_UNIT to make it permanent."
 
     def start_pull(self, test_id):
@@ -466,12 +467,14 @@ class QuadpodEngine:
 
         job_form = job["form"]
         test_form = test["form"]
+        today = dt.date.today()
         for field, label in [
             ("load_cell_calibration_date", "load cell calibration date"),
             ("ir_temp_gun_calibration_date", "IR temp gun calibration date"),
         ]:
-            if not _date_is_recorded(job_form.get(field, "")):
-                errors.append(f"{label} must be recorded")
+            problem = _calibration_date_error(job_form.get(field, ""), today)
+            if problem:
+                errors.append(f"{label} {problem}")
         angle_value = test_form.get("angle_degrees")
         if not angle_value:
             errors.append("pull angle must be recorded")
@@ -2970,3 +2973,20 @@ def _date_is_recorded(value):
         return True
     except (TypeError, ValueError):
         return False
+
+
+def _calibration_date_error(value, today):
+    """Return a gate-error suffix for a calibration date, or None if it passes.
+
+    Rejects only a blank/unparseable date (preserving the original "must be
+    recorded" behavior) and a date in the future (a calibration can't happen
+    later than today, so it's an operator typo). Age is never gated -- the
+    recorded date is kept as entered no matter how old.
+    """
+    try:
+        recorded = dt.date.fromisoformat(str(value))
+    except (TypeError, ValueError):
+        return "must be recorded"
+    if recorded > today:
+        return "cannot be in the future"
+    return None

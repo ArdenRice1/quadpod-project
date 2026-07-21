@@ -108,6 +108,11 @@ LOADCELL_GLITCH_MAX_RESETS = env_int("QUADPOD_LOADCELL_GLITCH_MAX_RESETS", 3)
 LOADCELL_DISPLAY_ALPHA = env_float("QUADPOD_LOADCELL_DISPLAY_ALPHA", 0.35)
 LOADCELL_DISPLAY_SNAP_DELTA_LBS = env_float("QUADPOD_LOADCELL_DISPLAY_SNAP_DELTA_LBS", 3.0)
 
+# Device-side calibration provenance: reference_unit + the date it was last set
+# on THIS unit + its source. Written whenever reference_unit changes; surfaced in
+# health() for support. reference_unit itself stays canonical in /etc/quadpod.env.
+CALIBRATION_PATH = Path(os.getenv("QUADPOD_CALIBRATION_FILE", str(DATA_DIR / "calibration.json")))
+
 # PCA9685 / Victor SPX PWM settings. Pulse widths are in microseconds.
 PWM_I2C_ADDRESS = env_int("QUADPOD_PWM_I2C_ADDRESS", 0x40)
 PWM_I2C_BUSNUM = env_int("QUADPOD_PWM_I2C_BUSNUM", 1)

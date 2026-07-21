@@ -1,3 +1,4 @@
+import datetime as dt
 import sys
 import tempfile
 import threading
@@ -11,8 +12,10 @@ sys.path.insert(0, str(ROOT / "flask_app"))
 
 import storage
 import engine as engine_module
-from engine import QuadpodEngine
+from engine import QuadpodEngine, _calibration_date_error
 from config import VICTOR_PULL_US
+
+RECENT_CAL_DATE = (dt.date.today() - dt.timedelta(days=1)).isoformat()
 
 
 class ControlGateTests(unittest.TestCase):
@@ -88,9 +91,9 @@ class ControlGateTests(unittest.TestCase):
             "project_name": "Gate Job",
             "job_number": "G-001",
             "load_cell_id": "LC-1",
-            "load_cell_calibration_date": "2099-01-01",
+            "load_cell_calibration_date": RECENT_CAL_DATE,
             "ir_temp_gun_id": "IR-1",
-            "ir_temp_gun_calibration_date": "2099-01-01",
+            "ir_temp_gun_calibration_date": RECENT_CAL_DATE,
         }
         form.update(updates)
         return form
@@ -1844,6 +1847,43 @@ class ControlGateTests(unittest.TestCase):
         self._set_load(0.0)
         ok, message = self.engine.start_pull(self.test_id)
         self.assertTrue(ok, message)
+
+    def test_start_rejects_future_calibration_date(self):
+        future = (dt.date.today() + dt.timedelta(days=1)).isoformat()
+        storage.update_job(self.job_id, form={"load_cell_calibration_date": future})
+        self._set_load(0.0)
+        ok, message = self.engine.start_pull(self.test_id)
+        self.assertFalse(ok)
+        self.assertIn("future", message)
+
+    def test_start_rejects_unparseable_calibration_date(self):
+        storage.update_job(self.job_id, form={"load_cell_calibration_date": "soon"})
+        self._set_load(0.0)
+        ok, message = self.engine.start_pull(self.test_id)
+        self.assertFalse(ok)
+        self.assertIn("must be recorded", message)
+
+    def test_start_accepts_very_old_calibration_date(self):
+        # Age is never gated: the recorded date is kept as entered, no matter how
+        # old, as long as it is parseable and not in the future.
+        storage.update_job(
+            self.job_id,
+            form={
+                "load_cell_calibration_date": "2001-01-01",
+                "ir_temp_gun_calibration_date": "2001-01-01",
+            },
+        )
+        self._set_load(0.0)
+        ok, message = self.engine.start_pull(self.test_id)
+        self.assertTrue(ok, message)
+
+    def test_calibration_date_error_helper(self):
+        today = dt.date(2026, 7, 21)
+        self.assertIsNone(_calibration_date_error("2020-01-01", today))
+        self.assertIsNone(_calibration_date_error("2001-01-01", today))  # very old is fine
+        self.assertEqual(_calibration_date_error("", today), "must be recorded")
+        self.assertEqual(_calibration_date_error("nope", today), "must be recorded")
+        self.assertIn("future", _calibration_date_error("2026-07-22", today))
 
     def test_start_does_not_require_photo_reference(self):
         storage.update_test(self.test_id, form={"photo_reference": ""})
