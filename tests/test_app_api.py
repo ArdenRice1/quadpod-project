@@ -36,6 +36,16 @@ class AppApiTests(unittest.TestCase):
             app_module.exporter.EXPORT_DIR = self.original_export_dir
         self.tempdir.cleanup()
 
+    def test_network_switch_result_is_recorded_and_read_back(self):
+        app_module._record_network_switch(
+            "Wi-Fi connection", False, "did not associate", {"ssid": "HomeNet"}
+        )
+        last = app_module._last_network_switch()
+        self.assertIsNotNone(last)
+        self.assertFalse(last["ok"])
+        self.assertEqual(last["ssid"], "HomeNet")
+        self.assertIn("did not associate", last["message"])
+
     def test_start_pull_rejects_missing_session_token(self):
         with self.client.session_transaction() as session:
             session["csrf_token"] = "test-token"

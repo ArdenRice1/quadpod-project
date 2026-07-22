@@ -1,4 +1,5 @@
 import datetime as dt
+import json
 import os
 import secrets
 import shutil
@@ -636,6 +637,19 @@ def _network_status():
         status["internet"] = "Online" if internet.returncode == 0 else "Offline"
     except (OSError, subprocess.SubprocessError):
         status["internet"] = "Unknown"
+
+    # Surface the last network-switch outcome so the operator learns a failed
+    # Wi-Fi join (which restores the hotspot) instead of guessing why they are
+    # still on the hotspot.
+    last_switch = _last_network_switch()
+    status["last_switch"] = last_switch
+    if last_switch and not last_switch.get("ok") and not status["message"]:
+        ssid = last_switch.get("ssid")
+        target = f" to {ssid}" if ssid else ""
+        detail = last_switch.get("message", "")
+        status["message"] = (
+            f"Last network switch{target} failed and the hotspot was restored. {detail}"
+        ).strip()
     return status
 
 
@@ -777,20 +791,54 @@ def _run_network_command(command, label, event_data):
             timeout=35,
         )
         message = (result.stdout or result.stderr).strip()
+        ok = result.returncode == 0
         storage.add_event(
             label,
-            level="info" if result.returncode == 0 else "error",
-            data={**event_data, "ok": result.returncode == 0, "message": message},
+            level="info" if ok else "error",
+            data={**event_data, "ok": ok, "message": message},
         )
+        _record_network_switch(label, ok, message, event_data)
     except (OSError, subprocess.SubprocessError) as exc:
         storage.add_event(
             label,
             level="error",
             data={**event_data, "ok": False, "message": str(exc)},
         )
+        _record_network_switch(label, False, str(exc), event_data)
     finally:
         with _network_command_lock:
             _network_command_until = 0.0
+
+
+def _record_network_switch(label, ok, message, event_data):
+    """Persist the outcome of the last network switch so the phone can see
+    success/failure when it polls status (it often reconnects on a different
+    network and never sees the interstitial page's result)."""
+    try:
+        storage.set_setting(
+            "last_network_switch",
+            json.dumps(
+                {
+                    "label": label,
+                    "ok": bool(ok),
+                    "message": (message or "")[:300],
+                    "ssid": event_data.get("ssid", ""),
+                    "at": storage.utc_now(),
+                }
+            ),
+        )
+    except Exception:
+        pass
+
+
+def _last_network_switch():
+    raw = storage.get_setting("last_network_switch", "")
+    if not raw:
+        return None
+    try:
+        return json.loads(raw)
+    except ValueError:
+        return None
 
 
 def _network_switch_command(mode, *extra):

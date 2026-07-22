@@ -74,6 +74,35 @@ def bring_up_wifi_profile(ssid):
         raise last_error
 
 
+def wifi_associated(ssid):
+    """True only if wlan0 is actually connected to `ssid` AND has an IPv4
+    address. `nmcli connection up` can return 0 before association/DHCP finish,
+    so trusting its exit code alone can strand the Pi (hotspot torn down, Wi-Fi
+    not really up)."""
+    result = run(
+        ["nmcli", "-t", "-f", "GENERAL.CONNECTION,IP4.ADDRESS", "device", "show", "wlan0"],
+        check=False,
+    )
+    if result.returncode != 0:
+        return False
+    connected = False
+    has_ip = False
+    for line in result.stdout.splitlines():
+        if line.startswith("GENERAL.CONNECTION:"):
+            connected = line.split(":", 1)[1].strip() == ssid
+        elif line.startswith("IP4.ADDRESS") and line.split(":", 1)[1].strip():
+            has_ip = True
+    return connected and has_ip
+
+
+def wait_for_wifi_association(ssid, attempts=5, delay=1.5):
+    for _ in range(max(1, attempts)):
+        if wifi_associated(ssid):
+            return True
+        time.sleep(delay)
+    return False
+
+
 def malformed_wifi_profile(exc):
     text = f"{getattr(exc, 'stdout', '')}\n{getattr(exc, 'stderr', '')}"
     return "802-11-wireless-security.key-mgmt" in text or "wifi-sec.key-mgmt" in text
@@ -113,10 +142,15 @@ def switch_to_wifi(ssid, password):
         run(["nmcli", "connection", "modify", ssid, "connection.autoconnect-priority", "100"])
         run(["nmcli", "connection", "modify", ssid, "connection.permissions", ""], check=False)
         set_radio_powersave_off()
+        # Confirm the link truly came up (associated + got an IP) before trusting
+        # the switch; otherwise fall through to restore the hotspot rather than
+        # strand the Pi with no reachable network.
+        if not wait_for_wifi_association(ssid):
+            raise RuntimeError(f"Wi-Fi '{ssid}' did not associate or get an IP address")
         restart_discovery()
         print(f"Connected to Wi-Fi profile: {ssid}")
         return 0
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, RuntimeError) as exc:
         run(["nmcli", "connection", "modify", hotspot, "connection.autoconnect", "yes"], check=False)
         run(["nmcli", "connection", "up", hotspot], check=False)
         print(f"Wi-Fi connection failed; restored hotspot: {exc}", file=sys.stderr)
