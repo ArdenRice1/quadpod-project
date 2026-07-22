@@ -386,6 +386,13 @@ PRELOAD_AUTO_DRIFT_MAX_DROP_LBS = env_float("QUADPOD_PRELOAD_AUTO_DRIFT_MAX_DROP
 PRELOAD_AUTO_DRIFT_WARN_SECONDS = env_float("QUADPOD_PRELOAD_AUTO_DRIFT_WARN_SECONDS", 60.0)
 PRELOAD_AUTO_TRACE_MAX_ENTRIES = env_int("QUADPOD_PRELOAD_AUTO_TRACE_MAX_ENTRIES", 300)
 PRELOAD_AUTO_TRACE_DIR = Path(os.getenv("QUADPOD_PRELOAD_AUTO_TRACE_DIR", str(DATA_DIR / "auto_tension_traces")))
+# Export data-integrity (audit P5). Keep only the most-recent export artifacts
+# so a field unit can't slowly fill its disk (exports are regenerable). Bound the
+# stored force samples per test so a runaway/forgotten pull can't grow the DB
+# without limit -- generous enough that a real pull is never truncated.
+EXPORT_RETENTION_MAX = env_int("QUADPOD_EXPORT_RETENTION_MAX", 200)
+FORCE_SAMPLES_MAX = env_int("QUADPOD_FORCE_SAMPLES_MAX", 200000)
+
 FAILURE_DROP_LBS = env_float("QUADPOD_FAILURE_DROP_LBS", 12.0)
 FAILURE_DROP_PERCENT = env_float("QUADPOD_FAILURE_DROP_PERCENT", 0.35)
 FAILURE_CONFIRM_SAMPLES = env_int("QUADPOD_FAILURE_CONFIRM_SAMPLES", 8)

@@ -6,12 +6,14 @@ import re
 import shutil
 import subprocess
 import zipfile
+from contextlib import contextmanager
 from pathlib import Path
 
 from config import (
     ACTUATOR_PULL_DIRECTION,
     APP_VERSION,
     EXPORT_DIR,
+    EXPORT_RETENTION_MAX,
     FAILURE_CONFIRM_SAMPLES,
     FAILURE_DROP_LBS,
     FAILURE_DROP_PERCENT,
@@ -27,6 +29,89 @@ from config import (
     VICTOR_PULL_US,
 )
 import storage
+
+
+_CSV_INJECT_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _csv_safe(value):
+    """Neutralize spreadsheet formula injection: a text cell a spreadsheet would
+    evaluate as a formula (leading = + - @, tab or CR) is prefixed with a quote."""
+    if isinstance(value, str) and value and value[0] in _CSV_INJECT_PREFIXES:
+        return "'" + value
+    return value
+
+
+@contextmanager
+def _atomic_writer(path, mode="w", **kwargs):
+    """Write to a temp file in the same dir, fsync, then os.replace onto the
+    final path -- so a crash/power-loss mid-write can't leave a truncated export
+    (a real hazard on a battery-powered field unit)."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+    handle = open(tmp, mode, **kwargs)
+    try:
+        yield handle
+        handle.flush()
+        os.fsync(handle.fileno())
+        handle.close()
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            handle.close()
+        finally:
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+        raise
+
+
+def _atomic_write_text(path, text, encoding="utf-8"):
+    with _atomic_writer(path, "w", newline="", encoding=encoding) as handle:
+        handle.write(text)
+    return Path(path)
+
+
+def _atomic_produce(path, produce_fn):
+    """Atomically create a binary artifact: produce_fn(tmp_path) writes the
+    content, then it is os.replace'd onto path (for zip bundles)."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+    try:
+        produce_fn(tmp)
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise
+    return path
+
+
+def prune_exports(max_files=None):
+    """Keep only the most-recent files in EXPORT_DIR so a field unit can't slowly
+    fill its disk. Exports are regenerable, so pruning is safe. Only touches
+    plain files at the top level (leaves the graphs/ subdir and usb_copy alone)."""
+    limit = EXPORT_RETENTION_MAX if max_files is None else max_files
+    if not limit or limit <= 0:
+        return 0
+    export_dir = Path(EXPORT_DIR)
+    if not export_dir.is_dir():
+        return 0
+    files = [p for p in export_dir.iterdir() if p.is_file()]
+    files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    removed = 0
+    for stale in files[limit:]:
+        try:
+            stale.unlink()
+            removed += 1
+        except OSError:
+            pass
+    return removed
 
 
 FIELD_LABELS = {
@@ -240,7 +325,7 @@ def export_job_report_csv(job_id):
     path = Path(EXPORT_DIR) / f"{_job_all_csv_name(job)}"
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    with path.open("w", newline="", encoding="utf-8") as handle:
+    with _atomic_writer(path, "w", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle)
         writer.writerow(["APEC Quadpod Job Record", ""])
         writer.writerow(["Software Version", APP_VERSION])
@@ -264,12 +349,12 @@ def export_job_report_csv(job_id):
             row = _combined_row(job, test)
             writer.writerow(
                 [
-                    row.get("test_number", ""),
+                    _csv_safe(row.get("test_number", "")),
                     _yes_no(row.get("deviation_from_standard", "")),
-                    row.get("deviation_description", ""),
-                    row.get("effect_on_uncertainty", ""),
-                    row.get("approved_by", ""),
-                    row.get("approved_date", ""),
+                    _csv_safe(row.get("deviation_description", "")),
+                    _csv_safe(row.get("effect_on_uncertainty", "")),
+                    _csv_safe(row.get("approved_by", "")),
+                    _csv_safe(row.get("approved_date", "")),
                 ]
             )
         writer.writerow([])
@@ -290,7 +375,7 @@ def export_test_trace_csv(test_id):
     samples = storage.list_samples(test_id)
     row = _combined_row(job, test)
 
-    with path.open("w", newline="", encoding="utf-8") as handle:
+    with _atomic_writer(path, "w", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle)
         writer.writerow(["APEC Quadpod Test Record", ""])
         writer.writerow(["Software Version", test.get("software_version") or APP_VERSION])
@@ -309,7 +394,7 @@ def export_test_trace_csv(test_id):
         for index, sample in enumerate(samples, start=1):
             writer.writerow(
                 [
-                    sample.get("timestamp", ""),
+                    _csv_safe(sample.get("timestamp", "")),
                     _value(sample.get("elapsed_s")),
                     index,
                     _value(sample.get("force_lbs")),
@@ -336,7 +421,7 @@ def export_force_time_graph_svg(test_id):
     graph_dir.mkdir(parents=True, exist_ok=True)
     path = graph_dir / f"{Path(_test_csv_name(job, test)).stem}_force_time.svg"
     samples = storage.list_samples(test_id)
-    path.write_text(_force_time_svg(job, test, samples), encoding="utf-8")
+    _atomic_write_text(path, _force_time_svg(job, test, samples), encoding="utf-8")
     return path
 
 
@@ -368,22 +453,29 @@ def export_job_bundle(job_id):
 
     composite_path = Path(export_job_report_csv(job_id))
     audit_path = export_dir / f"job_{job_id}_audit.json"
-    audit_path.write_text(json.dumps(build_audit_payload(job_id), indent=2), encoding="utf-8")
+    _atomic_write_text(
+        audit_path, json.dumps(build_audit_payload(job_id), indent=2), encoding="utf-8"
+    )
 
     tests = storage.list_tests(job_id)
     trace_paths = [Path(export_test_trace_csv(test["id"])) for test in tests]
     graph_paths = [Path(export_force_time_graph_svg(test["id"])) for test in tests]
 
     bundle_path = export_dir / f"{_job_export_zip_name(job)}"
-    with zipfile.ZipFile(bundle_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-        zf.write(composite_path, composite_path.name)
-        zf.write(audit_path, "audit.json")
-        for path in trace_paths:
-            zf.write(path, f"tests/{path.name}")
-        for path in graph_paths:
-            zf.write(path, f"graphs/{path.name}")
-        for photo_path in _job_photo_paths(job_id):
-            zf.write(photo_path, f"photos/{photo_path.name}")
+
+    def _build_zip(tmp):
+        with zipfile.ZipFile(tmp, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            zf.write(composite_path, composite_path.name)
+            zf.write(audit_path, "audit.json")
+            for path in trace_paths:
+                zf.write(path, f"tests/{path.name}")
+            for path in graph_paths:
+                zf.write(path, f"graphs/{path.name}")
+            for photo_path in _job_photo_paths(job_id):
+                zf.write(photo_path, f"photos/{photo_path.name}")
+
+    _atomic_produce(bundle_path, _build_zip)
+    prune_exports()
     return bundle_path
 
 
@@ -402,7 +494,9 @@ def export_job_folder(job_id, root_dir):
 
     composite_path = Path(export_job_report_csv(job_id))
     audit_path = Path(EXPORT_DIR) / f"job_{job_id}_audit.json"
-    audit_path.write_text(json.dumps(build_audit_payload(job_id), indent=2), encoding="utf-8")
+    _atomic_write_text(
+        audit_path, json.dumps(build_audit_payload(job_id), indent=2), encoding="utf-8"
+    )
     shutil.copy2(composite_path, folder / composite_path.name)
     shutil.copy2(audit_path, folder / "audit.json")
     for test in storage.list_tests(job_id):
@@ -467,13 +561,16 @@ def _job_export_zip_name(job):
 
 def _test_csv_name(job, test):
     test_number = test["form"].get("test_number") or test["id"]
-    return f"{_job_base_name(job)}_Test-{_slug(test_number)}.csv"
+    # Always include the test id so two tests sharing a test_number can't collide.
+    return f"{_job_base_name(job)}_Test-{_slug(test_number)}_T{test['id']}.csv"
 
 
 def _job_base_name(job):
     project = job["form"].get("project_name") or "Project"
     job_number = job["form"].get("job_number") or f"Job-{job['id']}"
-    return _slug(f"{project}_{job_number}")
+    # Always include the job id so two jobs sharing a project+job_number can't
+    # silently overwrite each other's staged exports.
+    return _slug(f"{project}_{job_number}_J{job['id']}")
 
 
 def _usb_root():
@@ -739,7 +836,7 @@ def _format_value(value):
         return ""
     if isinstance(value, float):
         return round(value, 6)
-    return value
+    return _csv_safe(value)
 
 
 def _yes_no(value):
@@ -755,4 +852,4 @@ def _value(value):
         return ""
     if isinstance(value, float):
         return round(value, 6)
-    return value
+    return _csv_safe(value)

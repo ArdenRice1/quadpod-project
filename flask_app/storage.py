@@ -1,11 +1,24 @@
 import csv
 import datetime as dt
 import json
+import os
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 
-from config import DATABASE_PATH, DATA_DIR
+from config import DATABASE_PATH, DATA_DIR, FORCE_SAMPLES_MAX
+
+
+SCHEMA_VERSION = 1
+
+_CSV_INJECT_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _csv_safe(value):
+    """Neutralize spreadsheet formula injection in an exported cell."""
+    if isinstance(value, str) and value and value[0] in _CSV_INJECT_PREFIXES:
+        return "'" + value
+    return value
 
 
 JOB_FIELDS = [
@@ -199,6 +212,31 @@ def init_db():
             );
             """
         )
+        _run_migrations(conn)
+
+
+def _run_migrations(conn):
+    """Versioned schema migrations. The CREATE TABLE IF NOT EXISTS above defines
+    the base schema (v1). Add any future change as an ordered ALTER block that
+    bumps the version, so an existing field DB upgrades in place without data
+    loss, e.g.:
+
+        if version < 2:
+            conn.execute("ALTER TABLE tests ADD COLUMN foo TEXT")
+            version = 2
+    """
+    version = conn.execute("PRAGMA user_version").fetchone()[0]
+    if version >= SCHEMA_VERSION:
+        return
+    try:
+        # (future ALTER blocks go here, each bumping `version`)
+        conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+    except sqlite3.OperationalError:
+        # DB opened by a non-writer (e.g. importing the app against a root-owned
+        # DB as a normal user): can't stamp/migrate, and there's nothing to do
+        # to an existing current-schema DB. The writable service process (root)
+        # stamps it on the next start.
+        pass
 
 
 def normalize_form(data, fields):
@@ -385,6 +423,13 @@ def _test_from_row(row):
 
 def add_sample(test_id, elapsed_s, force_lbs, raw_lbs=None):
     with db() as conn:
+        count = conn.execute(
+            "SELECT COUNT(*) AS n FROM force_samples WHERE test_id=?", (test_id,)
+        ).fetchone()["n"]
+        # Bounded: a runaway/forgotten pull must not grow the DB without limit.
+        # The cap is generous enough that a real pull is never truncated.
+        if FORCE_SAMPLES_MAX and count >= FORCE_SAMPLES_MAX:
+            return count
         conn.execute(
             """
             INSERT INTO force_samples (test_id, timestamp, elapsed_s, force_lbs, raw_lbs)
@@ -392,10 +437,7 @@ def add_sample(test_id, elapsed_s, force_lbs, raw_lbs=None):
             """,
             (test_id, utc_now(), float(elapsed_s), float(force_lbs), raw_lbs),
         )
-        row = conn.execute(
-            "SELECT COUNT(*) AS n FROM force_samples WHERE test_id=?", (test_id,)
-        ).fetchone()
-    return row["n"]
+    return count + 1
 
 
 def clear_samples(test_id):
@@ -463,11 +505,24 @@ def _num(value):
 
 
 def write_csv(path, rows, fieldnames):
-    Path(path).parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fieldnames, extrasaction="ignore")
-        writer.writeheader()
-        writer.writerows(rows)
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+    try:
+        with open(tmp, "w", newline="", encoding="utf-8") as handle:
+            writer = csv.DictWriter(handle, fieldnames=fieldnames, extrasaction="ignore")
+            writer.writeheader()
+            for row in rows:
+                writer.writerow({key: _csv_safe(value) for key, value in row.items()})
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise
     return path
 
 

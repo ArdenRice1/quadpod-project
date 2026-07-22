@@ -1,3 +1,4 @@
+import os
 import sys
 import tempfile
 import unittest
@@ -99,15 +100,18 @@ class StorageExportTests(unittest.TestCase):
 
         self.assertTrue(Path(bundle).exists())
         self.assertGreater(Path(bundle).stat().st_size, 0)
+        all_csv = f"Bundle_Job_B-100_J{job_id}_ALL.csv"
+        trace_name = f"tests/Bundle_Job_B-100_J{job_id}_Test-1_T{test_id}.csv"
+        graph_name = f"graphs/Bundle_Job_B-100_J{job_id}_Test-1_T{test_id}_force_time.svg"
         with zipfile.ZipFile(bundle) as zf:
             names = set(zf.namelist())
-            self.assertIn("Bundle_Job_B-100_ALL.csv", names)
+            self.assertIn(all_csv, names)
             self.assertIn("audit.json", names)
-            self.assertIn("tests/Bundle_Job_B-100_Test-1.csv", names)
-            self.assertIn("graphs/Bundle_Job_B-100_Test-1_force_time.svg", names)
+            self.assertIn(trace_name, names)
+            self.assertIn(graph_name, names)
             self.assertIn("photos/field-photo.jpg", names)
-            job_csv = zf.read("Bundle_Job_B-100_ALL.csv").decode("utf-8")
-            trace = zf.read("tests/Bundle_Job_B-100_Test-1.csv").decode("utf-8")
+            job_csv = zf.read(all_csv).decode("utf-8")
+            trace = zf.read(trace_name).decode("utf-8")
             audit = zf.read("audit.json").decode("utf-8")
         self.assertIn("Shingle tear", job_csv)
         self.assertIn("Three tab", job_csv)
@@ -183,10 +187,10 @@ class StorageExportTests(unittest.TestCase):
 
         folder = exporter.export_job_folder(job_id, self.root / "usb")
 
-        self.assertTrue((Path(folder) / "USB_Job_USB-001_ALL.csv").exists())
+        self.assertTrue((Path(folder) / f"USB_Job_USB-001_J{job_id}_ALL.csv").exists())
         self.assertTrue((Path(folder) / "audit.json").exists())
-        self.assertTrue((Path(folder) / "tests" / "USB_Job_USB-001_Test-1.csv").exists())
-        self.assertTrue((Path(folder) / "tests" / "USB_Job_USB-001_Test-1_force_time.svg").exists())
+        self.assertTrue((Path(folder) / "tests" / f"USB_Job_USB-001_J{job_id}_Test-1_T{test_id}.csv").exists())
+        self.assertTrue((Path(folder) / "tests" / f"USB_Job_USB-001_J{job_id}_Test-1_T{test_id}_force_time.svg").exists())
 
     def test_job_folder_export_replaces_previous_same_named_folder(self):
         job_id = storage.create_job({"project_name": "Overwrite Job", "job_number": "OW-1"})
@@ -198,7 +202,7 @@ class StorageExportTests(unittest.TestCase):
         folder = Path(exporter.export_job_folder(job_id, self.root / "usb"))
 
         self.assertFalse(stale_file.exists())
-        self.assertTrue((folder / "Overwrite_Job_OW-1_ALL.csv").exists())
+        self.assertTrue((folder / f"Overwrite_Job_OW-1_J{job_id}_ALL.csv").exists())
 
     def test_usb_root_auto_mounts_before_falling_back_to_local_exports(self):
         mounted = self.root / "mounted-usb"
@@ -231,6 +235,78 @@ class StorageExportTests(unittest.TestCase):
         self.assertFalse(exporter._is_removable("0"))
         self.assertTrue(exporter._is_removable("1"))
         self.assertTrue(exporter._is_removable(True))
+
+    # --- P5: export data-integrity ---
+
+    def test_csv_export_neutralizes_formula_injection(self):
+        job_id = storage.create_job({"project_name": "=cmd|calc", "job_number": "B-1"})
+        test_id = storage.create_test(
+            job_id, {"test_number": "1", "operator_notes": "@SUM(1)"}
+        )
+        storage.add_sample(test_id, 0.0, 1.0)
+
+        job_csv = Path(exporter.export_job_report_csv(job_id)).read_text(encoding="utf-8")
+        trace = Path(exporter.export_test_trace_csv(test_id)).read_text(encoding="utf-8")
+
+        self.assertIn("'=cmd|calc", job_csv)
+        self.assertIn("'@SUM(1)", trace)
+
+    def test_export_writes_leave_no_temp_files(self):
+        job_id = storage.create_job({"project_name": "Atomic", "job_number": "A-1"})
+        test_id = storage.create_test(job_id, {"test_number": "1"})
+        storage.add_sample(test_id, 0.0, 1.0)
+
+        exporter.export_job_bundle(job_id)
+
+        leftover = list(Path(exporter.EXPORT_DIR).rglob("*.tmp"))
+        self.assertEqual(leftover, [])
+
+    def test_export_names_include_job_id_to_avoid_collision(self):
+        a = storage.create_job({"project_name": "Same", "job_number": "DUP"})
+        b = storage.create_job({"project_name": "Same", "job_number": "DUP"})
+
+        name_a = Path(exporter.export_job_report_csv(a)).name
+        name_b = Path(exporter.export_job_report_csv(b)).name
+
+        self.assertNotEqual(name_a, name_b)
+        self.assertIn(f"_J{a}_", name_a)
+        self.assertIn(f"_J{b}_", name_b)
+
+    def test_prune_exports_keeps_only_newest(self):
+        export_dir = Path(exporter.EXPORT_DIR)
+        export_dir.mkdir(parents=True, exist_ok=True)
+        for i in range(5):
+            path = export_dir / f"old_{i}.csv"
+            path.write_text("x", encoding="utf-8")
+            os.utime(path, (1000 + i, 1000 + i))  # deterministic ascending mtimes
+
+        removed = exporter.prune_exports(max_files=2)
+
+        remaining = sorted(p.name for p in export_dir.iterdir() if p.is_file())
+        self.assertEqual(removed, 3)
+        self.assertEqual(remaining, ["old_3.csv", "old_4.csv"])
+
+    def test_schema_version_is_stamped(self):
+        with storage.db() as conn:
+            version = conn.execute("PRAGMA user_version").fetchone()[0]
+        self.assertEqual(version, storage.SCHEMA_VERSION)
+
+    def test_init_db_is_idempotent(self):
+        job_id = storage.create_job({"project_name": "Keep"})
+        storage.init_db()  # re-running migrations must not drop data
+        self.assertIsNotNone(storage.get_job(job_id))
+
+    def test_add_sample_respects_cap(self):
+        original = storage.FORCE_SAMPLES_MAX
+        storage.FORCE_SAMPLES_MAX = 3
+        try:
+            job_id = storage.create_job({"project_name": "Cap"})
+            test_id = storage.create_test(job_id, {"test_number": "1"})
+            counts = [storage.add_sample(test_id, float(i), float(i)) for i in range(6)]
+            self.assertEqual(counts, [1, 2, 3, 3, 3, 3])
+            self.assertEqual(len(storage.list_samples(test_id)), 3)
+        finally:
+            storage.FORCE_SAMPLES_MAX = original
 
 
 if __name__ == "__main__":
