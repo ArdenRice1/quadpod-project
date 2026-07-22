@@ -36,6 +36,23 @@ class AppApiTests(unittest.TestCase):
             app_module.exporter.EXPORT_DIR = self.original_export_dir
         self.tempdir.cleanup()
 
+    def test_network_status_is_cached_within_ttl(self):
+        calls = {"n": 0}
+
+        def fake_compute():
+            calls["n"] += 1
+            return {"active": "x", "message": "", "wifi": [], "saved_wifi": []}
+
+        app_module._network_status_cache["value"] = None
+        app_module._network_status_cache["at"] = 0.0
+        with patch.object(app_module, "_compute_network_status", side_effect=fake_compute):
+            first = app_module._network_status()
+            second = app_module._network_status()
+            self.assertEqual(calls["n"], 1)  # second served from cache
+            self.assertIs(first, second)
+            app_module._network_status(force=True)  # force bypasses cache
+            self.assertEqual(calls["n"], 2)
+
     def test_network_switch_result_is_recorded_and_read_back(self):
         app_module._record_network_switch(
             "Wi-Fi connection", False, "did not associate", {"ssid": "HomeNet"}

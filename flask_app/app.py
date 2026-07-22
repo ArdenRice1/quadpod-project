@@ -580,7 +580,32 @@ def _current_editable_test(job_id):
     return None
 
 
-def _network_status():
+_NETWORK_STATUS_TTL_SECONDS = 8.0
+_network_status_cache = {"at": 0.0, "value": None}
+_network_status_cache_lock = threading.Lock()
+
+
+def _network_status(force=False):
+    """Cached network status. The phone polls this on an interval and each fresh
+    build runs several nmcli subprocesses (seconds of blocking on the request
+    thread). Serve a recent snapshot so rapid polls don't pile up."""
+    now = time.monotonic()
+    with _network_status_cache_lock:
+        cached = _network_status_cache["value"]
+        if (
+            not force
+            and cached is not None
+            and now - _network_status_cache["at"] < _NETWORK_STATUS_TTL_SECONDS
+        ):
+            return cached
+    value = _compute_network_status()
+    with _network_status_cache_lock:
+        _network_status_cache["at"] = time.monotonic()
+        _network_status_cache["value"] = value
+    return value
+
+
+def _compute_network_status():
     status = {
         "active": "Unavailable",
         "internet": "Unknown",
