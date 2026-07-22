@@ -19,25 +19,9 @@ from config import (
     LOADCELL_DISPLAY_SNAP_DELTA_LBS,
     POST_STOP_LOG_MAX_SECONDS,
     PRELOAD_AUTO_ABORT_LBS,
-    PRELOAD_AUTO_APPROACH_SETTLE_DELTA_LBS,
-    PRELOAD_AUTO_APPROACH_SETTLE_MAX_SECONDS,
-    PRELOAD_AUTO_APPROACH_SETTLE_SECONDS,
-    PRELOAD_AUTO_APPROACH_SETTLE_UNTIL_LBS,
-    PRELOAD_AUTO_COARSE_SETTLE_MAX_SECONDS,
-    PRELOAD_AUTO_COARSE_SETTLE_SECONDS,
-    PRELOAD_AUTO_COARSE_UNTIL_LBS,
-    PRELOAD_AUTO_DEADBAND_LBS,
     PRELOAD_AUTO_DRIFT_MAX_DROP_LBS,
-    PRELOAD_AUTO_DRIFT_WARN_SECONDS,
     PRELOAD_AUTO_DRIFT_WINDOW_SECONDS,
-    PRELOAD_AUTO_DOWN_PULSE_SECONDS,
-    PRELOAD_AUTO_MIN_PULSE_SECONDS,
-    PRELOAD_AUTO_APPROACH_MAX_DELTA_LBS,
-    PRELOAD_AUTO_ADAPTIVE_PULSE_MIN_SCALE,
-    PRELOAD_AUTO_ADAPTIVE_SPEED_MIN_PERCENT,
     PRELOAD_AUTO_APPROACH_DISTANCE_LBS,
-    PRELOAD_AUTO_COAST_MARGIN_SCALE,
-    PRELOAD_AUTO_COARSE_MAX_DELTA_LBS,
     PRELOAD_AUTO_CONTROL_CONFIRM_MAX_RANGE_LBS,
     PRELOAD_AUTO_CONTROL_CONFIRM_SAMPLES,
     PRELOAD_AUTO_CONTROL_DISCARD_SETTLE_SECONDS,
@@ -58,7 +42,6 @@ from config import (
     PRELOAD_AUTO_CONTINUOUS_FINAL_PULL_FLOOR_START_LBS,
     PRELOAD_AUTO_CONTINUOUS_FINAL_PULL_MIN_SPEED_PERCENT,
     PRELOAD_AUTO_CONTINUOUS_FINAL_PULL_STOP_MARGIN_LBS,
-    PRELOAD_AUTO_CONTINUOUS_INTERVAL_SECONDS,
     PRELOAD_AUTO_CONTINUOUS_POLL_SECONDS,
     PRELOAD_AUTO_CONTINUOUS_KD,
     PRELOAD_AUTO_CONTINUOUS_KP,
@@ -86,31 +69,15 @@ from config import (
     PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_START_LBS,
     PRELOAD_AUTO_CONTINUOUS_SENSOR_PACE_START_MAX_SPEED_PERCENT,
     PRELOAD_AUTO_CONTINUOUS_SLOWDOWN_LBS,
-    PRELOAD_AUTO_CONTACT_COARSE_MAX_DELTA_LBS,
-    PRELOAD_AUTO_CONTACT_COARSE_PULSE_SECONDS,
-    PRELOAD_AUTO_CONTACT_COARSE_SPEED_PERCENT,
-    PRELOAD_AUTO_CONTACT_DELTA_LBS,
-    PRELOAD_AUTO_CONTACT_MAX_DELTA_LBS,
-    PRELOAD_AUTO_CONTACT_MODE_START_LBS,
-    PRELOAD_AUTO_CONTACT_PULSE_SECONDS,
-    PRELOAD_AUTO_CONTACT_SETTLE_MAX_SECONDS,
-    PRELOAD_AUTO_CONTACT_SETTLE_SECONDS,
-    PRELOAD_AUTO_CONTACT_SPEED_PERCENT,
     PRELOAD_AUTO_DIRECT_LOAD_READ,
     PRELOAD_AUTO_FINAL_APPROACH_STOP_LBS,
-    PRELOAD_AUTO_FINAL_MAX_DELTA_LBS,
     PRELOAD_AUTO_FINAL_REBRAKE_MARGIN_LBS,
     PRELOAD_AUTO_IN_BAND_END_SECONDS,
-    PRELOAD_AUTO_MAX_RISE_RATE_LBS_PER_SECOND,
-    PRELOAD_AUTO_MAX_STOP_MARGIN_LBS,
-    PRELOAD_AUTO_MIN_STOP_MARGIN_LBS,
     PRELOAD_AUTO_MODE,
     PRELOAD_AUTO_NEAR_BAND_HOLD_MARGIN_LBS,
     PRELOAD_AUTO_NEAR_BAND_DROP_REJECT_LBS,
     PRELOAD_AUTO_NEGATIVE_JUMP_DELTA_LBS,
     PRELOAD_AUTO_NEGATIVE_JUMP_GUARD_START_LBS,
-    PRELOAD_AUTO_PULSE_SECONDS,
-    PRELOAD_AUTO_PULSE_CHECK_SECONDS,
     PRELOAD_AUTO_PLAUSIBILITY_BASE_DELTA_LBS,
     PRELOAD_AUTO_PLAUSIBILITY_ENABLED,
     PRELOAD_AUTO_PLAUSIBILITY_LBS_PER_SECOND_AT_100,
@@ -118,19 +85,14 @@ from config import (
     PRELOAD_AUTO_POST_BAND_RECOVERY_MAX_LBS,
     PRELOAD_AUTO_PREDICT_LOOKAHEAD_SECONDS,
     PRELOAD_AUTO_PREDICT_ENABLE_LBS,
-    PRELOAD_AUTO_PREDICT_STOP_LBS,
     PRELOAD_AUTO_RATE_WINDOW_SECONDS,
-    PRELOAD_AUTO_SPEED_PERCENT,
     PRELOAD_AUTO_SCAN_VERIFY_SECONDS,
     PRELOAD_AUTO_STABLE_DELTA_LBS,
     PRELOAD_AUTO_STOP_DURING_LOAD_READ,
     PRELOAD_AUTO_STOP_JOUNCE_IGNORE_SECONDS,
     PRELOAD_AUTO_STABLE_WINDOW_SECONDS,
-    PRELOAD_AUTO_SETTLE_MAX_SECONDS,
-    PRELOAD_AUTO_SETTLE_SECONDS,
     PRELOAD_AUTO_TARGET_LBS,
     PRELOAD_AUTO_TIMEOUT_SECONDS,
-    PRELOAD_AUTO_TENSION_STAGES,
     PRELOAD_AUTO_TRACE_DIR,
     PRELOAD_AUTO_TRACE_MAX_ENTRIES,
     PRELOAD_GLIDE_ABORT_LBS,
@@ -173,7 +135,6 @@ from config import (
     PRELOAD_GLIDE_STABLE_S,
     PRELOAD_GLIDE_TARGET_LBS,
     PRELOAD_GLIDE_TIMEOUT_S,
-    PRELOAD_GLIDE_TOL_LBS,
     PRELOAD_GLIDE_WALL_LATCH,
     PRELOAD_HOLD_TRIM_DROP_RATE_LBS_PER_SECOND,
     PRELOAD_HOLD_TRIM_ENABLED,
@@ -184,7 +145,6 @@ from config import (
     PRELOAD_MIN_LBS,
     PRELOAD_READY_LATCH_MARGIN_LBS,
     PRELOAD_READY_LATCH_POSITIVE_MARGIN_LBS,
-    PRELOAD_STABILITY_SECONDS,
     PRELOAD_TARGET_LBS,
     PRELOAD_TOLERANCE_LBS,
     PULL_TARGET_IN_PER_MIN,
@@ -628,13 +588,13 @@ class QuadpodEngine:
         return ""
 
     def _auto_preload_loop(self):
+        # Legacy pulse mode was removed (audit P3). Glide and continuous are
+        # the only modes; any other configured value falls back to continuous
+        # (the default), so an unknown QUADPOD_PRELOAD_AUTO_MODE still runs.
         if PRELOAD_AUTO_MODE == "glide":
             self._auto_preload_glide_loop()
             return
-        if PRELOAD_AUTO_MODE == "continuous":
-            self._auto_preload_continuous_loop()
-            return
-        self._auto_preload_pulse_loop()
+        self._auto_preload_continuous_loop()
 
     def _glide_read(self):
         """One low-latency load-cell read for the glide loop (motor keeps moving)."""
@@ -1447,146 +1407,6 @@ class QuadpodEngine:
     def _auto_preload_continuous_poll_seconds(self):
         return max(0.01, float(PRELOAD_AUTO_CONTINUOUS_POLL_SECONDS))
 
-    def _auto_preload_pulse_loop(self):
-        deadline = time.monotonic() + PRELOAD_AUTO_TIMEOUT_SECONDS
-        stable_since = None
-        hold_should_start = False
-        try:
-            while time.monotonic() < deadline:
-                direction = None
-                pulse_seconds = 0.0
-                self._refresh_auto_preload_load()
-                with self.lock:
-                    if self.state.get("auto_preload_sensor_fault"):
-                        self._auto_preload_stop_actuator_locked()
-                        self.state["auto_preload_message"] = "Check tension"
-                        self._record_auto_preload_trace_locked(
-                            "sensor_fault_stop",
-                            load=self.state.get("current_load"),
-                        )
-                        break
-                    if self.auto_preload_cancel_requested or not self.state.get("auto_preload_running") or not self._owns_actuator_locked(self.auto_preload_epoch):
-                        self._auto_preload_stop_actuator_locked()
-                        self.state["auto_preload_message"] = "Check tension"
-                        self._record_auto_preload_trace_locked("cancelled", load=self.state.get("current_load"))
-                        break
-                    if self.state["test_running"]:
-                        self.state["auto_preload_message"] = "Check tension"
-                        self._record_auto_preload_trace_locked("cancelled", load=self.state.get("current_load"))
-                        break
-
-                    load = float(self.state.get("current_load") or 0.0)
-                    if load > PRELOAD_AUTO_ABORT_LBS:
-                        self._auto_preload_stop_actuator_locked()
-                        self.state["auto_preload_message"] = "Check tension"
-                        self._record_auto_preload_trace_locked("abort", load=load, abort_lbs=PRELOAD_AUTO_ABORT_LBS)
-                        break
-
-                    direction = self._auto_preload_direction_for_load(load)
-                    if direction is None:
-                        self._auto_preload_stop_actuator_locked()
-                        now = time.monotonic()
-                        in_band = PRELOAD_MIN_LBS <= load <= PRELOAD_MAX_LBS
-                        near_band_hold = self._auto_preload_near_band_hold_locked(load)
-                        if in_band:
-                            self.auto_preload_near_band_seen = True
-                        scan_ready = self._auto_preload_scan_ready_locked()
-                        ready = in_band and self._auto_preload_ready_locked() and scan_ready
-                        if in_band:
-                            if stable_since is None:
-                                stable_since = now
-                            if now - stable_since >= PRELOAD_AUTO_IN_BAND_END_SECONDS:
-                                self.state["auto_preload_message"] = "Ready" if ready else ""
-                                if ready:
-                                    self._set_preload_ready_latch_locked(load)
-                                self._record_auto_preload_trace_locked(
-                                    "in_band_complete",
-                                    load=load,
-                                    seconds=now - stable_since,
-                                    ready=ready,
-                                    short_stable=self.state.get("auto_preload_short_stable"),
-                                    drift_stable=self.state.get("auto_preload_drift_stable"),
-                                    drift_drop_lbs=self.state.get("auto_preload_drift_drop_lbs"),
-                                    scan_ready=scan_ready,
-                                    scan_load=self.state.get("scan_load"),
-                                    scan_window_s=self.state.get("scan_load_window_s"),
-                                )
-                                if ready:
-                                    hold_should_start = True
-                                    break
-                                stable_since = now
-                            self.state["auto_preload_message"] = "Settling"
-                        elif near_band_hold:
-                            stable_since = None
-                            self.state["auto_preload_message"] = "Settling"
-                            self._record_auto_preload_trace_locked(
-                                "near_band_hold",
-                                load=load,
-                                min_lbs=PRELOAD_MIN_LBS,
-                                margin_lbs=PRELOAD_AUTO_NEAR_BAND_HOLD_MARGIN_LBS,
-                            )
-                        else:
-                            stable_since = None
-                            self.state["auto_preload_message"] = "Settling"
-                    elif self._auto_preload_should_wait_for_settle_locked(load, direction):
-                        predicted_load = self._auto_preload_predicted_load_locked(load, direction)
-                        direction = None
-                        stable_since = None
-                        self._auto_preload_stop_actuator_locked()
-                        self.state["auto_preload_message"] = "Settling"
-                        self._record_auto_preload_trace_locked(
-                            "waiting_load_stable",
-                            load=load,
-                            rate_lbs_per_s=self._auto_preload_load_rate_locked(),
-                            predicted_load=predicted_load,
-                        )
-                    else:
-                        stage = self._auto_preload_stage_for_load(load, direction)
-                        stage = self._auto_preload_adjust_stage_for_slope_locked(stage, load, direction)
-                        pulse_seconds = stage["pulse_seconds"]
-                        self._move_preload_direction_locked(
-                            increase=direction, speed_percent=stage["speed_percent"]
-                        )
-                        if not self.state.get("test_running"):
-                            self.state["actuator_command"] = self.actuator.last_command
-                        stable_since = None
-                        self.state["auto_preload_message"] = stage["message"]
-
-                if direction is None:
-                    time.sleep(0.1)
-                    continue
-
-                if not self._run_auto_preload_pulse(direction, stage, deadline):
-                    break
-                self._wait_for_auto_preload_settle(
-                    deadline,
-                    coarse=stage.get("coarse", False),
-                    approach=stage.get("approach_settle", False),
-                    fast_contact=stage.get("fast_settle", False),
-                )
-            else:
-                with self.lock:
-                    self._auto_preload_stop_actuator_locked()
-                    self.state["auto_preload_message"] = "Check tension"
-                    self._record_auto_preload_trace_locked(
-                        "timeout",
-                        load=self.state.get("current_load"),
-                        seconds=PRELOAD_AUTO_TIMEOUT_SECONDS,
-                    )
-        finally:
-            with self.lock:
-                self._auto_preload_stop_actuator_locked()
-                self.load_cell.samples.clear()
-                self.state["auto_preload_running"] = False
-                if self.state.get("auto_preload_message", "") == "Ready":
-                    self.state["auto_preload_message"] = ""
-                if hold_should_start and not self.auto_preload_cancel_requested and self._owns_actuator_locked(self.auto_preload_epoch):
-                    self._start_preload_hold_locked()
-                self._record_auto_preload_trace_locked(
-                    "finish",
-                    load=self.state.get("current_load"),
-                    message=self.state.get("auto_preload_message"),
-                )
 
     def _reset_auto_preload_control_locked(self):
         self.auto_preload_coast_lbs = 0.0
@@ -1757,128 +1577,13 @@ class QuadpodEngine:
         self.state["stop_pending"] = False
         self.state["stop_pending_started_at"] = None
 
-    def _auto_preload_direction_for_load(self, load):
-        if self._auto_preload_near_band_hold_locked(load):
-            return None
-        if load < PRELOAD_MIN_LBS:
-            return True
-        if load > PRELOAD_MAX_LBS:
-            return False
-        return None
 
-    def _auto_preload_stage_for_load(self, load, increase):
-        if not increase:
-            return {
-                "coarse": False,
-                "max_delta_lbs": PRELOAD_AUTO_FINAL_MAX_DELTA_LBS,
-                "speed_percent": PRELOAD_AUTO_SPEED_PERCENT,
-                "pulse_seconds": self._auto_preload_down_pulse_seconds(),
-                "message": "Auto Tension",
-            }
 
-        for threshold, speed_percent, pulse_seconds in PRELOAD_AUTO_TENSION_STAGES:
-            if load < threshold:
-                coarse = self._auto_preload_coarse_active_locked(load, increase)
-                if self._auto_preload_contact_mode_active_locked(load):
-                    return {
-                        "coarse": False,
-                        "contact": True,
-                        "fast_settle": load < PRELOAD_AUTO_COARSE_UNTIL_LBS,
-                        "approach_settle": load < PRELOAD_AUTO_APPROACH_SETTLE_UNTIL_LBS,
-                        "max_delta_lbs": PRELOAD_AUTO_CONTACT_MAX_DELTA_LBS,
-                        "speed_percent": min(speed_percent, PRELOAD_AUTO_CONTACT_SPEED_PERCENT),
-                        "pulse_seconds": max(
-                            PRELOAD_AUTO_MIN_PULSE_SECONDS,
-                            min(self._auto_preload_configured_pulse_seconds(pulse_seconds), PRELOAD_AUTO_CONTACT_PULSE_SECONDS),
-                        ),
-                        "message": "Auto Tension",
-                    }
-                if self._auto_preload_contact_coarse_active_locked(load, increase):
-                    return {
-                        "coarse": True,
-                        "contact_coarse": True,
-                        "fast_settle": True,
-                        "approach_settle": load < PRELOAD_AUTO_APPROACH_SETTLE_UNTIL_LBS,
-                        "max_delta_lbs": PRELOAD_AUTO_CONTACT_COARSE_MAX_DELTA_LBS,
-                        "speed_percent": min(speed_percent, PRELOAD_AUTO_CONTACT_COARSE_SPEED_PERCENT),
-                        "pulse_seconds": max(
-                            PRELOAD_AUTO_MIN_PULSE_SECONDS,
-                            min(
-                                self._auto_preload_configured_pulse_seconds(pulse_seconds),
-                                PRELOAD_AUTO_CONTACT_COARSE_PULSE_SECONDS,
-                            ),
-                        ),
-                        "message": "Auto Tension",
-                    }
-                return {
-                    "coarse": coarse,
-                    "approach_settle": load < PRELOAD_AUTO_APPROACH_SETTLE_UNTIL_LBS,
-                    "max_delta_lbs": self._auto_preload_max_delta_lbs(load, coarse),
-                    "speed_percent": speed_percent,
-                    "pulse_seconds": self._auto_preload_configured_pulse_seconds(pulse_seconds),
-                    "message": "Auto Tension",
-                }
 
-        return {
-            "coarse": False,
-            "approach_settle": False,
-            "max_delta_lbs": PRELOAD_AUTO_FINAL_MAX_DELTA_LBS,
-            "speed_percent": PRELOAD_AUTO_SPEED_PERCENT,
-            "pulse_seconds": self._auto_preload_pulse_seconds(),
-            "message": "Auto Tension",
-        }
 
-    def _auto_preload_coarse_active_locked(self, load, increase):
-        return bool(increase and load < PRELOAD_AUTO_COARSE_UNTIL_LBS)
 
-    def _auto_preload_contact_mode_active_locked(self, load):
-        return bool(self.auto_preload_contact_detected and load >= PRELOAD_AUTO_CONTACT_MODE_START_LBS)
 
-    def _auto_preload_contact_coarse_active_locked(self, load, increase):
-        return bool(
-            increase
-            and self.auto_preload_contact_detected
-            and load < PRELOAD_AUTO_CONTACT_MODE_START_LBS
-        )
 
-    def _auto_preload_near_band_hold_locked(self, load):
-        return bool(
-            self.auto_preload_near_band_seen
-            and PRELOAD_MIN_LBS - PRELOAD_AUTO_NEAR_BAND_HOLD_MARGIN_LBS <= load < PRELOAD_MIN_LBS
-        )
-
-    def _auto_preload_should_wait_for_settle_locked(self, load, increase):
-        if self._auto_preload_coarse_active_locked(load, increase):
-            return False
-        if self._auto_preload_load_stable_locked():
-            return False
-        if not increase:
-            return True
-        if self._auto_preload_negative_jump_hold_locked(load):
-            return True
-
-        predicted_load = self._auto_preload_predicted_load_locked(load, increase)
-        if predicted_load >= PRELOAD_MIN_LBS:
-            self.auto_preload_near_band_seen = True
-            self._record_auto_preload_trace_locked(
-                "predicted_settle_hold",
-                load=load,
-                predicted_load=predicted_load,
-                min_lbs=PRELOAD_MIN_LBS,
-                rate_lbs_per_s=self._auto_preload_load_rate_locked(),
-            )
-            return True
-
-        distance_to_band = PRELOAD_MIN_LBS - float(load)
-        return bool(
-            distance_to_band <= PRELOAD_AUTO_APPROACH_DISTANCE_LBS
-            and self._auto_preload_load_rate_locked() >= PRELOAD_AUTO_MAX_RISE_RATE_LBS_PER_SECOND
-        )
-
-    def _auto_preload_predicted_load_locked(self, load, increase=True):
-        rate = self._auto_preload_load_rate_locked()
-        stop_margin = self._auto_preload_stop_margin_locked() if increase else 0.0
-        return float(load) + max(0.0, rate) * PRELOAD_AUTO_PREDICT_LOOKAHEAD_SECONDS + stop_margin
 
     def _auto_preload_continuous_predicted_load_locked(self, load, rate, speed_percent):
         speed_margin = (max(0.0, float(speed_percent)) / 100.0) * PRELOAD_AUTO_CONTINUOUS_BRAKE_MARGIN_LBS
@@ -2138,212 +1843,13 @@ class QuadpodEngine:
         )
         return True
 
-    def _auto_preload_max_delta_lbs(self, load, coarse):
-        if coarse:
-            return PRELOAD_AUTO_COARSE_MAX_DELTA_LBS
-        if load < PRELOAD_MIN_LBS:
-            return PRELOAD_AUTO_APPROACH_MAX_DELTA_LBS
-        return PRELOAD_AUTO_FINAL_MAX_DELTA_LBS
 
-    def _auto_preload_adjust_stage_for_slope_locked(self, stage, load, increase):
-        if not increase or stage.get("coarse"):
-            return stage
 
-        rate = max(0.0, self._auto_preload_load_rate_locked())
-        stop_margin = self._auto_preload_stop_margin_locked()
-        distance_to_band = max(0.0, PRELOAD_MIN_LBS - float(load))
-        should_adapt = (
-            rate >= PRELOAD_AUTO_MAX_RISE_RATE_LBS_PER_SECOND
-            or distance_to_band <= PRELOAD_AUTO_APPROACH_DISTANCE_LBS + stop_margin
-            or self.auto_preload_coast_lbs > PRELOAD_AUTO_MIN_STOP_MARGIN_LBS
-        )
-        if not should_adapt:
-            return stage
 
-        adjusted = dict(stage)
-        scale = 1.0
-        if distance_to_band > 0:
-            scale = min(scale, max(PRELOAD_AUTO_ADAPTIVE_PULSE_MIN_SCALE, distance_to_band / (distance_to_band + stop_margin)))
-        if rate >= PRELOAD_AUTO_MAX_RISE_RATE_LBS_PER_SECOND:
-            scale = min(scale, 0.5)
-        if self.auto_preload_coast_lbs > PRELOAD_AUTO_MIN_STOP_MARGIN_LBS:
-            scale = min(scale, max(PRELOAD_AUTO_ADAPTIVE_PULSE_MIN_SCALE, 1.0 - (self.auto_preload_coast_lbs * 0.5)))
 
-        adjusted["pulse_seconds"] = max(PRELOAD_AUTO_MIN_PULSE_SECONDS, float(stage["pulse_seconds"]) * scale)
-        adjusted["speed_percent"] = max(
-            PRELOAD_AUTO_ADAPTIVE_SPEED_MIN_PERCENT,
-            int(round(float(stage["speed_percent"]) * max(0.5, scale))),
-        )
-        adjusted["max_delta_lbs"] = min(float(stage.get("max_delta_lbs") or PRELOAD_AUTO_FINAL_MAX_DELTA_LBS), PRELOAD_AUTO_FINAL_MAX_DELTA_LBS)
-        adjusted["adapted"] = True
-        adjusted["stop_margin_lbs"] = stop_margin
-        adjusted["rate_lbs_per_s"] = rate
-        adjusted["message"] = "Auto Tension"
-        self._record_auto_preload_trace_locked(
-            "stage_adapted",
-            load=load,
-            rate_lbs_per_s=rate,
-            stop_margin_lbs=stop_margin,
-            scale=scale,
-            speed_percent=adjusted["speed_percent"],
-            pulse_seconds=adjusted["pulse_seconds"],
-            coast_lbs=self.auto_preload_coast_lbs,
-        )
-        return adjusted
 
-    def _auto_preload_stop_margin_locked(self):
-        learned_margin = max(0.0, self.auto_preload_coast_lbs) * PRELOAD_AUTO_COAST_MARGIN_SCALE
-        return min(
-            PRELOAD_AUTO_MAX_STOP_MARGIN_LBS,
-            max(PRELOAD_AUTO_MIN_STOP_MARGIN_LBS, learned_margin),
-        )
 
-    def _auto_preload_configured_pulse_seconds(self, pulse_seconds):
-        return max(PRELOAD_AUTO_MIN_PULSE_SECONDS, float(pulse_seconds))
 
-    def _auto_preload_down_pulse_seconds(self):
-        return max(PRELOAD_AUTO_MIN_PULSE_SECONDS, PRELOAD_AUTO_DOWN_PULSE_SECONDS)
-
-    def _auto_preload_pulse_seconds(self):
-        return max(PRELOAD_AUTO_MIN_PULSE_SECONDS, PRELOAD_AUTO_PULSE_SECONDS)
-
-    def _run_auto_preload_pulse(self, increase, stage, deadline):
-        pulse_seconds = stage["pulse_seconds"]
-        max_delta_lbs = max(0.0, float(stage.get("max_delta_lbs") or 0.0))
-        end_time = min(time.monotonic() + pulse_seconds, deadline)
-        check_interval = max(0.005, PRELOAD_AUTO_PULSE_CHECK_SECONDS)
-        with self.lock:
-            start_load = float(self.state.get("current_load") or 0.0)
-            self._record_auto_preload_trace_locked(
-                "pulse_start",
-                load=start_load,
-                increase=increase,
-                speed_percent=stage.get("speed_percent"),
-                pulse_seconds=pulse_seconds,
-                max_delta_lbs=max_delta_lbs,
-                coarse=stage.get("coarse", False),
-                contact=stage.get("contact", False),
-                contact_coarse=stage.get("contact_coarse", False),
-            )
-        try:
-            while time.monotonic() < end_time:
-                with self.lock:
-                    if self.state.get("test_running"):
-                        self.state["auto_preload_message"] = "Check tension"
-                        self._record_auto_preload_trace_locked(
-                            "pulse_cancelled",
-                            load=self.state.get("current_load"),
-                        )
-                        return False
-                time.sleep(min(check_interval, max(0.0, end_time - time.monotonic())))
-
-            with self.lock:
-                self._auto_preload_stop_actuator_locked()
-            self._refresh_auto_preload_load()
-
-            with self.lock:
-                if self.state.get("auto_preload_sensor_fault"):
-                    self.state["auto_preload_message"] = "Check tension"
-                    self._record_auto_preload_trace_locked(
-                        "pulse_sensor_fault",
-                        load=self.state.get("current_load"),
-                    )
-                    return False
-                load = float(self.state.get("current_load") or 0.0)
-                rate = self._auto_preload_load_rate_locked()
-                stop_margin = self._auto_preload_stop_margin_locked() if increase else 0.0
-                predicted_load = load + max(0.0, rate) * PRELOAD_AUTO_PREDICT_LOOKAHEAD_SECONDS + stop_margin
-                if load > PRELOAD_AUTO_ABORT_LBS:
-                    self.state["auto_preload_message"] = "Check tension"
-                    self._record_auto_preload_trace_locked(
-                        "pulse_abort",
-                        load=load,
-                        abort_lbs=PRELOAD_AUTO_ABORT_LBS,
-                    )
-                    return False
-                if increase:
-                    delta_lbs = load - start_load
-                    self._auto_preload_note_contact_locked(delta_lbs, load)
-                    if load > PRELOAD_MAX_LBS:
-                        self.auto_preload_near_band_seen = True
-                        self.state["auto_preload_message"] = "Settling"
-                        self._record_auto_preload_trace_locked(
-                            "pulse_stop_above_band",
-                            load=load,
-                            max_lbs=PRELOAD_MAX_LBS,
-                            rate_lbs_per_s=rate,
-                            predicted_load=predicted_load,
-                        )
-                        self._remember_auto_preload_stop_locked(load, increase)
-                        return True
-                    if load >= PRELOAD_MIN_LBS:
-                        self.auto_preload_near_band_seen = True
-                        self.state["auto_preload_message"] = "Settling"
-                        self._record_auto_preload_trace_locked(
-                            "pulse_stop_allowed_band",
-                            load=load,
-                            min_lbs=PRELOAD_MIN_LBS,
-                            max_lbs=PRELOAD_MAX_LBS,
-                            rate_lbs_per_s=rate,
-                            predicted_load=predicted_load,
-                        )
-                        self._remember_auto_preload_stop_locked(load, increase)
-                        return True
-                    if predicted_load >= PRELOAD_AUTO_PREDICT_STOP_LBS:
-                        self.auto_preload_near_band_seen = True
-                        self.state["auto_preload_message"] = "Settling"
-                        self._record_auto_preload_trace_locked(
-                            "pulse_stop_predicted",
-                            load=load,
-                            rate_lbs_per_s=rate,
-                            predicted_load=predicted_load,
-                            predict_stop_lbs=PRELOAD_AUTO_PREDICT_STOP_LBS,
-                        )
-                        self._remember_auto_preload_stop_locked(load, increase)
-                        return True
-                    if not stage.get("coarse") and rate >= PRELOAD_AUTO_MAX_RISE_RATE_LBS_PER_SECOND:
-                        self.state["auto_preload_message"] = "Settling"
-                        self._record_auto_preload_trace_locked(
-                            "pulse_stop_fast_rise",
-                            load=load,
-                            rate_lbs_per_s=rate,
-                            stop_margin_lbs=stop_margin,
-                            predicted_load=predicted_load,
-                        )
-                        self._remember_auto_preload_stop_locked(load, increase)
-                        return True
-                    if max_delta_lbs and delta_lbs >= max_delta_lbs:
-                        self.state["auto_preload_message"] = "Settling"
-                        self._record_auto_preload_trace_locked(
-                            "pulse_stop_delta",
-                            load=load,
-                            start_load=start_load,
-                            delta_lbs=delta_lbs,
-                            max_delta_lbs=max_delta_lbs,
-                        )
-                        self._remember_auto_preload_stop_locked(load, increase)
-                        return True
-
-                self._record_auto_preload_trace_locked(
-                    "pulse_complete",
-                    load=self.state.get("current_load"),
-                    increase=increase,
-                    pulse_seconds=pulse_seconds,
-                )
-            return True
-        finally:
-            with self.lock:
-                self._auto_preload_stop_actuator_locked()
-
-    def _auto_preload_note_contact_locked(self, delta_lbs, load):
-        if self.auto_preload_contact_detected or delta_lbs < PRELOAD_AUTO_CONTACT_DELTA_LBS:
-            return
-        self.auto_preload_contact_detected = True
-        self._record_auto_preload_trace_locked(
-            "contact_detected",
-            delta_lbs=delta_lbs,
-            load=load,
-        )
 
     def _refresh_auto_preload_load(self, control_speed_percent=0.0, control_direction=None):
         if not PRELOAD_AUTO_DIRECT_LOAD_READ:
@@ -2614,114 +2120,9 @@ class QuadpodEngine:
         ordered = sorted(values)
         return ordered[len(ordered) // 2]
 
-    def _wait_for_auto_preload_settle(self, deadline, coarse=False, approach=False, fast_contact=False):
-        if coarse:
-            settle_seconds = PRELOAD_AUTO_COARSE_SETTLE_SECONDS
-            max_seconds = PRELOAD_AUTO_COARSE_SETTLE_MAX_SECONDS
-            settle_delta = PRELOAD_AUTO_STABLE_DELTA_LBS
-        elif approach:
-            settle_seconds = PRELOAD_AUTO_APPROACH_SETTLE_SECONDS
-            max_seconds = PRELOAD_AUTO_APPROACH_SETTLE_MAX_SECONDS
-            settle_delta = PRELOAD_AUTO_APPROACH_SETTLE_DELTA_LBS
-        elif fast_contact:
-            settle_seconds = PRELOAD_AUTO_CONTACT_SETTLE_SECONDS
-            max_seconds = PRELOAD_AUTO_CONTACT_SETTLE_MAX_SECONDS
-            settle_delta = PRELOAD_AUTO_STABLE_DELTA_LBS
-        else:
-            settle_seconds = PRELOAD_AUTO_SETTLE_SECONDS
-            max_seconds = PRELOAD_AUTO_SETTLE_MAX_SECONDS
-            settle_delta = PRELOAD_AUTO_STABLE_DELTA_LBS
-        started = time.monotonic()
-        with self.lock:
-            self._record_auto_preload_trace_locked(
-                "settle_start",
-                load=self.state.get("current_load"),
-                coarse=coarse,
-                approach=approach,
-                fast_contact=fast_contact,
-                settle_seconds=settle_seconds,
-                max_seconds=max_seconds,
-                settle_delta_lbs=settle_delta,
-            )
-        while time.monotonic() < deadline:
-            elapsed = time.monotonic() - started
-            with self.lock:
-                stable_window = settle_seconds if approach else None
-                stable = self._auto_preload_load_stable_locked(delta_lbs=settle_delta, window_seconds=stable_window)
-                rate = self._auto_preload_load_rate_locked()
-            if (coarse or fast_contact) and elapsed >= max(0.0, settle_seconds):
-                if rate <= PRELOAD_AUTO_MAX_RISE_RATE_LBS_PER_SECOND:
-                    with self.lock:
-                        self._update_auto_preload_coast_locked()
-                        self._record_auto_preload_trace_locked(
-                            "settle_done",
-                            load=self.state.get("current_load"),
-                            coarse=coarse,
-                            approach=approach,
-                            fast_contact=fast_contact,
-                            elapsed_s=elapsed,
-                            stable=stable,
-                            rate_lbs_per_s=rate,
-                            reason="fast_rate",
-                        )
-                    return
-            if elapsed >= settle_seconds and stable:
-                with self.lock:
-                    self._update_auto_preload_coast_locked()
-                    self._record_auto_preload_trace_locked(
-                        "settle_done",
-                        load=self.state.get("current_load"),
-                        coarse=coarse,
-                        approach=approach,
-                        fast_contact=fast_contact,
-                        elapsed_s=elapsed,
-                        stable=stable,
-                        rate_lbs_per_s=rate,
-                        reason="stable",
-                    )
-                return
-            if elapsed >= max_seconds:
-                with self.lock:
-                    self._update_auto_preload_coast_locked()
-                    self._record_auto_preload_trace_locked(
-                        "settle_done",
-                        load=self.state.get("current_load"),
-                        coarse=coarse,
-                        approach=approach,
-                        fast_contact=fast_contact,
-                        elapsed_s=elapsed,
-                        stable=stable,
-                        rate_lbs_per_s=rate,
-                        reason="max_wait",
-                    )
-                return
-            time.sleep(0.05)
 
-    def _remember_auto_preload_stop_locked(self, load, increase):
-        self.auto_preload_last_stop_load = float(load)
-        self.auto_preload_last_stop_increase = bool(increase)
 
-    def _update_auto_preload_coast_locked(self):
-        if self.auto_preload_last_stop_load is None or not self.auto_preload_last_stop_increase:
-            return 0.0
-        load = float(self.state.get("current_load") or 0.0)
-        coast = max(0.0, load - self.auto_preload_last_stop_load)
-        self.auto_preload_coast_lbs = (self.auto_preload_coast_lbs * 0.5) + (coast * 0.5)
-        self._record_auto_preload_trace_locked(
-            "coast_measured",
-            stop_load=self.auto_preload_last_stop_load,
-            load=load,
-            coast_lbs=coast,
-            learned_coast_lbs=self.auto_preload_coast_lbs,
-        )
-        self.auto_preload_last_stop_load = None
-        self.auto_preload_last_stop_increase = None
-        return coast
 
-    def _move_auto_preload_direction_locked(self, increase):
-        return self._move_preload_direction_locked(
-            increase=increase, speed_percent=PRELOAD_AUTO_SPEED_PERCENT
-        )
 
     def _move_preload_direction_locked(self, increase, speed_percent):
         if self.state.get("test_running"):
