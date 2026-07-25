@@ -714,9 +714,14 @@ class QuadpodEngine:
                     at_rest = (not moving) and vel <= min_move * 0.5
 
                     if load > overshoot_lbs:
-                        # Genuinely above 0 (past the noise band): overshoot. Ease
-                        # and let the compliant string relax back down; if it can't
-                        # within relax_s, fail so a ruined pull is flagged.
+                        # Above 0 (past the noise band): a transient overshoot on
+                        # this compliant rig. Ease to neutral and let the string
+                        # relax, then JUDGE BY WHERE IT SETTLES, not the transient
+                        # peak: fail only if it comes to rest and stops ringing
+                        # while STILL above 0 (genuine over-tension). If instead it
+                        # relaxes back into the seated band, the branch below latches
+                        # Ready. The overall glide timeout backstops a load that
+                        # never settles.
                         in_band_since = None
                         desired = 0.0
                         if over_since is None:
@@ -724,7 +729,14 @@ class QuadpodEngine:
                             self._record_auto_preload_trace_locked(
                                 "glide_overshoot", load=load, raw=raw, overshoot_lbs=overshoot_lbs
                             )
-                        if now - over_since >= relax_s:
+                        over_vals = [v for t, v in recent if t >= over_since]
+                        settled_over = (
+                            at_rest
+                            and now - over_since >= relax_s
+                            and len(over_vals) >= 3
+                            and (max(over_vals) - min(over_vals)) <= stable_lbs
+                        )
+                        if settled_over:
                             self._auto_preload_stop_actuator_locked()
                             self.state["auto_preload_message"] = "Check tension"
                             self._record_auto_preload_trace_locked(
