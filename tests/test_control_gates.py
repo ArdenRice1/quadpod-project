@@ -26,6 +26,10 @@ class ControlGateTests(unittest.TestCase):
         storage.DATABASE_PATH = str(self.root / "quadpod.db")
         storage.init_db()
         self.engine = QuadpodEngine(use_mock=True)
+        # Tests run on mock hardware; allow simulated pulls (the real safety gate
+        # is verified by test_start_rejects_simulated_mode).
+        self.original_allow_sim = engine_module.ALLOW_SIMULATED_TESTS
+        engine_module.ALLOW_SIMULATED_TESTS = True
         self.original_drift_window = engine_module.PRELOAD_AUTO_DRIFT_WINDOW_SECONDS
         self.original_direct_load_read = engine_module.PRELOAD_AUTO_DIRECT_LOAD_READ
         self.original_in_band_end = engine_module.PRELOAD_AUTO_IN_BAND_END_SECONDS
@@ -52,6 +56,7 @@ class ControlGateTests(unittest.TestCase):
 
     def tearDown(self):
         self.engine.stop("test cleanup")
+        engine_module.ALLOW_SIMULATED_TESTS = self.original_allow_sim
         engine_module.PRELOAD_AUTO_DRIFT_WINDOW_SECONDS = self.original_drift_window
         engine_module.PRELOAD_AUTO_DIRECT_LOAD_READ = self.original_direct_load_read
         engine_module.PRELOAD_AUTO_IN_BAND_END_SECONDS = self.original_in_band_end
@@ -187,8 +192,14 @@ class ControlGateTests(unittest.TestCase):
         self.assertEqual(self.engine._stop_reason_locked(5.0, 1.0), "load cell fault")
 
     def test_stop_reason_max_force(self):
+        # MAX_FORCE now trips on the CURRENT load held at/above the limit for the
+        # debounce count (not a latched peak), so a lone spike can't false-trip it.
         self._prime_pull(peak=engine_module.MAX_FORCE_LBS)
-        self.assertEqual(self.engine._stop_reason_locked(10.0, 1.0), "maximum force limit")
+        self.engine.max_force_samples = 0
+        limit = engine_module.MAX_FORCE_LBS
+        for _ in range(max(1, engine_module.MAX_FORCE_CONFIRM_SAMPLES) - 1):
+            self.assertEqual(self.engine._stop_reason_locked(limit, 1.0), "")
+        self.assertEqual(self.engine._stop_reason_locked(limit, 1.0), "maximum force limit")
 
     def test_stop_reason_max_time(self):
         self._prime_pull(peak=5.0)
@@ -1495,6 +1506,33 @@ class ControlGateTests(unittest.TestCase):
         ok, message = self.engine.start_pull(self.test_id)
         self.assertFalse(ok)
         self.assertIn("80 and 100", message)
+
+    def test_start_rejects_simulated_mode(self):
+        # A real unit must refuse to run a pull while on mock hardware.
+        engine_module.ALLOW_SIMULATED_TESTS = False
+        self._set_load(-0.10)
+        ok, message = self.engine.start_pull(self.test_id)
+        self.assertFalse(ok)
+        self.assertIn("SIMULATION", message)
+
+    def test_max_force_stop_is_debounced(self):
+        # A lone spike at/above MAX_FORCE must not trip; consecutive samples do.
+        self.engine.last_client_poll = time.monotonic()
+        self.engine.max_force_samples = 0
+        limit = engine_module.MAX_FORCE_LBS
+        n = max(1, engine_module.MAX_FORCE_CONFIRM_SAMPLES)
+        for _ in range(n - 1):
+            self.assertEqual(self.engine._stop_reason_locked(limit, 1.0), "")
+        self.assertEqual(self.engine._stop_reason_locked(limit, 1.0), "maximum force limit")
+        # a below-limit reading resets the debounce counter
+        self.engine.max_force_samples = 0
+        self.assertEqual(self.engine._stop_reason_locked(0.0, 1.0), "")
+
+    def test_client_disconnect_watchdog(self):
+        self.engine.last_client_poll = time.monotonic()
+        self.assertFalse(self.engine._client_disconnected_locked())
+        self.engine.last_client_poll = time.monotonic() - (engine_module.DISCONNECT_STOP_SECONDS + 1.0)
+        self.assertTrue(self.engine._client_disconnected_locked())
 
     def test_start_accepts_recorded_past_calibration_dates(self):
         storage.update_job(

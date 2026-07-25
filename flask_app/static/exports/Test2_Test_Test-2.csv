@@ -1,0 +1,122 @@
+APEC Quadpod Test Record,
+Software Version,0.3.0-field
+Job ID,4
+Test ID,17
+
+Job Information,
+Field,Value
+Project Name,Test2
+Job #,Test
+Address,13805 N CR 1500
+Date,2026-07-03
+Foreman,VDW
+
+Equipment,
+Field,Value
+Load Cell #,1
+Load Cell Calibration Date,2026-07-03
+IR Temp. Gun #,1
+IR Temp. Gun Calibration Date,2026-07-03
+
+Weather & Safety,
+Field,Value
+
+
+Test Information,
+Field,Value
+Test #,2
+Test Area,big
+Roof Area,33
+Angle,81.1
+Shingle Type,Three tab
+Air Temp. (F),23
+Roof Temp. (F),23
+Wind Speed & Direction,3
+Evidence of Wind Lift,f
+Nail Size / Placement Notes,f
+
+Site / Photo Checklist,
+Field,Value
+
+Results,
+Field,Value
+Started At,2026-07-05T22:01:05Z
+Completed At,2026-07-05T22:01:24Z
+Initial Preload (lbs),-0.231
+Max Load Value (lbs),34.476
+Stop Reason,confirmed load drop/failure
+Sample Count,47
+
+Samples
+Timestamp,Elapsed Seconds,Sample #,Force (lbs)
+2026-07-05T22:01:05Z,0.110518,1,-0.232
+2026-07-05T22:01:06Z,0.485437,2,-0.226
+2026-07-05T22:01:06Z,0.903466,3,-0.199
+2026-07-05T22:01:06Z,1.322465,4,-0.153
+2026-07-05T22:01:07Z,1.739521,5,-0.107
+2026-07-05T22:01:07Z,2.157551,6,-0.061
+2026-07-05T22:01:08Z,2.575567,7,-0.019
+2026-07-05T22:01:08Z,2.993597,8,0.0
+2026-07-05T22:01:08Z,3.411629,9,0.0
+2026-07-05T22:01:09Z,3.829638,10,0.001
+2026-07-05T22:01:09Z,4.247676,11,0.002
+2026-07-05T22:01:10Z,4.665756,12,0.002
+2026-07-05T22:01:10Z,5.08377,13,0.049
+2026-07-05T22:01:11Z,5.501811,14,3.007
+2026-07-05T22:01:11Z,5.919837,15,8.237
+2026-07-05T22:01:11Z,6.337843,16,14.599
+2026-07-05T22:01:12Z,6.755872,17,20.857
+2026-07-05T22:01:12Z,7.17393,18,27.259
+2026-07-05T22:01:13Z,7.59196,19,31.146
+2026-07-05T22:01:13Z,8.010005,20,32.816
+2026-07-05T22:01:13Z,8.42806,21,33.534
+2026-07-05T22:01:14Z,8.846076,22,34.476
+2026-07-05T22:01:14Z,9.264106,23,30.887
+2026-07-05T22:01:15Z,9.682176,24,24.044
+2026-07-05T22:01:15Z,10.100202,25,17.142
+2026-07-05T22:01:16Z,10.51823,26,10.055
+2026-07-05T22:01:16Z,10.93628,27,2.85
+2026-07-05T22:01:16Z,11.354345,28,-0.013
+2026-07-05T22:01:17Z,11.772395,29,-0.014
+2026-07-05T22:01:17Z,12.190438,30,-0.019
+2026-07-05T22:01:18Z,12.608493,31,-0.019
+2026-07-05T22:01:18Z,13.026533,32,-0.019
+2026-07-05T22:01:18Z,13.444578,33,-0.02
+2026-07-05T22:01:19Z,13.862621,34,-0.022
+2026-07-05T22:01:19Z,14.280683,35,-0.019
+2026-07-05T22:01:20Z,14.698729,36,-0.019
+2026-07-05T22:01:20Z,15.116798,37,-0.02
+2026-07-05T22:01:21Z,15.534879,38,-0.021
+2026-07-05T22:01:21Z,15.952932,39,-0.026
+2026-07-05T22:01:21Z,16.370993,40,-0.029
+2026-07-05T22:01:22Z,16.78904,41,-0.031
+2026-07-05T22:01:22Z,17.207056,42,-0.032
+2026-07-05T22:01:23Z,17.625109,43,-0.033
+2026-07-05T22:01:23Z,18.04309,44,-0.031
+2026-07-05T22:01:23Z,18.461116,45,-0.03
+2026-07-05T22:01:24Z,18.87908,46,-0.028
+2026-07-05T22:01:24Z,19.297104,47,-0.027
+
+Deviation Record,
+Field,Value
+Any deviations from standard method?,yes
+Description of Deviation,test
+Effect on Uncertainty,yes
+Approved By,ayden
+Approved Date,2026-07-15
+
+
+Machine Settings
+App Version,0.3.0-field
+Victor Pull Us,1850
+Pull Direction,up
+Pull Target In Per Min,5.0
+Preload Target Lbs,0.0
+Preload Min Lbs,-0.25
+Preload Max Lbs,0.25
+Preload Tolerance Lbs,0.25
+Loadcell Reference Unit,10077.0
+Failure Drop Lbs,12.0
+Failure Drop Percent,0.35
+Failure Confirm Samples,8
+Failure Min Peak Lbs,20.0

@@ -1,4 +1,5 @@
 import os
+import secrets
 import sys
 from pathlib import Path
 
@@ -11,7 +12,37 @@ PHOTO_DIR = APP_DIR / "static" / "photos"
 USB_EXPORT_ROOT = os.getenv("QUADPOD_USB_EXPORT_ROOT", "")
 
 APP_VERSION = "0.3.0-field"
-SECRET_KEY = os.getenv("QUADPOD_SECRET_KEY", "change-this-on-the-pi")
+
+
+def _load_or_create_secret_key():
+    """A stable, non-default Flask secret. Prefer the env var; otherwise persist
+    a random key under DATA_DIR so sessions/CSRF survive restarts. NEVER fall back
+    to a constant default -- on a device joined to a customer LAN a known key lets
+    any peer forge a session/CSRF token and drive the actuator or delete data."""
+    env = os.getenv("QUADPOD_SECRET_KEY")
+    if env and env != "change-this-on-the-pi":
+        return env
+    key_path = DATA_DIR / "secret_key"
+    try:
+        if key_path.is_file():
+            existing = key_path.read_text(encoding="utf-8").strip()
+            if existing:
+                return existing
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        key = secrets.token_urlsafe(48)
+        key_path.write_text(key, encoding="utf-8")
+        try:
+            os.chmod(key_path, 0o600)
+        except OSError:
+            pass
+        return key
+    except OSError:
+        # Read-only FS fallback: a per-boot random key (sessions won't survive a
+        # restart, but it is never the shared default).
+        return secrets.token_urlsafe(48)
+
+
+SECRET_KEY = _load_or_create_secret_key()
 
 
 def env_bool(name, default=False):
@@ -49,6 +80,10 @@ def env_int(name, default):
 
 
 USE_MOCK_HARDWARE = env_bool("QUADPOD_MOCK_HARDWARE", True)
+# Safety gate: a real unit must NOT run a pull in simulation/uncalibrated state
+# (a misconfigured/re-imaged Pi with no env boots into mock + reference_unit=1.0
+# and would otherwise certify scripted forces as real). Set 1 only for bench/CI.
+ALLOW_SIMULATED_TESTS = env_bool("QUADPOD_ALLOW_SIMULATED_TESTS", False)
 DATABASE_PATH = os.getenv("QUADPOD_DATABASE", str(DATA_DIR / "quadpod.db"))
 
 # HX711 load cell pins and calibration.
@@ -74,6 +109,10 @@ LOADCELL_LIVENESS_WINDOW = env_int("QUADPOD_LOADCELL_LIVENESS_WINDOW", 24)
 # change is never permanently blocked. Real motion is <=~2.4 lb/sample.
 LOADCELL_GLITCH_REJECT = env_bool("QUADPOD_LOADCELL_GLITCH_REJECT", True)
 LOADCELL_GLITCH_MAX_JUMP_LBS = env_float("QUADPOD_LOADCELL_GLITCH_MAX_JUMP_LBS", 3.5)
+# During a pull, keep desync rejection but with a wider jump tolerance so a real
+# fast force change passes while an impossible HX711 desync jump is still caught
+# (a real pull ramps << this per sample; a desync jumps ~100 lb and reverts).
+LOADCELL_PULL_GLITCH_MAX_JUMP_LBS = env_float("QUADPOD_LOADCELL_PULL_GLITCH_MAX_JUMP_LBS", 10.0)
 LOADCELL_GLITCH_MAX_CONSECUTIVE = env_int("QUADPOD_LOADCELL_GLITCH_MAX_CONSECUTIVE", 3)
 # A sustained glitch (HX711 channel desync) persists for many reads and would
 # defeat the jump filter (it eventually accepts the bad value). On a sustained
@@ -398,6 +437,9 @@ FAILURE_DROP_PERCENT = env_float("QUADPOD_FAILURE_DROP_PERCENT", 0.35)
 FAILURE_CONFIRM_SAMPLES = env_int("QUADPOD_FAILURE_CONFIRM_SAMPLES", 8)
 FAILURE_MIN_PEAK_LBS = env_float("QUADPOD_FAILURE_MIN_PEAK_LBS", 20.0)
 MAX_FORCE_LBS = env_float("QUADPOD_MAX_FORCE_LBS", 400.0)
+# Debounce the MAX_FORCE safety stop: require the force to stay at/above the
+# limit for a few consecutive samples so a lone sensor spike can't false-trip it.
+MAX_FORCE_CONFIRM_SAMPLES = env_int("QUADPOD_MAX_FORCE_CONFIRM_SAMPLES", 3)
 MAX_TEST_SECONDS = env_float("QUADPOD_MAX_TEST_SECONDS", 300.0)
 DISCONNECT_STOP_SECONDS = env_float("QUADPOD_DISCONNECT_STOP_SECONDS", 3.0)
 LOAD_STABLE_WINDOW_SECONDS = env_float("QUADPOD_LOAD_STABLE_WINDOW_SECONDS", 1.5)

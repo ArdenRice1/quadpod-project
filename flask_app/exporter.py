@@ -509,8 +509,19 @@ def export_job_folder(job_id, root_dir):
     return folder
 
 
+class NoUsbError(Exception):
+    """Raised when a real removable USB target could not be found/written."""
+
+
 def copy_job_to_usb(job_id):
-    folder = export_job_folder(job_id, _usb_root())
+    root = _usb_root(require_removable=True)
+    if root is None:
+        # Do NOT silently fall back to the Pi's own SD and report success --
+        # the operator would leave the roof believing data is on the stick.
+        raise NoUsbError(
+            "No writable USB drive found. Insert a FAT/exFAT USB stick and try again."
+        )
+    folder = export_job_folder(job_id, root)
     _sync_path(folder)
     _unmount_usb_export(folder)
     return folder
@@ -573,7 +584,7 @@ def _job_base_name(job):
     return _slug(f"{project}_{job_number}_J{job['id']}")
 
 
-def _usb_root():
+def _usb_root(require_removable=False):
     if USB_EXPORT_ROOT:
         return Path(USB_EXPORT_ROOT)
     mounted = _mounted_usb_root()
@@ -585,6 +596,9 @@ def _usb_root():
     mounted = _mounted_usb_root()
     if mounted:
         return mounted
+    if require_removable:
+        # No real removable media -- signal failure instead of using the SD card.
+        return None
     return Path(EXPORT_DIR) / "usb_copy"
 
 

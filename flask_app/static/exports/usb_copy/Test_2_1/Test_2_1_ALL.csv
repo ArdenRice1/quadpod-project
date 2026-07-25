@@ -1,0 +1,51 @@
+APEC Quadpod Job Record,
+Software Version,0.3.0-field
+Job ID,3
+Status,active
+
+Job Information,
+Field,Value
+Project Name,Test 2
+Address,Lab
+Date,2026-06-30
+Date of Suspected Loss,2026-06-30
+Job #,1
+Foreman,VDW
+
+Equipment,
+Field,Value
+Load Cell #,1
+Load Cell Calibration Date,2026-06-30
+IR Temp. Gun #,1
+IR Temp. Gun Calibration Date,2026-06-30
+
+Weather & Safety,
+Field,Value
+
+Conditions,
+Field,Value
+
+
+Test Summary
+Test #,Angle,Shingle Type,Max Load Value (lbs),Time,Temp.,Wind Speed & Direction,Failure Type,Notes
+1,90,,7.148,2026-06-30T20:10:29Z,,,,
+2,90,,53.609,2026-06-30T20:20:03Z,,,,
+3,90,,189.737,2026-06-30T20:24:37Z,,,,
+4,90,,0.062,2026-07-01T16:18:44Z,,,,
+5,80.3,,1.561,2026-07-03T16:21:48Z,,,,
+6,80,,1.249,2026-07-03T16:59:03Z,,,,
+7,85,,41.194,2026-07-03T17:59:03Z,0.1,,,
+8,80,,40.704,2026-07-03T18:28:55Z,,,,
+
+Deviation Records
+Test #,Any Deviations?,Description of Deviation,Effect on Uncertainty,Approved By,Approved Date
+1,No,,,,
+2,No,,,,
+3,No,,,,
+4,No,,,,
+5,No,,,,
+6,No,,,,
+7,No,,,,
+8,No,,,,
+
+End Job Record,

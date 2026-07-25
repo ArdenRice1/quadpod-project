@@ -1,0 +1,141 @@
+diff --git a/flask_app/app.py b/flask_app/app.py
+index ba0eb2c..71d531c 100644
+--- a/flask_app/app.py
++++ b/flask_app/app.py
+@@ -191,20 +191,82 @@ def archive():
+     return render_template("archive.html", jobs=jobs, queue=queue, email_to=EMAIL_TO, query=query)
+ 
+ 
++
++
+ @app.route("/network")
+ def network():
+     return render_template("network.html", status=quadpod_engine.snapshot())
+ 
+-
+ @app.route("/setup/network", methods=["POST"])
+ def setup_network():
++    action = request.form.get("action")
++    
++    # --- HOTSPOT ESCAPE HATCH LOGIC ---
++    if action == "force_hotspot":
++        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
++        trigger_script = os.path.join(base_dir, 'scripts', 'trigger_hotspot.py')
++        
++        # Spawn detached so it doesn't hang the app
++        subprocess.Popen(["python3", trigger_script], start_new_session=True)
++        storage.add_event("Hotspot fallback requested")
++        
++        return f"""
++        <html>
++            <head>
++                <meta name="viewport" content="width=device-width, initial-scale=1.0">
++                <meta http-equiv="refresh" content="6;url=http://10.42.0.1:5000/" />
++                <style>body {{ font-family: Arial, sans-serif; text-align: center; padding: 40px 20px; background: #f4f6f7; color: #15191d; }}</style>
++            </head>
++            <body>
++                <h2>Starting Hotspot...</h2>
++                <p>The Quadpod is returning to Hotspot mode.</p>
++                <p>Please connect your device to the <b>Quadpod</b> Wi-Fi network.</p>
++                <br/>
++                <p><small>You will be redirected automatically, or manually go to <br/><a href="http://10.42.0.1:5000/">http://10.42.0.1:5000</a></small></p>
++            </body>
++        </html>
++        """
++        
++    # --- WI-FI CONNECTION LOGIC ---
+     ssid = request.form.get("ssid", "").strip()
+     password = request.form.get("password", "")
+     if ssid:
+         ok, message = _connect_wifi(ssid, password)
+         storage.add_event("Wi-Fi connect requested", data={"ssid": ssid, "ok": ok, "message": message})
+-    return redirect(url_for("setup_check"))
++    
++    return f"""
++    <html>
++        <head>
++            <meta name="viewport" content="width=device-width, initial-scale=1.0">
++            <meta http-equiv="refresh" content="12;url=http://quadpod.local:5000/" />
++            <style>body {{ font-family: Arial, sans-serif; text-align: center; padding: 40px 20px; background: #f4f6f7; color: #15191d; }}</style>
++        </head>
++        <body>
++            <h2>Connecting to {ssid}...</h2>
++            <p>The Quadpod is switching networks. Please connect your phone/tablet to <b>{ssid}</b>.</p>
++            <p>You will be automatically redirected in 12 seconds...</p>
++            <br/>
++            <p><small>If it doesn't redirect automatically, manually go to <br/><a href="http://quadpod.local:5000/">http://quadpod.local:5000</a></small></p>
++        </body>
++    </html>
++    """
++
++# ... [Leave all other routes like api_calibrate untouched] ...
+ 
++def _connect_wifi(ssid, password):
++    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
++    script_path = os.path.join(base_dir, 'scripts', 'connect_wifi.py')
++    
++    command = ["python3", script_path, ssid]
++    if password:
++        command.append(password)
++        
++    try:
++        # Spawn entirely detached so Flask HTTP thread completes instantly
++        subprocess.Popen(command, start_new_session=True)
++        return True, "Background Wi-Fi connection initiated."
++    except Exception as exc:
++        return False, str(exc)
+ 
+ @app.route("/api/calibrate", methods=["POST"])
+ def api_calibrate():
+diff --git a/flask_app/templates/network.html b/flask_app/templates/network.html
+index 4d4025b..703dd5c 100644
+--- a/flask_app/templates/network.html
++++ b/flask_app/templates/network.html
+@@ -11,6 +11,11 @@
+     <div class="muted small">Phone URL: http://quadpod.local:5000</div>
+     <div class="muted small">Fallback URL: http://{{ hotspot_ip }}:5000</div>
+   </div>
++
++  <form method="POST" action="{{ url_for('setup_network') }}" style="margin-top: 10px;">
++    <input type="hidden" name="action" value="force_hotspot">
++    <button class="full-width warn" type="submit">Force Hotspot Mode</button>
++  </form>
+ </section>
+ 
+ <section class="section">
+diff --git a/flask_app/templates/setup_check.html b/flask_app/templates/setup_check.html
+index 74c4066..5d1f791 100644
+--- a/flask_app/templates/setup_check.html
++++ b/flask_app/templates/setup_check.html
+@@ -32,6 +32,11 @@
+     </datalist>
+     <button class="full-width secondary" type="submit">Connect Wi-Fi</button>
+   </form>
++
++  <form method="POST" action="{{ url_for('setup_network') }}" style="margin-top: 10px;">
++    <input type="hidden" name="action" value="force_hotspot">
++    <button class="full-width warn" type="submit">Force Hotspot Mode</button>
++  </form>
+   {% if network.message %}<div class="status warn">{{ network.message }}</div>{% endif %}
+ </section>
+ 
+diff --git a/scripts/setup-hotspot.sh b/scripts/setup-hotspot.sh
+index a5b8469..f9f2d1a 100644
+--- a/scripts/setup-hotspot.sh
++++ b/scripts/setup-hotspot.sh
+@@ -1,8 +1,13 @@
+ #!/usr/bin/env bash
+ set -euo pipefail
+ 
+-SSID="${1:-Quadpod-0001}"
+-PASSWORD="${2:-quadpod-field-setup}"
++if [ -f "/opt/quadpod/.manual_wifi_mode" ]; then
++    echo "Manual Wi-Fi mode detected. Skipping hotspot setup."
++    exit 0
++fi
++
++SSID="${1:-Quadpod-0003}"
++PASSWORD="${2:-Apec1234}"
+ IFACE="${3:-wlan0}"
+ IP_CIDR="${4:-10.42.0.1/24}"
+ 

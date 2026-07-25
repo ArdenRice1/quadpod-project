@@ -325,6 +325,8 @@ def api_calibrate():
 
 @app.route("/job/<int:job_id>/complete", methods=["POST"])
 def complete_job(job_id):
+    if not _form_token_ok():
+        return redirect(url_for("archive"), code=303)
     form = {"end_time": dt.datetime.now().strftime("%H:%M")}
     storage.update_job(job_id, form=form, status="complete")
     session.pop("job_id", None)
@@ -359,6 +361,8 @@ def download_bundle(job_id):
 
 @app.route("/job/<int:job_id>/copy-usb", methods=["POST"])
 def copy_job_usb(job_id):
+    if not _form_token_ok():
+        return redirect(url_for("archive"), code=303)
     try:
         folder = exporter.copy_job_to_usb(job_id)
         storage.add_event("Job copied to USB/export folder", job_id=job_id, data={"path": str(folder)})
@@ -370,7 +374,7 @@ def copy_job_usb(job_id):
 
 @app.route("/job/<int:job_id>/delete", methods=["POST"])
 def delete_job(job_id):
-    if request.form.get("confirm", "") != "yes":
+    if not _form_token_ok() or request.form.get("confirm", "") != "yes":
         return redirect(url_for("archive"), code=303)
     if not storage.get_job(job_id):
         return redirect(url_for("archive"), code=303)
@@ -384,6 +388,8 @@ def delete_job(job_id):
 
 @app.route("/job/<int:job_id>/email", methods=["POST"])
 def email_job(job_id):
+    if not _form_token_ok():
+        return redirect(url_for("archive"), code=303)
     if not EMAIL_FEATURE_VISIBLE:
         storage.add_event("Email request rejected", level="error", job_id=job_id, data={"message": "Email feature hidden"})
         return redirect(url_for("archive"), code=303)
@@ -545,6 +551,11 @@ def _csrf_token():
         token = secrets.token_urlsafe(32)
         session["csrf_token"] = token
     return token
+
+
+def _form_token_ok():
+    """CSRF check for state-changing archive form POSTs (delete/copy/email/end)."""
+    return secrets.compare_digest(request.form.get("csrf_token", ""), _csrf_token())
 
 
 def _require_command_token():

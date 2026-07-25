@@ -1,0 +1,89 @@
+APEC Quadpod Test Record,
+Software Version,0.3.0-field
+Job ID,1
+Test ID,3
+
+Job Information,
+Field,Value
+Project Name,Test
+Job #,1
+Address,Address
+Date,2026-06-28
+Foreman,Ayden
+
+Equipment,
+Field,Value
+Load Cell #,1
+Load Cell Calibration Date,2026-06-28
+IR Temp. Gun #,1
+IR Temp. Gun Calibration Date,2026-06-28
+
+
+Test Information,
+Field,Value
+Test #,3
+Angle,80
+
+Results,
+Field,Value
+Started At,2026-06-28T22:23:22Z
+Completed At,2026-06-28T22:23:35Z
+Initial Preload (lbs),11.577
+Max Load Value (lbs),25.079
+Stop Reason,confirmed load drop/failure; logging until load stabilizes
+Sample Count,32
+
+Samples
+Timestamp,Elapsed Seconds,Sample #,Force (lbs)
+2026-06-28T22:23:22Z,0.178659,1,11.569
+2026-06-28T22:23:22Z,0.575045,2,12.431
+2026-06-28T22:23:23Z,0.992705,3,13.879
+2026-06-28T22:23:23Z,1.41028,4,15.439
+2026-06-28T22:23:23Z,1.827896,5,17.06
+2026-06-28T22:23:24Z,2.245522,6,18.731
+2026-06-28T22:23:24Z,2.663126,7,19.613
+2026-06-28T22:23:25Z,3.080757,8,19.848
+2026-06-28T22:23:25Z,3.498377,9,20.08
+2026-06-28T22:23:26Z,3.916006,10,20.405
+2026-06-28T22:23:26Z,4.333599,11,20.934
+2026-06-28T22:23:26Z,4.751255,12,21.571
+2026-06-28T22:23:27Z,5.168947,13,22.31
+2026-06-28T22:23:27Z,5.586614,14,22.988
+2026-06-28T22:23:28Z,6.004301,15,23.899
+2026-06-28T22:23:28Z,6.421999,16,24.71
+2026-06-28T22:23:28Z,6.839689,17,25.079
+2026-06-28T22:23:29Z,7.257382,18,24.898
+2026-06-28T22:23:29Z,7.675076,19,24.167
+2026-06-28T22:23:30Z,8.092761,20,22.936
+2026-06-28T22:23:30Z,8.510424,21,20.762
+2026-06-28T22:23:31Z,8.928105,22,18.534
+2026-06-28T22:23:31Z,9.34573,23,15.46
+2026-06-28T22:23:31Z,9.763397,24,12.122
+2026-06-28T22:23:32Z,10.181045,25,8.286
+2026-06-28T22:23:32Z,10.598715,26,5.133
+2026-06-28T22:23:33Z,11.016373,27,2.29
+2026-06-28T22:23:33Z,11.434055,28,0.805
+2026-06-28T22:23:33Z,11.851718,29,0.077
+2026-06-28T22:23:34Z,12.269438,30,-0.039
+2026-06-28T22:23:34Z,12.68712,31,-0.045
+2026-06-28T22:23:35Z,13.104786,32,-0.044
+
+Deviation Record,
+Field,Value
+Any deviations from standard method?,no
+
+
+Machine Settings
+App Version,0.3.0-field
+Victor Pull Us,1850
+Pull Direction,up
+Pull Target In Per Min,5.0
+Preload Target Lbs,10.0
+Preload Min Lbs,10.0
+Preload Max Lbs,15.0
+Preload Tolerance Lbs,5.0
+Loadcell Reference Unit,10433.64
+Failure Drop Lbs,12.0
+Failure Drop Percent,0.35
+Failure Confirm Samples,8
+Failure Min Peak Lbs,20.0

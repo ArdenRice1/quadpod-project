@@ -243,12 +243,24 @@ class LoadCell:
             return False
 
     def pause_glitch_reject(self):
-        """Disable jump-rejection (e.g. during a pull test, where force changes
-        fast and every real reading must be faithful)."""
+        """Disable jump-rejection entirely (rarely wanted -- prefer the pull mode)."""
         self.glitch_reject = False
+
+    def set_pull_glitch_mode(self, max_jump_lbs):
+        """Pull-test glitch mode: KEEP desync rejection (a real pull ramps slowly;
+        an HX711 channel desync is a large jump that reverts, and a sustained one
+        triggers a resync) but widen the jump tolerance so a genuinely fast force
+        change is never dropped. Prevents a desync from inflating the certified
+        peak or false-tripping MAX_FORCE/failure."""
+        self.glitch_reject = True
+        self.glitch_max_jump = float(max_jump_lbs)
+        self._last_good_lbs = None
+        self._glitch_rejects = 0
+        self._glitch_resets = 0
 
     def resume_glitch_reject(self):
         self.glitch_reject = bool(LOADCELL_GLITCH_REJECT)
+        self.glitch_max_jump = float(LOADCELL_GLITCH_MAX_JUMP_LBS)
         self._last_good_lbs = None
         self._glitch_rejects = 0
         self._glitch_resets = 0

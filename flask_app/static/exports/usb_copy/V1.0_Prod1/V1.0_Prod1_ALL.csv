@@ -1,0 +1,58 @@
+APEC Quadpod Job Record,
+Software Version,0.3.0-field
+Job ID,4
+Status,complete
+
+Job Information,
+Field,Value
+Project Name,V1.0
+Address,13805 N CR 1500
+"City, State, Zip",79363
+Contact Phone,8063335233
+Client,APEC
+Client Address,8502 11th St
+"Client City, State, Zip","Lubbock, TX,79416"
+Client Phone,8063334239
+Involved Party,Yes
+Involved Party Address,afdd
+"Involved Party City, State, Zip",2342343
+Involved Party Phone,no
+Date,2026-07-03
+Date of Suspected Loss,2026-07-08
+Job #,Prod1
+Building #,1
+Foreman,VDW
+Tech. 2,ayden
+Start Time,13:55
+End Time,17:45
+
+Equipment,
+Field,Value
+Load Cell #,1
+Load Cell Calibration Date,2026-07-03
+IR Temp. Gun #,1
+IR Temp. Gun Calibration Date,2026-07-03
+
+Weather & Safety,
+Field,Value
+
+Conditions,
+Field,Value
+Humidity (%),22
+Barometric Pressure (inHg),33
+Weather Notes,ncie
+
+
+Test Summary
+Test #,Angle,Shingle Type,Max Load Value (lbs),Time,Temp.,Wind Speed & Direction,Failure Type,Notes
+1,80,,37.815,2026-07-03T20:02:56Z,,,,
+2,81.1,Three tab,34.476,2026-07-05T22:01:24Z,23,3,,
+3,88,Three tab,37.974,2026-07-05T22:45:14Z,66,5,Other,test
+
+Deviation Records
+Test #,Any Deviations?,Description of Deviation,Effect on Uncertainty,Approved By,Approved Date
+1,No,,,,
+2,Yes,test,yes,ayden,2026-07-15
+3,No,,,,
+
+End Job Record,

@@ -186,5 +186,16 @@ class CalibrationRecordTests(unittest.TestCase):
         self.assertEqual(load_calibration_record(path=self.path), {})
 
 
+class PullGlitchModeTests(unittest.TestCase):
+    def test_pull_mode_keeps_rejection_with_wide_jump_and_restores(self):
+        lc = LoadCell(use_mock=True)
+        original_jump = lc.glitch_max_jump
+        lc.set_pull_glitch_mode(10.0)
+        self.assertTrue(lc.glitch_reject)  # desync rejection stays ON during a pull
+        self.assertEqual(lc.glitch_max_jump, 10.0)
+        lc.resume_glitch_reject()
+        self.assertEqual(lc.glitch_max_jump, original_jump)
+
+
 if __name__ == "__main__":
     unittest.main()

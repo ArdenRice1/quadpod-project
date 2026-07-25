@@ -1,0 +1,232 @@
+{"abort_lbs": 1.0, "event": "start", "load": -7.712, "max_lbs": 0.0, "min_lbs": -0.25, "t": 1004.1961}
+{"desired_speed": 40.5675, "event": "continuous_speed", "increase": true, "load": -7.712, "predicted_load": -7.712, "rate_lbs_per_s": 0.0, "speed_percent": 1, "t": 1004.2838}
+{"desired_speed": 40.5675, "event": "continuous_speed", "increase": true, "load": -7.712, "predicted_load": -7.7102, "rate_lbs_per_s": 0.0, "speed_percent": 4, "t": 1004.39}
+{"desired_speed": 40.5675, "event": "continuous_speed", "increase": true, "load": -7.712, "predicted_load": -7.7011, "rate_lbs_per_s": 0.0, "speed_percent": 7, "t": 1004.4653}
+{"desired_speed": 40.5675, "event": "continuous_speed", "increase": true, "load": -7.712, "predicted_load": -7.6934, "rate_lbs_per_s": 0.0, "speed_percent": 11, "t": 1004.5673}
+{"desired_speed": 40.5112, "event": "continuous_speed", "increase": true, "load": -7.702, "predicted_load": -7.6743, "rate_lbs_per_s": 0.0, "speed_percent": 14, "t": 1004.6455}
+{"desired_speed": 40.5112, "event": "continuous_speed", "increase": true, "load": -7.702, "predicted_load": -7.6676, "rate_lbs_per_s": 0.0, "speed_percent": 17, "t": 1004.7413}
+{"desired_speed": 40.5112, "event": "continuous_speed", "increase": true, "load": -7.702, "predicted_load": -7.6592, "rate_lbs_per_s": 0.0, "speed_percent": 21, "t": 1004.8397}
+{"desired_speed": 40.5112, "event": "continuous_speed", "increase": true, "load": -7.702, "predicted_load": -7.6506, "rate_lbs_per_s": 0.0, "speed_percent": 24, "t": 1004.943}
+{"desired_speed": 39.6019, "event": "continuous_speed", "increase": true, "load": -7.678, "predicted_load": -7.5456, "rate_lbs_per_s": 0.0575, "speed_percent": 28, "t": 1005.0388}
+{"desired_speed": 39.6019, "event": "continuous_speed", "increase": true, "load": -7.678, "predicted_load": -7.5372, "rate_lbs_per_s": 0.0575, "speed_percent": 31, "t": 1005.1421}
+{"desired_speed": 39.6019, "event": "continuous_speed", "increase": true, "load": -7.678, "predicted_load": -7.5282, "rate_lbs_per_s": 0.0575, "speed_percent": 35, "t": 1005.2457}
+{"desired_speed": 40.3762, "event": "continuous_speed", "increase": true, "load": -7.678, "predicted_load": -7.5911, "rate_lbs_per_s": 0.0, "speed_percent": 38, "t": 1005.3489}
+{"desired_speed": 39.7718, "event": "continuous_speed", "increase": true, "load": -7.662, "predicted_load": -7.5181, "rate_lbs_per_s": 0.0383, "speed_percent": 40, "t": 1005.4526}
+{"desired_speed": 39.4572, "event": "continuous_speed", "increase": true, "load": -7.64, "predicted_load": -7.4734, "rate_lbs_per_s": 0.0527, "speed_percent": 39, "t": 1005.8667}
+{"desired_speed": 40.1625, "event": "continuous_speed", "increase": true, "load": -7.64, "predicted_load": -7.5414, "rate_lbs_per_s": 0.0, "speed_percent": 40, "t": 1006.1932}
+{"desired_speed": 39.1856, "event": "continuous_speed", "increase": true, "load": -7.614, "predicted_load": -7.4358, "rate_lbs_per_s": 0.0623, "speed_percent": 39, "t": 1006.3039}
+{"desired_speed": 40.0162, "event": "continuous_speed", "increase": true, "load": -7.614, "predicted_load": -7.516, "rate_lbs_per_s": 0.0, "speed_percent": 40, "t": 1006.6387}
+{"desired_speed": 38.7817, "event": "continuous_speed", "increase": true, "load": -7.581, "predicted_load": -7.3822, "rate_lbs_per_s": 0.079, "speed_percent": 39, "t": 1006.7455}
+{"desired_speed": 39.8306, "event": "continuous_speed", "increase": true, "load": -7.581, "predicted_load": -7.484, "rate_lbs_per_s": 0.0, "speed_percent": 40, "t": 1007.0618}
+{"desired_speed": 38.6746, "event": "continuous_speed", "increase": true, "load": -7.55, "predicted_load": -7.3576, "rate_lbs_per_s": 0.0743, "speed_percent": 39, "t": 1007.1398}
+{"desired_speed": 39.6562, "event": "continuous_speed", "increase": true, "load": -7.55, "predicted_load": -7.4533, "rate_lbs_per_s": 0.0, "speed_percent": 40, "t": 1007.4569}
+{"desired_speed": 38.4308, "event": "continuous_speed", "increase": true, "load": -7.517, "predicted_load": -7.3191, "rate_lbs_per_s": 0.079, "speed_percent": 38, "t": 1007.5404}
+{"desired_speed": 39.4706, "event": "continuous_speed", "increase": true, "load": -7.517, "predicted_load": -7.4209, "rate_lbs_per_s": 0.0, "speed_percent": 39, "t": 1007.8775}
+{"desired_speed": 38.2869, "event": "continuous_speed", "increase": true, "load": -7.485, "predicted_load": -7.2905, "rate_lbs_per_s": 0.0766, "speed_percent": 38, "t": 1007.9824}
+{"desired_speed": 39.2906, "event": "continuous_speed", "increase": true, "load": -7.485, "predicted_load": -7.3893, "rate_lbs_per_s": 0.0, "speed_percent": 39, "t": 1008.3085}
+{"desired_speed": 37.8917, "event": "continuous_speed", "increase": true, "load": -7.447, "predicted_load": -7.235, "rate_lbs_per_s": 0.091, "speed_percent": 38, "t": 1008.4032}
+{"desired_speed": 39.0769, "event": "continuous_speed", "increase": true, "load": -7.447, "predicted_load": -7.3523, "rate_lbs_per_s": 0.0, "speed_percent": 39, "t": 1008.7432}
+{"desired_speed": 37.1037, "event": "continuous_speed", "increase": true, "load": -7.393, "predicted_load": -7.1338, "rate_lbs_per_s": 0.1292, "speed_percent": 37, "t": 1008.8267}
+{"desired_speed": 38.7731, "event": "continuous_speed", "increase": true, "load": -7.393, "predicted_load": -7.3002, "rate_lbs_per_s": 0.0, "speed_percent": 39, "t": 1009.1607}
+{"desired_speed": 36.2708, "event": "continuous_speed", "increase": true, "load": -7.324, "predicted_load": -7.0205, "rate_lbs_per_s": 0.1652, "speed_percent": 36, "t": 1009.2426}
+{"desired_speed": 38.385, "event": "continuous_speed", "increase": true, "load": -7.324, "predicted_load": -7.2333, "rate_lbs_per_s": 0.0, "speed_percent": 38, "t": 1009.578}
+{"desired_speed": 35.3696, "event": "continuous_speed", "increase": true, "load": -7.24, "predicted_load": -6.8925, "rate_lbs_per_s": 0.2012, "speed_percent": 36, "t": 1009.6562}
+{"desired_speed": 35.3696, "event": "continuous_speed", "increase": true, "load": -7.24, "predicted_load": -6.8993, "rate_lbs_per_s": 0.2012, "speed_percent": 35, "t": 1009.7595}
+{"desired_speed": 37.9125, "event": "continuous_speed", "increase": true, "load": -7.24, "predicted_load": -7.1516, "rate_lbs_per_s": 0.0, "speed_percent": 38, "t": 1009.9451}
+{"desired_speed": 34.1213, "event": "continuous_speed", "increase": true, "load": -7.133, "predicted_load": -6.7177, "rate_lbs_per_s": 0.2564, "speed_percent": 34, "t": 1010.0507}
+{"desired_speed": 37.2129, "event": "continuous_speed", "increase": true, "load": -7.133, "predicted_load": -7.0477, "rate_lbs_per_s": 0.0, "speed_percent": 37, "t": 1010.3765}
+{"desired_speed": 32.2335, "event": "continuous_speed", "increase": true, "load": -6.992, "predicted_load": -6.4779, "rate_lbs_per_s": 0.3376, "speed_percent": 32, "t": 1010.492}
+{"desired_speed": 35.2052, "event": "continuous_speed", "increase": true, "load": -6.992, "predicted_load": -6.9114, "rate_lbs_per_s": 0.0, "speed_percent": 35, "t": 1010.8312}
+{"desired_speed": 28.968, "event": "continuous_speed", "increase": true, "load": -6.812, "predicted_load": -6.1862, "rate_lbs_per_s": 0.4304, "speed_percent": 29, "t": 1010.9093}
+{"desired_speed": 32.4613, "event": "continuous_speed", "increase": true, "load": -6.812, "predicted_load": -6.7396, "rate_lbs_per_s": 0.0, "speed_percent": 32, "t": 1011.2332}
+{"desired_speed": 24.4488, "event": "continuous_speed", "increase": true, "load": -6.573, "predicted_load": -5.7777, "rate_lbs_per_s": 0.5729, "speed_percent": 24, "t": 1011.3265}
+{"desired_speed": 28.5363, "event": "continuous_speed", "increase": true, "load": -6.573, "predicted_load": -6.5119, "rate_lbs_per_s": 0.0, "speed_percent": 27, "t": 1011.6385}
+{"desired_speed": 18.7463, "event": "continuous_speed", "increase": true, "load": -6.263, "predicted_load": -5.267, "rate_lbs_per_s": 0.7425, "speed_percent": 19, "t": 1011.7369}
+{"desired_speed": 23.0192, "event": "continuous_speed", "increase": true, "load": -6.263, "predicted_load": -6.2161, "rate_lbs_per_s": 0.0, "speed_percent": 21, "t": 1012.0709}
+{"desired_speed": 13.5962, "event": "continuous_speed", "increase": true, "load": -5.877, "predicted_load": -4.6683, "rate_lbs_per_s": 0.9241, "speed_percent": 14, "t": 1012.1669}
+{"desired_speed": 10.0448, "event": "continuous_speed", "increase": true, "load": -5.348, "predicted_load": -3.7299, "rate_lbs_per_s": 1.2673, "speed_percent": 10, "t": 1012.5743}
+{"desired_speed": 6.0663, "event": "continuous_speed", "increase": true, "load": -4.606, "predicted_load": -2.36, "rate_lbs_per_s": 1.7767, "speed_percent": 6, "t": 1012.9761}
+{"event": "control_stop_jounce_hold", "load": -3.766, "reason": "predictive_brake", "seconds": 0.45, "t": 1013.4065}
+{"event": "continuous_brake", "load": -3.766, "predicted_load": -1.2368, "rate_lbs_per_s": 2.0112, "t": 1013.4275}
+{"event": "control_settle_hold", "load": -3.766, "remaining_s": 0.3469, "t": 1013.5314}
+{"desired_speed": 3.1655, "event": "continuous_speed", "increase": true, "load": -2.947, "predicted_load": -0.6041, "rate_lbs_per_s": 1.8744, "speed_percent": 3, "t": 1013.9303}
+{"event": "initial_stop_target", "load": -2.947, "predicted_load": -0.4251, "t": 1014.087, "target_lbs": -0.5}
+{"event": "control_stop_jounce_hold", "load": -2.947, "reason": "predictive_brake", "seconds": 0.45, "t": 1014.1299}
+{"event": "continuous_brake", "load": -2.947, "predicted_load": -0.4251, "rate_lbs_per_s": 2.0112, "t": 1014.1507}
+{"event": "control_settle_hold", "load": -2.289, "remaining_s": 0.3531, "t": 1014.2486}
+{"event": "final_approach_stop_target", "load": -2.289, "predicted_load": 0.225, "t": 1014.6231, "target_lbs": -0.75}
+{"event": "control_stop_jounce_hold", "load": -2.289, "reason": "predictive_brake", "seconds": 0.45, "t": 1014.6251}
+{"event": "continuous_brake", "load": -2.289, "predicted_load": 0.225, "rate_lbs_per_s": 2.0112, "t": 1014.6255}
+{"event": "control_settle_hold", "load": -1.824, "remaining_s": 0.3941, "t": 1014.7178}
+{"event": "final_approach_stop_target", "load": -1.632, "predicted_load": 0.882, "t": 1015.088, "target_lbs": -0.75}
+{"event": "control_stop_jounce_hold", "load": -1.632, "reason": "predictive_brake", "seconds": 0.45, "t": 1015.09}
+{"event": "continuous_brake", "load": -1.632, "predicted_load": 0.882, "rate_lbs_per_s": 2.0112, "t": 1015.0905}
+{"event": "control_settle_hold", "load": -1.632, "remaining_s": 0.394, "t": 1015.1678}
+{"event": "final_approach_stop_target", "load": -1.63, "predicted_load": 0.884, "t": 1015.6113, "target_lbs": -0.75}
+{"event": "control_stop_jounce_hold", "load": -1.63, "reason": "predictive_brake", "seconds": 0.45, "t": 1015.649}
+{"event": "continuous_brake", "load": -1.63, "predicted_load": 0.884, "rate_lbs_per_s": 2.0112, "t": 1015.6699}
+{"event": "control_settle_hold", "load": -1.63, "remaining_s": 0.3584, "t": 1015.7625}
+{"event": "final_approach_stop_target", "load": -1.692, "predicted_load": 0.822, "t": 1016.1116, "target_lbs": -0.75}
+{"event": "control_stop_jounce_hold", "load": -1.692, "reason": "predictive_brake", "seconds": 0.45, "t": 1016.1592}
+{"event": "continuous_brake", "load": -1.692, "predicted_load": 0.822, "rate_lbs_per_s": 2.0112, "t": 1016.1802}
+{"event": "control_settle_hold", "load": -1.692, "remaining_s": 0.3528, "t": 1016.2612}
+{"desired_speed": 4.3014, "event": "continuous_speed", "increase": true, "load": -1.726, "predicted_load": -1.726, "rate_lbs_per_s": 0.0, "speed_percent": 3, "t": 1016.6794}
+{"desired_speed": 4.334, "event": "continuous_speed", "increase": true, "load": -1.752, "predicted_load": -1.7457, "rate_lbs_per_s": -0.0704, "speed_percent": 4, "t": 1016.7573}
+{"desired_speed": 4.5029, "event": "continuous_speed", "increase": true, "load": -1.893, "predicted_load": -1.8818, "rate_lbs_per_s": -0.0383, "speed_percent": 5, "t": 1018.3498}
+{"desired_speed": 4.4264, "event": "continuous_speed", "increase": true, "load": -1.885, "predicted_load": -1.7989, "rate_lbs_per_s": 0.0599, "speed_percent": 4, "t": 1019.2285}
+{"desired_speed": 8.0, "event": "continuous_speed", "increase": true, "load": -1.851, "predicted_load": -1.8399, "rate_lbs_per_s": 0.0, "speed_percent": 7, "t": 1021.2232}
+{"desired_speed": 4.4994, "event": "continuous_speed", "increase": true, "load": -1.89, "predicted_load": -1.8721, "rate_lbs_per_s": -0.0934, "speed_percent": 4, "t": 1021.3265}
+{"desired_speed": 4.5403, "event": "continuous_speed", "increase": true, "load": -1.926, "predicted_load": -1.9148, "rate_lbs_per_s": -0.0862, "speed_percent": 5, "t": 1021.7297}
+{"desired_speed": 8.0, "event": "continuous_speed", "increase": true, "load": -1.986, "predicted_load": -1.9745, "rate_lbs_per_s": 0.0, "speed_percent": 7, "t": 1024.6129}
+{"desired_speed": 8.0, "event": "continuous_speed", "increase": true, "load": -1.995, "predicted_load": -1.9767, "rate_lbs_per_s": -0.0215, "speed_percent": 8, "t": 1024.6909}
+{"desired_speed": 4.4664, "event": "continuous_speed", "increase": true, "load": -1.956, "predicted_load": -1.8188, "rate_lbs_per_s": 0.0937, "speed_percent": 4, "t": 1025.1072}
+{"desired_speed": 4.5736, "event": "continuous_speed", "increase": true, "load": -1.956, "predicted_load": -1.9448, "rate_lbs_per_s": 0.0, "speed_percent": 5, "t": 1025.4478}
+{"desired_speed": 3.4353, "event": "continuous_speed", "increase": true, "load": -1.65, "predicted_load": -0.7248, "rate_lbs_per_s": 0.731, "speed_percent": 3, "t": 1025.5309}
+{"desired_speed": 4.2035, "event": "continuous_speed", "increase": true, "load": -1.65, "predicted_load": -1.6414, "rate_lbs_per_s": 0.0, "speed_percent": 4, "t": 1025.8627}
+{"event": "final_approach_stop_target", "load": -1.228, "predicted_load": 0.0482, "t": 1025.9204, "target_lbs": -0.75}
+{"event": "control_stop_jounce_hold", "load": -1.228, "reason": "predictive_brake", "seconds": 0.45, "t": 1025.9685}
+{"event": "continuous_brake", "load": -1.228, "predicted_load": 0.0482, "rate_lbs_per_s": 1.0125, "t": 1025.9893}
+{"event": "control_settle_hold", "load": -1.228, "remaining_s": 0.348, "t": 1026.0924}
+{"event": "final_approach_stop_target", "load": -0.774, "predicted_load": 0.4737, "t": 1026.4823, "target_lbs": -0.75}
+{"event": "control_stop_jounce_hold", "load": -0.774, "reason": "predictive_brake", "seconds": 0.45, "t": 1026.5179}
+{"event": "continuous_brake", "load": -0.774, "predicted_load": 0.4737, "rate_lbs_per_s": 0.9982, "t": 1026.5392}
+{"event": "control_settle_hold", "load": -0.774, "remaining_s": 0.3491, "t": 1026.6577}
+{"event": "final_approach_stop_target", "load": -0.342, "predicted_load": 1.0435, "t": 1027.0314, "target_lbs": -0.75}
+{"event": "control_stop_jounce_hold", "load": -0.342, "reason": "predictive_brake", "seconds": 0.45, "t": 1027.0748}
+{"event": "continuous_brake", "load": -0.342, "predicted_load": 1.0435, "rate_lbs_per_s": 1.1084, "t": 1027.0958}
+{"event": "control_settle_hold", "load": -0.002, "remaining_s": 0.352, "t": 1027.2052}
+{"desired_speed": 8.0, "event": "continuous_speed", "increase": false, "load": 0.065, "predicted_load": 1.4505, "rate_lbs_per_s": 1.1084, "speed_percent": 3, "t": 1027.5428}
+{"desired_speed": 8.0, "event": "continuous_speed", "increase": false, "load": 0.065, "predicted_load": 1.4575, "rate_lbs_per_s": 1.1084, "speed_percent": 5, "t": 1027.6418}
+{"desired_speed": 8.0, "event": "continuous_speed", "increase": false, "load": 0.065, "predicted_load": 1.4628, "rate_lbs_per_s": 1.1084, "speed_percent": 8, "t": 1027.748}
+{"event": "control_stop_jounce_hold", "load": -0.066, "reason": "target_band", "seconds": 0.45, "t": 1028.4201}
+{"event": "continuous_in_band", "load": -0.066, "max_lbs": 0.0, "min_lbs": -0.25, "rate_lbs_per_s": 1.1084, "t": 1028.4209}
+{"event": "control_settle_hold", "load": -0.066, "remaining_s": 0.3853, "t": 1028.5076}
+{"drift_drop_lbs": 0.0, "drift_stable": true, "event": "in_band_complete", "load": -0.232, "ready": false, "scan_load": -0.232, "scan_ready": false, "scan_window_s": 0.0, "seconds": 2.0636, "short_stable": false, "t": 1030.4637}
+{"event": "final_approach_stop_target", "load": -0.267, "predicted_load": -0.267, "t": 1030.9052, "target_lbs": -0.75}
+{"event": "control_stop_jounce_hold", "load": -0.267, "reason": "predictive_brake", "seconds": 0.45, "t": 1030.9445}
+{"event": "continuous_brake", "load": -0.267, "predicted_load": -0.267, "rate_lbs_per_s": -0.0838, "t": 1030.9756}
+{"event": "control_settle_hold", "load": -0.267, "remaining_s": 0.3378, "t": 1031.0789}
+{"event": "final_approach_stop_target", "load": -0.307, "predicted_load": -0.307, "t": 1031.429, "target_lbs": -0.75}
+{"event": "control_stop_jounce_hold", "load": -0.307, "reason": "predictive_brake", "seconds": 0.45, "t": 1031.49}
+{"event": "continuous_brake", "load": -0.307, "predicted_load": -0.307, "rate_lbs_per_s": -0.0899, "t": 1031.5058}
+{"event": "control_settle_hold", "load": -0.307, "remaining_s": 0.3582, "t": 1031.6036}
+{"event": "final_approach_stop_target", "load": -0.342, "predicted_load": -0.342, "t": 1031.9732, "target_lbs": -0.75}
+{"event": "control_stop_jounce_hold", "load": -0.342, "reason": "predictive_brake", "seconds": 0.45, "t": 1032.0144}
+{"event": "continuous_brake", "load": -0.342, "predicted_load": -0.342, "rate_lbs_per_s": -0.0793, "t": 1032.015}
+{"event": "control_settle_hold", "load": -0.342, "remaining_s": 0.3937, "t": 1032.0925}
+{"event": "final_approach_stop_target", "load": -0.393, "predicted_load": -0.393, "t": 1032.5446, "target_lbs": -0.75}
+{"event": "control_stop_jounce_hold", "load": -0.393, "reason": "predictive_brake", "seconds": 0.45, "t": 1032.5477}
+{"event": "continuous_brake", "load": -0.393, "predicted_load": -0.393, "rate_lbs_per_s": 0.0, "t": 1032.548}
+{"event": "control_settle_hold", "load": -0.477, "remaining_s": 0.394, "t": 1032.6255}
+{"event": "final_approach_stop_target", "load": -0.534, "predicted_load": -0.534, "t": 1033.0176, "target_lbs": -0.75}
+{"event": "control_stop_jounce_hold", "load": -0.534, "reason": "predictive_brake", "seconds": 0.45, "t": 1033.0195}
+{"event": "continuous_brake", "load": -0.534, "predicted_load": -0.534, "rate_lbs_per_s": -0.1218, "t": 1033.0199}
+{"event": "control_settle_hold", "load": -0.534, "remaining_s": 0.394, "t": 1033.0974}
+{"event": "final_approach_stop_target", "load": -0.6, "predicted_load": -0.6, "t": 1033.4709, "target_lbs": -0.75}
+{"event": "control_stop_jounce_hold", "load": -0.6, "reason": "predictive_brake", "seconds": 0.45, "t": 1033.5215}
+{"event": "continuous_brake", "load": -0.6, "predicted_load": -0.6, "rate_lbs_per_s": -0.1691, "t": 1033.5475}
+{"event": "control_settle_hold", "load": -0.6, "remaining_s": 0.348, "t": 1033.6459}
+{"event": "final_approach_stop_target", "load": -0.626, "predicted_load": -0.626, "t": 1034.0163, "target_lbs": -0.75}
+{"event": "control_stop_jounce_hold", "load": -0.626, "reason": "predictive_brake", "seconds": 0.45, "t": 1034.0705}
+{"event": "continuous_brake", "load": -0.626, "predicted_load": -0.626, "rate_lbs_per_s": -0.0662, "t": 1034.0914}
+{"event": "control_settle_hold", "load": -0.626, "remaining_s": 0.3583, "t": 1034.1841}
+{"event": "final_approach_stop_target", "load": -0.631, "predicted_load": -0.631, "t": 1034.5696, "target_lbs": -0.75}
+{"event": "control_stop_jounce_hold", "load": -0.631, "reason": "predictive_brake", "seconds": 0.45, "t": 1034.6128}
+{"event": "continuous_brake", "load": -0.631, "predicted_load": -0.631, "rate_lbs_per_s": 0.0, "t": 1034.6339}
+{"event": "control_settle_hold", "load": -0.617, "remaining_s": 0.3733, "t": 1034.7242}
+{"event": "final_approach_stop_target", "load": -0.617, "predicted_load": -0.617, "t": 1035.0645, "target_lbs": -0.75}
+{"event": "control_stop_jounce_hold", "load": -0.617, "reason": "predictive_brake", "seconds": 0.45, "t": 1035.0665}
+{"event": "continuous_brake", "load": -0.617, "predicted_load": -0.617, "rate_lbs_per_s": 0.0, "t": 1035.0668}
+{"event": "control_settle_hold", "load": -0.629, "remaining_s": 0.3941, "t": 1035.1445}
+{"event": "final_approach_stop_target", "load": -0.625, "predicted_load": -0.614, "t": 1035.5292, "target_lbs": -0.75}
+{"event": "control_stop_jounce_hold", "load": -0.625, "reason": "predictive_brake", "seconds": 0.45, "t": 1035.5726}
+{"event": "continuous_brake", "load": -0.625, "predicted_load": -0.614, "rate_lbs_per_s": 0.0088, "t": 1035.5934}
+{"event": "control_settle_hold", "load": -0.625, "remaining_s": 0.3583, "t": 1035.6861}
+{"event": "final_approach_stop_target", "load": -0.646, "predicted_load": -0.646, "t": 1036.0419, "target_lbs": -0.75}
+{"event": "control_stop_jounce_hold", "load": -0.646, "reason": "predictive_brake", "seconds": 0.45, "t": 1036.0627}
+{"event": "continuous_brake", "load": -0.646, "predicted_load": -0.646, "rate_lbs_per_s": -0.0523, "t": 1036.0687}
+{"event": "control_settle_hold", "load": -0.646, "remaining_s": 0.3657, "t": 1036.1752}
+{"event": "final_approach_stop_target", "load": -0.669, "predicted_load": -0.669, "t": 1036.541, "target_lbs": -0.75}
+{"event": "control_stop_jounce_hold", "load": -0.669, "reason": "predictive_brake", "seconds": 0.45, "t": 1036.5942}
+{"event": "continuous_brake", "load": -0.669, "predicted_load": -0.669, "rate_lbs_per_s": -0.0494, "t": 1036.6102}
+{"event": "control_settle_hold", "load": -0.669, "remaining_s": 0.3632, "t": 1036.7031}
+{"event": "final_approach_stop_target", "load": -0.688, "predicted_load": -0.688, "t": 1037.079, "target_lbs": -0.75}
+{"event": "control_stop_jounce_hold", "load": -0.688, "reason": "predictive_brake", "seconds": 0.45, "t": 1037.1125}
+{"event": "continuous_brake", "load": -0.688, "predicted_load": -0.688, "rate_lbs_per_s": -0.0495, "t": 1037.1286}
+{"event": "control_settle_hold", "load": -0.685, "remaining_s": 0.3718, "t": 1037.2228}
+{"event": "final_approach_stop_target", "load": -0.685, "predicted_load": -0.685, "t": 1037.5629, "target_lbs": -0.75}
+{"event": "control_stop_jounce_hold", "load": -0.685, "reason": "predictive_brake", "seconds": 0.45, "t": 1037.5649}
+{"event": "continuous_brake", "load": -0.685, "predicted_load": -0.685, "rate_lbs_per_s": 0.0, "t": 1037.5655}
+{"event": "control_settle_hold", "load": -0.677, "remaining_s": 0.3938, "t": 1037.6491}
+{"event": "final_approach_stop_target", "load": -0.657, "predicted_load": -0.6026, "t": 1038.0267, "target_lbs": -0.75}
+{"event": "control_stop_jounce_hold", "load": -0.657, "reason": "predictive_brake", "seconds": 0.45, "t": 1038.0287}
+{"event": "continuous_brake", "load": -0.657, "predicted_load": -0.6026, "rate_lbs_per_s": 0.0435, "t": 1038.029}
+{"event": "control_settle_hold", "load": -0.657, "remaining_s": 0.3941, "t": 1038.1065}
+{"event": "final_approach_stop_target", "load": -0.622, "predicted_load": -0.5285, "t": 1038.496, "target_lbs": -0.75}
+{"event": "control_stop_jounce_hold", "load": -0.622, "reason": "predictive_brake", "seconds": 0.45, "t": 1038.4983}
+{"event": "continuous_brake", "load": -0.622, "predicted_load": -0.5285, "rate_lbs_per_s": 0.0748, "t": 1038.4989}
+{"event": "control_settle_hold", "load": -0.622, "remaining_s": 0.3937, "t": 1038.5765}
+{"event": "final_approach_stop_target", "load": -0.606, "predicted_load": -0.5461, "t": 1038.9623, "target_lbs": -0.75}
+{"event": "control_stop_jounce_hold", "load": -0.606, "reason": "predictive_brake", "seconds": 0.45, "t": 1039.0056}
+{"event": "continuous_brake", "load": -0.606, "predicted_load": -0.5461, "rate_lbs_per_s": 0.0479, "t": 1039.0215}
+{"event": "control_settle_hold", "load": -0.606, "remaining_s": 0.3629, "t": 1039.1145}
+{"event": "final_approach_stop_target", "load": -0.606, "predicted_load": -0.606, "t": 1039.5082, "target_lbs": -0.75}
+{"event": "control_stop_jounce_hold", "load": -0.606, "reason": "predictive_brake", "seconds": 0.45, "t": 1039.5556}
+{"event": "continuous_brake", "load": -0.606, "predicted_load": -0.606, "rate_lbs_per_s": 0.0, "t": 1039.5563}
+{"event": "control_settle_hold", "load": -0.606, "remaining_s": 0.3931, "t": 1039.6345}
+{"event": "final_approach_stop_target", "load": -0.653, "predicted_load": -0.653, "t": 1040.0646, "target_lbs": -0.75}
+{"event": "control_stop_jounce_hold", "load": -0.653, "reason": "predictive_brake", "seconds": 0.45, "t": 1040.0669}
+{"event": "continuous_brake", "load": -0.653, "predicted_load": -0.653, "rate_lbs_per_s": -0.0461, "t": 1040.0673}
+{"event": "control_settle_hold", "load": -0.653, "remaining_s": 0.3941, "t": 1040.1447}
+{"event": "final_approach_stop_target", "load": -0.698, "predicted_load": -0.698, "t": 1040.5336, "target_lbs": -0.75}
+{"event": "control_stop_jounce_hold", "load": -0.698, "reason": "predictive_brake", "seconds": 0.45, "t": 1040.5355}
+{"event": "continuous_brake", "load": -0.698, "predicted_load": -0.698, "rate_lbs_per_s": -0.0959, "t": 1040.5359}
+{"event": "control_settle_hold", "load": -0.698, "remaining_s": 0.3941, "t": 1040.6133}
+{"event": "final_approach_stop_target", "load": -0.696, "predicted_load": -0.69, "t": 1041.0067, "target_lbs": -0.75}
+{"event": "control_stop_jounce_hold", "load": -0.696, "reason": "predictive_brake", "seconds": 0.45, "t": 1041.061}
+{"event": "continuous_brake", "load": -0.696, "predicted_load": -0.69, "rate_lbs_per_s": 0.0048, "t": 1041.0768}
+{"event": "control_settle_hold", "load": -0.696, "remaining_s": 0.3583, "t": 1041.1745}
+{"event": "final_approach_stop_target", "load": -0.687, "predicted_load": -0.6586, "t": 1041.5724, "target_lbs": -0.75}
+{"event": "control_stop_jounce_hold", "load": -0.687, "reason": "predictive_brake", "seconds": 0.45, "t": 1041.6152}
+{"event": "continuous_brake", "load": -0.687, "predicted_load": -0.6586, "rate_lbs_per_s": 0.0227, "t": 1041.6159}
+{"event": "control_settle_hold", "load": -0.687, "remaining_s": 0.3885, "t": 1041.6939}
+{"event": "final_approach_stop_target", "load": -0.65, "predicted_load": -0.65, "t": 1042.1378, "target_lbs": -0.75}
+{"event": "control_stop_jounce_hold", "load": -0.65, "reason": "predictive_brake", "seconds": 0.45, "t": 1042.1524}
+{"event": "continuous_brake", "load": -0.65, "predicted_load": -0.65, "rate_lbs_per_s": 0.0, "t": 1042.1531}
+{"event": "control_settle_hold", "load": -0.611, "remaining_s": 0.3857, "t": 1042.2386}
+{"event": "final_approach_stop_target", "load": -0.611, "predicted_load": -0.611, "t": 1042.6195, "target_lbs": -0.75}
+{"event": "control_stop_jounce_hold", "load": -0.611, "reason": "predictive_brake", "seconds": 0.45, "t": 1042.6215}
+{"event": "continuous_brake", "load": -0.611, "predicted_load": -0.611, "rate_lbs_per_s": 0.0, "t": 1042.6219}
+{"event": "control_settle_hold", "load": -0.581, "remaining_s": 0.3941, "t": 1042.7149}
+{"event": "final_approach_stop_target", "load": -0.618, "predicted_load": -0.618, "t": 1043.0943, "target_lbs": -0.75}
+{"event": "control_stop_jounce_hold", "load": -0.618, "reason": "predictive_brake", "seconds": 0.45, "t": 1043.1394}
+{"event": "continuous_brake", "load": -0.618, "predicted_load": -0.618, "rate_lbs_per_s": -0.0892, "t": 1043.1551}
+{"event": "control_settle_hold", "load": -0.618, "remaining_s": 0.3489, "t": 1043.2623}
+{"event": "final_approach_stop_target", "load": -0.631, "predicted_load": -0.631, "t": 1043.6342, "target_lbs": -0.75}
+{"event": "control_stop_jounce_hold", "load": -0.631, "reason": "predictive_brake", "seconds": 0.45, "t": 1043.6718}
+{"event": "continuous_brake", "load": -0.631, "predicted_load": -0.631, "rate_lbs_per_s": -0.0343, "t": 1043.6789}
+{"event": "control_settle_hold", "load": -0.631, "remaining_s": 0.3913, "t": 1043.7524}
+{"event": "final_approach_stop_target", "load": -0.689, "predicted_load": -0.689, "t": 1044.1913, "target_lbs": -0.75}
+{"event": "control_stop_jounce_hold", "load": -0.689, "reason": "predictive_brake", "seconds": 0.45, "t": 1044.2344}
+{"event": "continuous_brake", "load": -0.689, "predicted_load": -0.689, "rate_lbs_per_s": 0.0, "t": 1044.2391}
+{"event": "control_settle_hold", "load": -0.737, "remaining_s": 0.3898, "t": 1044.3164}
+{"desired_speed": 3.5, "event": "continuous_speed", "increase": true, "load": -0.759, "predicted_load": -0.759, "rate_lbs_per_s": -0.0472, "speed_percent": 2, "t": 1044.7102}
+{"desired_speed": 3.5, "event": "continuous_speed", "increase": true, "load": -0.759, "predicted_load": -0.7536, "rate_lbs_per_s": -0.0472, "speed_percent": 4, "t": 1044.7879}
+{"event": "final_approach_stop_target", "load": -0.733, "predicted_load": -0.6356, "t": 1045.0996, "target_lbs": -0.75}
+{"event": "control_stop_jounce_hold", "load": -0.733, "reason": "predictive_brake", "seconds": 0.45, "t": 1045.1421}
+{"event": "continuous_brake", "load": -0.733, "predicted_load": -0.6356, "rate_lbs_per_s": 0.0709, "t": 1045.1578}
+{"event": "control_settle_hold", "load": -0.733, "remaining_s": 0.3676, "t": 1045.2464}
+{"event": "final_approach_stop_target", "load": -0.533, "predicted_load": -0.0005, "t": 1045.6002, "target_lbs": -0.75}
+{"event": "control_stop_jounce_hold", "load": -0.533, "reason": "predictive_brake", "seconds": 0.45, "t": 1045.6428}
+{"event": "continuous_brake", "load": -0.533, "predicted_load": -0.0005, "rate_lbs_per_s": 0.426, "t": 1045.6653}
+{"event": "control_settle_hold", "load": -0.533, "remaining_s": 0.3566, "t": 1045.758}
+{"event": "final_approach_stop_target", "load": -0.32, "predicted_load": 0.2476, "t": 1046.1477, "target_lbs": -0.75}
+{"event": "control_stop_jounce_hold", "load": -0.32, "reason": "predictive_brake", "seconds": 0.45, "t": 1046.1862}
+{"event": "continuous_brake", "load": -0.32, "predicted_load": 0.2476, "rate_lbs_per_s": 0.4541, "t": 1046.2023}
+{"event": "control_settle_hold", "load": -0.32, "remaining_s": 0.3477, "t": 1046.3103}
+{"event": "control_stop_jounce_hold", "load": -0.14, "reason": "target_band", "seconds": 0.45, "t": 1046.661}
+{"event": "continuous_in_band", "load": -0.14, "max_lbs": 0.0, "min_lbs": -0.25, "rate_lbs_per_s": 0.4947, "t": 1046.6768}
+{"event": "post_band_settle_start", "load": 0.023, "recovery_max_lbs": 2.0, "seconds": 5.0, "t": 1046.7805}
+{"event": "post_abort_recovery_wait", "load": 0.023, "seconds": 5.0, "t": 1046.8835}
+{"event": "post_abort_recovery_failed", "load": 0.023, "recovery_max_lbs": 2.0, "seconds": 5.0, "t": 1051.7877}
+{"event": "finish", "load": 0.023, "message": "Check tension", "t": 1051.8154}

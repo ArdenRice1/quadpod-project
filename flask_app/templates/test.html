@@ -56,7 +56,19 @@
     }).then((res) => res.json());
   }
 
-  startBtn.addEventListener("click", () => {
+  let startArmed = false;
+  let startArmTimer = null;
+
+  function disarmStart() {
+    startArmed = false;
+    if (startArmTimer) { clearTimeout(startArmTimer); startArmTimer = null; }
+    startBtn.classList.remove("danger");
+    startBtn.classList.add("success");
+    startBtn.textContent = "Start Pull Test";
+  }
+
+  function fireStart() {
+    disarmStart();
     startBtn.disabled = true;
     reviewLink.hidden = true;
     setStatus("warn", "Starting");
@@ -73,6 +85,20 @@
         startBtn.disabled = false;
         setStatus("bad", `Start command failed: ${err}`);
       });
+  }
+
+  startBtn.addEventListener("click", () => {
+    if (!startArmed) {
+      // Safety: first tap arms; a deliberate second tap applies real pull force.
+      startArmed = true;
+      startBtn.classList.remove("success");
+      startBtn.classList.add("danger");
+      startBtn.textContent = "⚠ Confirm — START PULL";
+      setStatus("warn", "Tap again to START the pull — this applies real force. Auto-cancels in 4s.");
+      startArmTimer = setTimeout(disarmStart, 4000);
+      return;
+    }
+    fireStart();
   });
 
   stopBtn.addEventListener("click", () => {

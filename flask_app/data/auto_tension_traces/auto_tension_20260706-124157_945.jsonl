@@ -1,0 +1,15 @@
+{"abort_lbs": 1.0, "event": "start", "load": 0.691, "max_lbs": 0.0, "min_lbs": -0.25, "t": 2806.9227}
+{"desired_speed": 9.251, "event": "continuous_speed", "increase": false, "load": 0.691, "predicted_load": 0.691, "rate_lbs_per_s": 0.0, "speed_percent": 1, "t": 2806.9876}
+{"desired_speed": 9.251, "event": "continuous_speed", "increase": false, "load": 0.691, "predicted_load": 0.6925, "rate_lbs_per_s": 0.0, "speed_percent": 4, "t": 2807.0961}
+{"desired_speed": 9.251, "event": "continuous_speed", "increase": false, "load": 0.691, "predicted_load": 0.7019, "rate_lbs_per_s": 0.0, "speed_percent": 8, "t": 2807.1938}
+{"desired_speed": 9.251, "event": "continuous_speed", "increase": false, "load": 0.691, "predicted_load": 0.7105, "rate_lbs_per_s": 0.0, "speed_percent": 9, "t": 2807.2937}
+{"desired_speed": 9.878, "event": "continuous_speed", "increase": false, "load": 0.748, "predicted_load": 0.8945, "rate_lbs_per_s": 0.0984, "speed_percent": 10, "t": 2807.8496}
+{"desired_speed": 10.604, "event": "continuous_speed", "increase": false, "load": 0.814, "predicted_load": 1.0364, "rate_lbs_per_s": 0.1582, "speed_percent": 11, "t": 2808.2919}
+{"desired_speed": 11.77, "event": "continuous_speed", "increase": false, "load": 0.92, "predicted_load": 1.0804, "rate_lbs_per_s": 0.1057, "speed_percent": 12, "t": 2809.0997}
+{"desired_speed": 11.209, "event": "continuous_speed", "increase": false, "load": 0.869, "predicted_load": 0.8979, "rate_lbs_per_s": -0.0767, "speed_percent": 11, "t": 2810.7631}
+{"desired_speed": 10.065, "event": "continuous_speed", "increase": false, "load": 0.765, "predicted_load": 0.7913, "rate_lbs_per_s": -0.1007, "speed_percent": 10, "t": 2814.9472}
+{"desired_speed": 9.13, "event": "continuous_speed", "increase": false, "load": 0.68, "predicted_load": 0.7039, "rate_lbs_per_s": -0.0959, "speed_percent": 9, "t": 2815.7839}
+{"desired_speed": 8.305, "event": "continuous_speed", "increase": false, "load": 0.605, "predicted_load": 0.6263, "rate_lbs_per_s": -0.0455, "speed_percent": 8, "t": 2817.0007}
+{"event": "cancel_requested", "load": 0.609, "reason": "operator stop", "t": 2818.3478}
+{"event": "cancelled", "load": 0.609, "t": 2818.3904}
+{"event": "finish", "load": 0.609, "message": "Check tension", "t": 2818.4328}

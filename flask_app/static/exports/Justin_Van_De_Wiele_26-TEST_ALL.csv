@@ -1,0 +1,36 @@
+APEC Quadpod Job Record,
+Software Version,0.3.0-field
+Job ID,2
+Status,active
+
+Job Information,
+Field,Value
+Project Name,Justin Van De Wiele
+Address,13805 N CR 1500
+"City, State, Zip","Shallowater, TX, 79363"
+Date,2026-06-29
+Date of Suspected Loss,2026-06-22
+Job #,26-TEST
+Foreman,Vdw
+
+Equipment,
+Field,Value
+Load Cell #,1
+Load Cell Calibration Date,2026-06-01
+IR Temp. Gun #,1
+IR Temp. Gun Calibration Date,2026-06-01
+
+Weather & Safety,
+Field,Value
+
+Conditions,
+Field,Value
+
+
+Test Summary
+Test #,Angle,Shingle Type,Max Load Value (lbs),Time,Temp.,Wind Speed & Direction,Failure Type,Notes
+
+Deviation Records
+Test #,Any Deviations?,Description of Deviation,Effect on Uncertainty,Approved By,Approved Date
+
+End Job Record,

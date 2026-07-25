@@ -309,5 +309,34 @@ class StorageExportTests(unittest.TestCase):
             storage.FORCE_SAMPLES_MAX = original
 
 
+    def test_finalize_interrupted_tests_recovers_peak(self):
+        job_id = storage.create_job({"project_name": "Interrupted"})
+        tid = storage.create_test(job_id, {"test_number": "1"})
+        storage.update_test(tid, status="running", started_at=storage.utc_now())
+        storage.add_sample(tid, 0.0, 10.0)
+        storage.add_sample(tid, 0.1, 55.0)  # peak
+        storage.add_sample(tid, 0.2, 30.0)
+
+        recovered = storage.finalize_interrupted_tests()
+
+        self.assertEqual(recovered, [(tid, 55.0)])
+        t = storage.get_test(tid)
+        self.assertEqual(t["status"], "complete")
+        self.assertEqual(t["peak_load_lbs"], 55.0)
+        self.assertIn("interrupted", t["stop_reason"])
+        self.assertEqual(storage.finalize_interrupted_tests(), [])  # idempotent
+
+    def test_copy_to_usb_fails_when_no_removable_media(self):
+        job_id = storage.create_job({"project_name": "NoUSB", "job_number": "N1"})
+        storage.create_test(job_id, {"test_number": "1"})
+        with (
+            patch.object(exporter, "USB_EXPORT_ROOT", ""),
+            patch.object(exporter, "_mounted_usb_root", return_value=None),
+            patch.object(exporter, "_auto_mount_usb_root", return_value=None),
+        ):
+            with self.assertRaises(exporter.NoUsbError):
+                exporter.copy_job_to_usb(job_id)
+
+
 if __name__ == "__main__":
     unittest.main()

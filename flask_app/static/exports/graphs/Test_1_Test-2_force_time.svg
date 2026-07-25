@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="420" viewBox="0 0 900 420" role="img" aria-label="Quadpod Force-Time - Test 2">
+  <rect width="100%" height="100%" fill="#ffffff"/>
+  <text x="64" y="24" font-family="Arial, sans-serif" font-size="20" font-weight="700" fill="#15191d">Quadpod Force-Time - Test 2</text>
+  <text x="64" y="42" font-family="Arial, sans-serif" font-size="12" fill="#66727f">Test / 1 - peak 117.10 lb - samples 31</text>
+  <g font-family="Arial, sans-serif" font-size="11" fill="#66727f">
+    <line x1="64" y1="362.0" x2="876" y2="362.0" stroke="#e1e6eb"/><text x="54" y="366.0" text-anchor="end">0</text><line x1="64" y1="283.0" x2="876" y2="283.0" stroke="#e1e6eb"/><text x="54" y="287.0" text-anchor="end">32</text><line x1="64" y1="204.0" x2="876" y2="204.0" stroke="#e1e6eb"/><text x="54" y="208.0" text-anchor="end">64</text><line x1="64" y1="125.0" x2="876" y2="125.0" stroke="#e1e6eb"/><text x="54" y="129.0" text-anchor="end">97</text><line x1="64" y1="46.0" x2="876" y2="46.0" stroke="#e1e6eb"/><text x="54" y="50.0" text-anchor="end">129</text>
+    <line x1="64.0" y1="46" x2="64.0" y2="362" stroke="#eef2f5"/><text x="64.0" y="398" text-anchor="middle">0.0</text><line x1="267.0" y1="46" x2="267.0" y2="362" stroke="#eef2f5"/><text x="267.0" y="398" text-anchor="middle">3.2</text><line x1="470.0" y1="46" x2="470.0" y2="362" stroke="#eef2f5"/><text x="470.0" y="398" text-anchor="middle">6.4</text><line x1="673.0" y1="46" x2="673.0" y2="362" stroke="#eef2f5"/><text x="673.0" y="398" text-anchor="middle">9.6</text><line x1="876.0" y1="46" x2="876.0" y2="362" stroke="#eef2f5"/><text x="876.0" y="398" text-anchor="middle">12.8</text>
+  </g>
+  <rect x="64" y="46" width="812" height="316" fill="none" stroke="#9aa7b2"/>
+  <polyline fill="none" stroke="#136f63" stroke-width="3" points="79.7,335.8 105.0,334.8 131.6,324.0 158.2,296.8 184.8,251.5 211.4,195.0 238.0,141.3 264.5,99.9 291.1,76.5 317.7,74.7 344.3,88.7 370.9,104.2 397.5,119.4 424.1,139.0 450.6,160.4 477.2,182.4 503.8,203.1 530.4,221.8 557.0,234.4 583.6,241.7 610.1,244.4 636.7,246.8 663.3,250.4 689.9,255.8 716.5,262.4 743.1,268.6 769.7,273.3 796.2,276.5 822.8,277.9 849.4,278.2 876.0,278.3"/>
+  <text x="470.0" y="414" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" fill="#66727f">Elapsed seconds</text>
+  <text transform="translate(18 204.0) rotate(-90)" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" fill="#66727f">Force (lbs)</text>
+</svg>

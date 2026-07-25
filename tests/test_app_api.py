@@ -292,9 +292,13 @@ class AppApiTests(unittest.TestCase):
         test_id = storage.create_test(job_id, {"test_number": "1"})
         storage.add_sample(test_id, 0.0, 10.0)
 
+        with self.client.session_transaction() as session:
+            session["csrf_token"] = "tok"
         copied_path = self.root / "exports" / "usb_copy" / "USB_Job_USB-001"
         with patch.object(app_module.exporter, "copy_job_to_usb", return_value=copied_path):
-            response = self.client.post(f"/job/{job_id}/copy-usb", follow_redirects=False)
+            response = self.client.post(
+                f"/job/{job_id}/copy-usb", data={"csrf_token": "tok"}, follow_redirects=False
+            )
 
         self.assertEqual(response.status_code, 303)
         self.assertIn("copy_status=ok", response.headers["Location"])
@@ -303,6 +307,19 @@ class AppApiTests(unittest.TestCase):
         text = final.get_data(as_text=True)
         self.assertIn("Job folder copied to", text)
 
+    def test_delete_job_rejects_forged_request_without_csrf(self):
+        job_id = storage.create_job({"project_name": "CSRF Guard"})
+        with self.client.session_transaction() as session:
+            session["csrf_token"] = "real-token"
+        # confirm=yes but no/foreign csrf token -> must NOT delete.
+        resp = self.client.post(
+            f"/job/{job_id}/delete",
+            data={"confirm": "yes", "csrf_token": "forged"},
+            follow_redirects=False,
+        )
+        self.assertEqual(resp.status_code, 303)
+        self.assertIsNotNone(storage.get_job(job_id))
+
     def test_delete_job_requires_confirmation_and_removes_job(self):
         job_id = storage.create_job({"project_name": "Delete Job", "job_number": "DEL-1"})
         test_id = storage.create_test(job_id, {"test_number": "1"})
@@ -310,17 +327,21 @@ class AppApiTests(unittest.TestCase):
         with self.client.session_transaction() as session:
             session["job_id"] = job_id
             session["test_id"] = test_id
+            session["csrf_token"] = "tok"
 
         archive_text = self.client.get("/archive").get_data(as_text=True)
         self.assertIn("Don't forget to save or export files before deleting this job.", archive_text)
         self.assertIn(">Yes<", archive_text)
         self.assertIn(">Cancel<", archive_text)
 
-        rejected = self.client.post(f"/job/{job_id}/delete", data={}, follow_redirects=False)
+        # Valid CSRF but no confirm -> still rejected (confirmation required).
+        rejected = self.client.post(f"/job/{job_id}/delete", data={"csrf_token": "tok"}, follow_redirects=False)
         self.assertEqual(rejected.status_code, 303)
         self.assertIsNotNone(storage.get_job(job_id))
 
-        response = self.client.post(f"/job/{job_id}/delete", data={"confirm": "yes"}, follow_redirects=False)
+        response = self.client.post(
+            f"/job/{job_id}/delete", data={"confirm": "yes", "csrf_token": "tok"}, follow_redirects=False
+        )
 
         self.assertEqual(response.status_code, 303)
         self.assertIsNone(storage.get_job(job_id))

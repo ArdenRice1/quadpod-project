@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="420" viewBox="0 0 900 420" role="img" aria-label="Quadpod Force-Time - Test 1">
+  <rect width="100%" height="100%" fill="#ffffff"/>
+  <text x="64" y="24" font-family="Arial, sans-serif" font-size="20" font-weight="700" fill="#15191d">Quadpod Force-Time - Test 1</text>
+  <text x="64" y="42" font-family="Arial, sans-serif" font-size="12" fill="#66727f">Test 2 / 1 - peak 7.15 lb - samples 49</text>
+  <g font-family="Arial, sans-serif" font-size="11" fill="#66727f">
+    <line x1="64" y1="362.0" x2="876" y2="362.0" stroke="#e1e6eb"/><text x="54" y="366.0" text-anchor="end">0</text><line x1="64" y1="283.0" x2="876" y2="283.0" stroke="#e1e6eb"/><text x="54" y="287.0" text-anchor="end">2</text><line x1="64" y1="204.0" x2="876" y2="204.0" stroke="#e1e6eb"/><text x="54" y="208.0" text-anchor="end">5</text><line x1="64" y1="125.0" x2="876" y2="125.0" stroke="#e1e6eb"/><text x="54" y="129.0" text-anchor="end">8</text><line x1="64" y1="46.0" x2="876" y2="46.0" stroke="#e1e6eb"/><text x="54" y="50.0" text-anchor="end">10</text>
+    <line x1="64.0" y1="46" x2="64.0" y2="362" stroke="#eef2f5"/><text x="64.0" y="398" text-anchor="middle">0.0</text><line x1="267.0" y1="46" x2="267.0" y2="362" stroke="#eef2f5"/><text x="267.0" y="398" text-anchor="middle">5.1</text><line x1="470.0" y1="46" x2="470.0" y2="362" stroke="#eef2f5"/><text x="470.0" y="398" text-anchor="middle">10.1</text><line x1="673.0" y1="46" x2="673.0" y2="362" stroke="#eef2f5"/><text x="673.0" y="398" text-anchor="middle">15.2</text><line x1="876.0" y1="46" x2="876.0" y2="362" stroke="#eef2f5"/><text x="876.0" y="398" text-anchor="middle">20.2</text>
+  </g>
+  <rect x="64" y="46" width="812" height="316" fill="none" stroke="#9aa7b2"/>
+  <polyline fill="none" stroke="#136f63" stroke-width="3" points="74.1,358.0 89.9,356.8 106.7,352.0 123.4,341.6 140.1,312.0 156.8,270.0 173.6,228.4 190.3,189.5 207.0,155.7 223.7,141.0 240.5,138.7 257.2,137.3 273.9,136.7 290.6,136.6 307.4,136.6 324.1,136.7 340.8,136.7 357.5,136.6 374.3,136.6 391.0,136.6 407.7,136.5 424.4,136.5 441.2,136.6 457.9,136.6 474.6,136.6 491.3,136.6 508.1,136.6 524.8,136.6 541.5,136.6 558.2,136.5 575.0,136.5 591.7,136.5 608.4,136.5 625.1,136.5 641.9,136.6 658.6,136.5 675.3,136.4 692.0,136.4 708.8,136.3 725.5,136.2 742.2,136.2 758.9,136.1 775.6,136.2 792.4,136.2 809.1,136.2 825.8,136.2 842.5,136.2 859.3,136.2 876.0,136.2"/>
+  <text x="470.0" y="414" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" fill="#66727f">Elapsed seconds</text>
+  <text transform="translate(18 204.0) rotate(-90)" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" fill="#66727f">Force (lbs)</text>
+</svg>

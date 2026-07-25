@@ -1,0 +1,63 @@
+{"abort_lbs": 1.0, "event": "start", "load": -7.631, "max_lbs": 0.0, "min_lbs": -0.25, "t": 10400.9989}
+{"desired_speed": 42.0806, "event": "continuous_speed", "increase": true, "load": -7.631, "predicted_load": -7.631, "rate_lbs_per_s": 0.0, "speed_percent": 1, "t": 10401.0691}
+{"desired_speed": 42.0806, "event": "continuous_speed", "increase": true, "load": -7.631, "predicted_load": -7.6296, "rate_lbs_per_s": 0.0, "speed_percent": 4, "t": 10401.1569}
+{"desired_speed": 42.0806, "event": "continuous_speed", "increase": true, "load": -7.631, "predicted_load": -7.621, "rate_lbs_per_s": 0.0, "speed_percent": 7, "t": 10401.2496}
+{"desired_speed": 42.0806, "event": "continuous_speed", "increase": true, "load": -7.631, "predicted_load": -7.6129, "rate_lbs_per_s": 0.0, "speed_percent": 11, "t": 10401.3474}
+{"desired_speed": 42.0412, "event": "continuous_speed", "increase": true, "load": -7.624, "predicted_load": -7.5977, "rate_lbs_per_s": 0.0, "speed_percent": 14, "t": 10401.4575}
+{"desired_speed": 42.0412, "event": "continuous_speed", "increase": true, "load": -7.624, "predicted_load": -7.5887, "rate_lbs_per_s": 0.0, "speed_percent": 18, "t": 10401.5503}
+{"desired_speed": 42.0412, "event": "continuous_speed", "increase": true, "load": -7.624, "predicted_load": -7.5796, "rate_lbs_per_s": 0.0, "speed_percent": 21, "t": 10401.643}
+{"desired_speed": 42.0412, "event": "continuous_speed", "increase": true, "load": -7.624, "predicted_load": -7.5714, "rate_lbs_per_s": 0.0, "speed_percent": 24, "t": 10401.7404}
+{"desired_speed": 41.4545, "event": "continuous_speed", "increase": true, "load": -7.609, "predicted_load": -7.5035, "rate_lbs_per_s": 0.0359, "speed_percent": 28, "t": 10401.8331}
+{"desired_speed": 41.4545, "event": "continuous_speed", "increase": true, "load": -7.609, "predicted_load": -7.4949, "rate_lbs_per_s": 0.0359, "speed_percent": 31, "t": 10401.931}
+{"desired_speed": 41.4545, "event": "continuous_speed", "increase": true, "load": -7.609, "predicted_load": -7.4863, "rate_lbs_per_s": 0.0359, "speed_percent": 34, "t": 10402.0278}
+{"desired_speed": 41.4545, "event": "continuous_speed", "increase": true, "load": -7.609, "predicted_load": -7.4779, "rate_lbs_per_s": 0.0359, "speed_percent": 38, "t": 10402.1205}
+{"desired_speed": 41.9569, "event": "continuous_speed", "increase": true, "load": -7.609, "predicted_load": -7.5147, "rate_lbs_per_s": 0.0, "speed_percent": 41, "t": 10402.2061}
+{"desired_speed": 41.8781, "event": "continuous_speed", "increase": true, "load": -7.595, "predicted_load": -7.4915, "rate_lbs_per_s": 0.0, "speed_percent": 42, "t": 10402.5976}
+{"desired_speed": 41.058, "event": "continuous_speed", "increase": true, "load": -7.574, "predicted_load": -7.4063, "rate_lbs_per_s": 0.0504, "speed_percent": 41, "t": 10402.7053}
+{"desired_speed": 41.76, "event": "continuous_speed", "increase": true, "load": -7.574, "predicted_load": -7.4714, "rate_lbs_per_s": 0.0, "speed_percent": 42, "t": 10403.0416}
+{"desired_speed": 40.5603, "event": "continuous_speed", "increase": true, "load": -7.543, "predicted_load": -7.3461, "rate_lbs_per_s": 0.074, "speed_percent": 41, "t": 10403.119}
+{"desired_speed": 41.5856, "event": "continuous_speed", "increase": true, "load": -7.543, "predicted_load": -7.4416, "rate_lbs_per_s": 0.0, "speed_percent": 42, "t": 10403.46}
+{"desired_speed": 39.9276, "event": "continuous_speed", "increase": true, "load": -7.5, "predicted_load": -7.2676, "rate_lbs_per_s": 0.1028, "speed_percent": 40, "t": 10403.5426}
+{"desired_speed": 41.3438, "event": "continuous_speed", "increase": true, "load": -7.5, "predicted_load": -7.4002, "rate_lbs_per_s": 0.0, "speed_percent": 41, "t": 10403.8753}
+{"desired_speed": 39.2237, "event": "continuous_speed", "increase": true, "load": -7.445, "predicted_load": -7.1762, "rate_lbs_per_s": 0.1324, "speed_percent": 39, "t": 10403.953}
+{"desired_speed": 41.0344, "event": "continuous_speed", "increase": true, "load": -7.445, "predicted_load": -7.3469, "rate_lbs_per_s": 0.0, "speed_percent": 41, "t": 10404.2932}
+{"desired_speed": 38.9375, "event": "continuous_speed", "increase": true, "load": -7.39, "predicted_load": -7.1228, "rate_lbs_per_s": 0.1317, "speed_percent": 39, "t": 10404.3863}
+{"desired_speed": 40.725, "event": "continuous_speed", "increase": true, "load": -7.39, "predicted_load": -7.2927, "rate_lbs_per_s": 0.0, "speed_percent": 41, "t": 10404.7115}
+{"desired_speed": 38.3487, "event": "continuous_speed", "increase": true, "load": -7.327, "predicted_load": -7.0374, "rate_lbs_per_s": 0.1503, "speed_percent": 38, "t": 10404.7889}
+{"desired_speed": 40.3706, "event": "continuous_speed", "increase": true, "load": -7.327, "predicted_load": -7.2311, "rate_lbs_per_s": 0.0, "speed_percent": 40, "t": 10405.1028}
+{"desired_speed": 37.6632, "event": "continuous_speed", "increase": true, "load": -7.255, "predicted_load": -6.938, "rate_lbs_per_s": 0.1728, "speed_percent": 38, "t": 10405.2128}
+{"desired_speed": 39.9656, "event": "continuous_speed", "increase": true, "load": -7.255, "predicted_load": -7.1608, "rate_lbs_per_s": 0.0, "speed_percent": 40, "t": 10405.5367}
+{"desired_speed": 36.803, "event": "continuous_speed", "increase": true, "load": -7.17, "predicted_load": -6.8151, "rate_lbs_per_s": 0.204, "speed_percent": 37, "t": 10405.6233}
+{"desired_speed": 39.4875, "event": "continuous_speed", "increase": true, "load": -7.17, "predicted_load": -7.078, "rate_lbs_per_s": 0.0, "speed_percent": 39, "t": 10405.9639}
+{"desired_speed": 35.1079, "event": "continuous_speed", "increase": true, "load": -7.05, "predicted_load": -6.5933, "rate_lbs_per_s": 0.2863, "speed_percent": 36, "t": 10406.0415}
+{"desired_speed": 35.1079, "event": "continuous_speed", "increase": true, "load": -7.05, "predicted_load": -6.6008, "rate_lbs_per_s": 0.2863, "speed_percent": 35, "t": 10406.1394}
+{"desired_speed": 38.8125, "event": "continuous_speed", "increase": true, "load": -7.05, "predicted_load": -6.9622, "rate_lbs_per_s": 0.0, "speed_percent": 38, "t": 10406.3818}
+{"desired_speed": 32.7109, "event": "continuous_speed", "increase": true, "load": -6.88, "predicted_load": -6.2758, "rate_lbs_per_s": 0.4078, "speed_percent": 36, "t": 10406.4643}
+{"desired_speed": 32.7109, "event": "continuous_speed", "increase": true, "load": -6.88, "predicted_load": -6.2813, "rate_lbs_per_s": 0.4078, "speed_percent": 33, "t": 10406.5673}
+{"desired_speed": 37.8562, "event": "continuous_speed", "increase": true, "load": -6.88, "predicted_load": -6.7982, "rate_lbs_per_s": 0.0, "speed_percent": 35, "t": 10406.7994}
+{"desired_speed": 30.0188, "event": "continuous_speed", "increase": true, "load": -6.655, "predicted_load": -5.893, "rate_lbs_per_s": 0.5388, "speed_percent": 33, "t": 10406.8769}
+{"desired_speed": 30.0188, "event": "continuous_speed", "increase": true, "load": -6.655, "predicted_load": -5.8987, "rate_lbs_per_s": 0.5388, "speed_percent": 30, "t": 10406.9763}
+{"desired_speed": 36.5906, "event": "continuous_speed", "increase": true, "load": -6.655, "predicted_load": -6.58, "rate_lbs_per_s": 0.0, "speed_percent": 33, "t": 10407.2171}
+{"desired_speed": 25.6823, "event": "continuous_speed", "increase": true, "load": -6.328, "predicted_load": -5.2679, "rate_lbs_per_s": 0.7829, "speed_percent": 30, "t": 10407.2946}
+{"desired_speed": 25.6823, "event": "continuous_speed", "increase": true, "load": -6.328, "predicted_load": -5.274, "rate_lbs_per_s": 0.7829, "speed_percent": 27, "t": 10407.3923}
+{"desired_speed": 25.6823, "event": "continuous_speed", "increase": true, "load": -6.328, "predicted_load": -5.2825, "rate_lbs_per_s": 0.7829, "speed_percent": 26, "t": 10407.4901}
+{"desired_speed": 20.0822, "event": "continuous_speed", "increase": true, "load": -5.86, "predicted_load": -4.3905, "rate_lbs_per_s": 1.1243, "speed_percent": 23, "t": 10407.6648}
+{"desired_speed": 20.0822, "event": "continuous_speed", "increase": true, "load": -5.86, "predicted_load": -4.3972, "rate_lbs_per_s": 1.1243, "speed_percent": 20, "t": 10407.7701}
+{"desired_speed": 10.783, "event": "continuous_speed", "increase": true, "load": -5.093, "predicted_load": -2.7471, "rate_lbs_per_s": 1.8365, "speed_percent": 17, "t": 10408.1143}
+{"desired_speed": 10.783, "event": "continuous_speed", "increase": true, "load": -5.093, "predicted_load": -2.7539, "rate_lbs_per_s": 1.8365, "speed_percent": 14, "t": 10408.2169}
+{"desired_speed": 10.783, "event": "continuous_speed", "increase": true, "load": -5.093, "predicted_load": -2.7624, "rate_lbs_per_s": 1.8365, "speed_percent": 11, "t": 10408.3097}
+{"event": "control_stop_jounce_hold", "load": -3.798, "reason": "predictive_brake", "seconds": 0.45, "t": 10408.5464}
+{"event": "continuous_brake", "load": -3.798, "predicted_load": 0.1016, "rate_lbs_per_s": 3.0981, "t": 10408.5672}
+{"event": "control_settle_hold", "load": -3.798, "remaining_s": 0.3585, "t": 10408.6597}
+{"event": "control_stop_jounce_hold", "load": -2.061, "reason": "predictive_brake", "seconds": 0.45, "t": 10409.0444}
+{"event": "continuous_brake", "load": -2.061, "predicted_load": 2.1106, "rate_lbs_per_s": 3.3373, "t": 10409.0448}
+{"event": "control_settle_hold", "load": -2.061, "remaining_s": 0.3942, "t": 10409.122}
+{"event": "control_stop_jounce_hold", "load": -0.523, "reason": "predictive_brake", "seconds": 0.45, "t": 10409.5426}
+{"event": "continuous_brake", "load": -0.523, "predicted_load": 4.0986, "rate_lbs_per_s": 3.6972, "t": 10409.5583}
+{"event": "control_settle_hold", "load": -0.523, "remaining_s": 0.3636, "t": 10409.6508}
+{"desired_speed": 10.681, "event": "continuous_speed", "increase": false, "load": 0.821, "predicted_load": 4.1632, "rate_lbs_per_s": 2.6738, "speed_percent": 2, "t": 10410.0387}
+{"desired_speed": 10.681, "event": "continuous_speed", "increase": false, "load": 0.821, "predicted_load": 4.1677, "rate_lbs_per_s": 2.6738, "speed_percent": 5, "t": 10410.1315}
+{"desired_speed": 10.681, "event": "continuous_speed", "increase": false, "load": 0.821, "predicted_load": 5.4556, "rate_lbs_per_s": 3.6972, "speed_percent": 8, "t": 10410.2281}
+{"desired_speed": 10.681, "event": "continuous_speed", "increase": false, "load": 0.821, "predicted_load": 5.4636, "rate_lbs_per_s": 3.6972, "speed_percent": 11, "t": 10410.3056}
+{"abort_lbs": 1.0, "event": "abort", "load": 1.804, "t": 10410.3838}
+{"event": "finish", "load": 1.804, "message": "Check tension", "t": 10410.4436}

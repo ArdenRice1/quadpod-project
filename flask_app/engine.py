@@ -5,6 +5,7 @@ import time
 from collections import deque
 
 from config import (
+    ALLOW_SIMULATED_TESTS,
     APP_VERSION,
     DISCONNECT_STOP_SECONDS,
     FAILURE_CONFIRM_SAMPLES,
@@ -12,11 +13,13 @@ from config import (
     FAILURE_DROP_PERCENT,
     FAILURE_MIN_PEAK_LBS,
     MAX_FORCE_LBS,
+    MAX_FORCE_CONFIRM_SAMPLES,
     MAX_TEST_SECONDS,
     LOAD_STABLE_DELTA_LBS,
     LOAD_STABLE_WINDOW_SECONDS,
     LOADCELL_DISPLAY_ALPHA,
     LOADCELL_DISPLAY_SNAP_DELTA_LBS,
+    LOADCELL_PULL_GLITCH_MAX_JUMP_LBS,
     POST_STOP_LOG_MAX_SECONDS,
     PRELOAD_AUTO_ABORT_LBS,
     PRELOAD_AUTO_DRIFT_MAX_DROP_LBS,
@@ -167,6 +170,7 @@ class QuadpodEngine:
         self.thread = None
         self.last_client_poll = time.monotonic()
         self.failure_drop_samples = 0
+        self.max_force_samples = 0
         self.load_history = deque()
         self.scan_load_history = deque()
         self.auto_preload_trace = deque(maxlen=max(1, int(PRELOAD_AUTO_TRACE_MAX_ENTRIES)))
@@ -228,6 +232,18 @@ class QuadpodEngine:
     def start(self):
         if self.thread and self.thread.is_alive():
             return
+        # A test left 'running' means the last run was interrupted (power/crash);
+        # recover its peak from the committed samples so the record isn't lost.
+        try:
+            for tid, peak in storage.finalize_interrupted_tests():
+                storage.add_event(
+                    "Interrupted pull recovered on restart",
+                    level="warn",
+                    test_id=tid,
+                    data={"recovered_peak_lbs": peak},
+                )
+        except Exception:
+            pass
         self.running = True
         self.thread = threading.Thread(target=self._scan_loop, daemon=True)
         self.thread.start()
@@ -313,6 +329,7 @@ class QuadpodEngine:
                 max_lbs=PRELOAD_MAX_LBS,
                 abort_lbs=PRELOAD_AUTO_ABORT_LBS,
             )
+            self.last_client_poll = time.monotonic()
             self.auto_preload_thread = threading.Thread(target=self._auto_preload_loop, daemon=True)
             self.auto_preload_thread.start()
             return True, self.state["auto_preload_message"]
@@ -401,9 +418,11 @@ class QuadpodEngine:
                 sample_count=0,
                 software_version=APP_VERSION,
             )
-            # Pull force changes fast -> disable glitch rejection so no real
-            # reading is ever dropped/held during the actual test.
-            self.load_cell.pause_glitch_reject()
+            # Pull force changes fast, but an HX711 desync would corrupt the
+            # certified peak / false-trip a failure. Keep desync rejection with a
+            # wide, pull-appropriate jump tolerance instead of disabling it.
+            self.load_cell.set_pull_glitch_mode(LOADCELL_PULL_GLITCH_MAX_JUMP_LBS)
+            self.max_force_samples = 0
             self.actuator.stop()
             self.state["actuator_command"] = self.actuator.last_command
             ok = self.actuator.pull()
@@ -435,6 +454,15 @@ class QuadpodEngine:
         actuator_health = self.actuator.health()
         if not actuator_health.get("ok"):
             errors.append(actuator_health.get("last_error") or "actuator is not ready")
+
+        # Never certify a simulated or uncalibrated pull as a real result.
+        if not ALLOW_SIMULATED_TESTS:
+            if self.load_cell.use_mock:
+                errors.append(
+                    "device is in SIMULATION mode (mock hardware) -- not configured for real tests"
+                )
+            elif float(self.load_cell.reference_unit or 0.0) == 1.0:
+                errors.append("load cell is not calibrated (reference unit is 1.0)")
 
         job = storage.get_job(test["job_id"])
         if not job:
@@ -563,12 +591,24 @@ class QuadpodEngine:
             force = max(0.0, self.state["peak_load"] - FAILURE_DROP_LBS - 0.8)
         self.load_cell.set_mock_force(force)
 
+    def _client_disconnected_locked(self):
+        """True if the phone hasn't polled status within the disconnect window.
+        Used by the auto-tension and hold loops so an unattended actuator (phone
+        dropped Wi-Fi mid-run) is driven back to neutral, not left driving."""
+        return time.monotonic() - self.last_client_poll > DISCONNECT_STOP_SECONDS
+
     def _stop_reason_locked(self, load, elapsed_s):
         if time.monotonic() - self.last_client_poll > DISCONNECT_STOP_SECONDS:
             return "phone/app disconnected"
         if self.load_cell.last_error:
             return "load cell fault"
-        if self.state["peak_load"] >= MAX_FORCE_LBS:
+        # Debounce the MAX_FORCE stop against a lone sensor spike: require the
+        # current force to hold at/above the limit for a few consecutive samples.
+        if load >= MAX_FORCE_LBS:
+            self.max_force_samples += 1
+        else:
+            self.max_force_samples = 0
+        if self.max_force_samples >= max(1, MAX_FORCE_CONFIRM_SAMPLES):
             return "maximum force limit"
         if elapsed_s >= MAX_TEST_SECONDS:
             return "maximum run time/end of travel timeout"
@@ -679,6 +719,11 @@ class QuadpodEngine:
                         self._auto_preload_stop_actuator_locked()
                         self.state["auto_preload_message"] = "Check tension"
                         self._record_auto_preload_trace_locked("sensor_fault_stop", load=load)
+                        break
+                    if self._client_disconnected_locked():
+                        self._auto_preload_stop_actuator_locked()
+                        self.state["auto_preload_message"] = "Phone disconnected -- stopped"
+                        self._record_auto_preload_trace_locked("disconnect_stop", load=load)
                         break
                     if self.auto_preload_cancel_requested or not self.state.get("auto_preload_running") or self.state["test_running"]:
                         self._auto_preload_stop_actuator_locked()
@@ -928,8 +973,9 @@ class QuadpodEngine:
             )
 
         def sensor_fault_locked():
-            # We still own the actuator but the load cell went bad: self-stop.
-            return self.state.get("auto_preload_sensor_fault")
+            # We still own the actuator but must self-stop: the load cell went
+            # bad, or the phone disconnected (don't hold unattended).
+            return bool(self.state.get("auto_preload_sensor_fault")) or self._client_disconnected_locked()
 
         def handoff_or_selfstop_locked():
             """Under lock: yield the hold if needed. Returns 'handoff' (command
@@ -1134,6 +1180,12 @@ class QuadpodEngine:
                             "sensor_fault_stop",
                             load=self.state.get("current_load"),
                         )
+                        break
+                    if self._client_disconnected_locked():
+                        self._auto_preload_stop_actuator_locked()
+                        self.state["auto_preload_message"] = "Phone disconnected -- stopped"
+                        command_direction = None
+                        self._record_auto_preload_trace_locked("disconnect_stop", load=self.state.get("current_load"))
                         break
                     if self.auto_preload_cancel_requested or not self.state.get("auto_preload_running"):
                         self._auto_preload_stop_actuator_locked()
@@ -1499,8 +1551,9 @@ class QuadpodEngine:
                     self.preload_hold_trim_us = 0
                     self.preload_hold_active = False
                     return
-                # We still own it but the load cell went bad: self-stop.
-                if self.state.get("auto_preload_sensor_fault"):
+                # We still own it but must self-stop: load cell bad, or the phone
+                # disconnected (don't hold unattended).
+                if self.state.get("auto_preload_sensor_fault") or self._client_disconnected_locked():
                     self.actuator.stop()
                     self.state["actuator_command"] = self.actuator.last_command
                     self.preload_hold_trim_us = 0

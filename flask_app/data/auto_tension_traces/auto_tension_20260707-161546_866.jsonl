@@ -1,0 +1,39 @@
+{"abort_lbs": 1.0, "event": "start", "load": -7.605, "max_lbs": 0.0, "min_lbs": -0.25, "t": 3867.9226}
+{"desired_speed": 23.0, "event": "continuous_speed", "increase": true, "load": -7.635, "no_progress_boost": 0.0, "predicted_load": -7.635, "rate_lbs_per_s": 0.0, "speed_percent": 9, "t": 3868.5841}
+{"desired_speed": 21.4317, "event": "continuous_speed", "increase": true, "load": -7.584, "no_progress_boost": 0.0, "predicted_load": -7.42, "rate_lbs_per_s": 0.0873, "speed_percent": 19, "t": 3869.1614}
+{"desired_speed": 20.9193, "event": "continuous_speed", "increase": true, "load": -7.546, "no_progress_boost": 0.0, "predicted_load": -7.3065, "rate_lbs_per_s": 0.1158, "speed_percent": 21, "t": 3869.5786}
+{"desired_speed": 19.2265, "event": "continuous_speed", "increase": true, "load": -7.478, "no_progress_boost": 0.0, "predicted_load": -7.0898, "rate_lbs_per_s": 0.21, "speed_percent": 19, "t": 3870.3774}
+{"desired_speed": 5.75, "event": "continuous_speed", "increase": true, "load": -7.456, "no_progress_boost": 0.0, "predicted_load": -5.4825, "rate_lbs_per_s": 1.2708, "speed_percent": 9, "t": 3871.0452}
+{"desired_speed": 5.75, "event": "continuous_speed", "increase": true, "load": -7.429, "no_progress_boost": 0.0, "predicted_load": -5.4929, "rate_lbs_per_s": 1.2708, "speed_percent": 6, "t": 3871.546}
+{"desired_speed": 21.2781, "event": "continuous_speed", "increase": true, "load": -7.464, "no_progress_boost": 0.0, "predicted_load": -7.3001, "rate_lbs_per_s": 0.0958, "speed_percent": 20, "t": 3873.3368}
+{"direction": true, "event": "control_read_confirm_without_stop", "first_load": 141.745, "previous_load": -7.464, "speed_percent": 19.7068, "t": 3873.7167}
+{"event": "control_load_confirmed", "first_load": 141.745, "load": -7.113, "previous_load": -7.464, "raw_counts": 38777.3333, "sample_count": 5, "sample_max": 141.745, "sample_min": -7.373, "t": 3875.9706, "zero_counts": 110454.3333}
+{"desired_speed": 14.8922, "event": "continuous_speed", "increase": true, "load": -7.113, "no_progress_boost": 0.0, "predicted_load": -6.3672, "rate_lbs_per_s": 0.4512, "speed_percent": 15, "t": 3876.029}
+{"desired_speed": 5.75, "event": "continuous_speed", "increase": true, "load": -6.8, "no_progress_boost": 0.0, "predicted_load": -4.9285, "rate_lbs_per_s": 1.2129, "speed_percent": 8, "t": 3877.3455}
+{"desired_speed": 5.75, "event": "continuous_speed", "increase": true, "load": -6.71, "no_progress_boost": 0.0, "predicted_load": -4.8618, "rate_lbs_per_s": 1.2129, "speed_percent": 6, "t": 3877.6623}
+{"desired_speed": 7.2504, "event": "continuous_speed", "increase": true, "load": -6.619, "no_progress_boost": 0.0, "predicted_load": -5.2841, "rate_lbs_per_s": 0.8765, "speed_percent": 7, "t": 3878.4306}
+{"desired_speed": 13.5009, "event": "continuous_speed", "increase": true, "load": -6.462, "no_progress_boost": 0.0, "predicted_load": -5.6456, "rate_lbs_per_s": 0.5286, "speed_percent": 14, "t": 3879.4311}
+{"desired_speed": 10.24, "event": "continuous_speed", "increase": true, "load": -6.352, "no_progress_boost": 0.0, "predicted_load": -5.2396, "rate_lbs_per_s": 0.7101, "speed_percent": 10, "t": 3880.0986}
+{"desired_speed": 5.75, "event": "continuous_speed", "increase": true, "load": -6.131, "no_progress_boost": 0.0, "predicted_load": -4.6369, "rate_lbs_per_s": 0.9722, "speed_percent": 6, "t": 3880.6746}
+{"desired_speed": 10.9461, "event": "continuous_speed", "increase": true, "load": -5.708, "no_progress_boost": 0.0, "predicted_load": -4.6816, "rate_lbs_per_s": 0.6708, "speed_percent": 11, "t": 3883.2661}
+{"desired_speed": 5.75, "event": "continuous_speed", "increase": true, "load": -5.553, "no_progress_boost": 0.0, "predicted_load": -3.4935, "rate_lbs_per_s": 1.3475, "speed_percent": 6, "t": 3883.6886}
+{"desired_speed": 13.9108, "event": "continuous_speed", "increase": true, "load": -4.865, "no_progress_boost": 0.0, "predicted_load": -4.1417, "rate_lbs_per_s": 0.4688, "speed_percent": 14, "t": 3885.4475}
+{"event": "control_stop_jounce_hold", "load": -4.477, "reason": "predictive_brake", "seconds": 0.45, "t": 3886.0313}
+{"event": "continuous_brake", "load": -4.477, "predicted_load": -1.0985, "rate_lbs_per_s": 2.22, "t": 3886.0521}
+{"event": "prediction_brake_before_initial_gate", "gate_lbs": -3.0, "load": -4.287, "predicted_load": 0.6907, "t": 3886.5736, "target_lbs": -0.6}
+{"desired_speed": 3.0, "event": "continuous_speed", "increase": true, "load": -4.287, "no_progress_boost": 0.0, "predicted_load": 0.6907, "rate_lbs_per_s": 3.3185, "speed_percent": 3, "t": 3886.6112}
+{"event": "control_stop_jounce_hold", "load": -4.485, "reason": "predictive_brake", "seconds": 0.45, "t": 3887.2687}
+{"event": "continuous_brake", "load": -4.485, "predicted_load": -1.285, "rate_lbs_per_s": 2.1263, "t": 3887.2895}
+{"desired_speed": 5.75, "event": "continuous_speed", "increase": true, "load": -4.394, "no_progress_boost": 0.0, "predicted_load": -2.0577, "rate_lbs_per_s": 1.5575, "speed_percent": 6, "t": 3887.9312}
+{"desired_speed": 7.7101, "event": "continuous_speed", "increase": true, "load": -4.436, "no_progress_boost": 0.0, "predicted_load": -3.1395, "rate_lbs_per_s": 0.8509, "speed_percent": 8, "t": 3888.5259}
+{"event": "prediction_brake_before_initial_gate", "gate_lbs": -3.0, "load": -4.46, "predicted_load": 0.5447, "t": 3889.4118, "target_lbs": -0.6}
+{"desired_speed": 3.0, "event": "continuous_speed", "increase": true, "load": -4.46, "no_progress_boost": 0.0, "predicted_load": 0.5447, "rate_lbs_per_s": 3.3185, "speed_percent": 3, "t": 3889.4649}
+{"event": "prediction_brake_before_initial_gate", "gate_lbs": -3.0, "load": -4.451, "predicted_load": 0.5372, "t": 3890.1632, "target_lbs": -0.6}
+{"desired_speed": 14.2595, "event": "continuous_speed", "increase": true, "load": -4.45, "no_progress_boost": 0.0, "predicted_load": -4.4359, "rate_lbs_per_s": 0.0024, "speed_percent": 10, "t": 3890.6251}
+{"desired_speed": 13.0101, "event": "continuous_speed", "increase": true, "load": -4.292, "no_progress_boost": 0.0, "predicted_load": -4.0259, "rate_lbs_per_s": 0.1547, "speed_percent": 13, "t": 3890.962}
+{"direction": true, "event": "control_read_confirm_without_stop", "first_load": -2.927, "previous_load": -4.456, "speed_percent": 13.0101, "t": 3891.4986}
+{"event": "control_load_discarded", "first_load": -2.927, "load": -4.456, "previous_load": -4.456, "raw_counts": 277347.3333, "sample_count": 10, "sample_max": 18.904, "sample_min": -2.927, "t": 3896.0984, "zero_counts": 110454.3333}
+{"event": "control_settle_hold", "load": -4.456, "remaining_s": 0.3499, "t": 3896.1598}
+{"event": "control_load_confirmed", "first_load": 11.805, "load": 8.924, "previous_load": 14.335, "raw_counts": 210718.6667, "sample_count": 5, "sample_max": 11.805, "sample_min": 8.236, "t": 3898.5196, "zero_counts": 110454.3333}
+{"abort_lbs": 1.0, "event": "abort", "load": 8.924, "t": 3898.568}
+{"event": "finish", "load": 8.924, "message": "Check tension", "t": 3898.6105}

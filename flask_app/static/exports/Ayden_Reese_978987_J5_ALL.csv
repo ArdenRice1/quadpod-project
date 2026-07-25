@@ -1,0 +1,61 @@
+APEC Quadpod Job Record,
+Software Version,0.3.0-field
+Job ID,5
+Status,active
+
+Job Information,
+Field,Value
+Project Name,Ayden Reese
+Address,adsflkasdfj;l
+"City, State, Zip",lkjl;j
+Contact Phone,lkjl;kj
+Client,asdfasdf
+Client Address,sadfasdf
+"Client City, State, Zip",asdfasdf
+Client Phone,asdfasdf
+Involved Party,asdfasdf
+Involved Party Address,asdfasdf
+"Involved Party City, State, Zip",asdfsadf
+Involved Party Phone,asdfsadf
+Involved Party 2,asdfasdf
+Involved Party 2 Address,asdfasdf
+"Involved Party 2 City, State, Zip",asdfasdf
+Involved Party 2 Phone,asdfasdf
+Date,2026-07-22
+Date of Suspected Loss,2025-06-13
+Job #,978987
+Building #,897987
+Foreman,dsfsdafasd
+Tech. 1,fasdfsa
+Tech. 2,dfasdf
+Start Time,16:36
+End Time,16:38
+
+Equipment,
+Field,Value
+Load Cell #,1
+Load Cell Calibration Date,2026-07-03
+IR Temp. Gun #,1
+IR Temp. Gun Calibration Date,2026-07-03
+
+Weather & Safety,
+Field,Value
+
+Conditions,
+Field,Value
+Humidity (%),234324
+Barometric Pressure (inHg),234234
+Weather Notes,mpem
+
+
+Test Summary
+Test #,Angle,Shingle Type,Max Load Value (lbs),Time,Temp.,Wind Speed & Direction,Failure Type,Notes
+1,90,Three tab,33.012,2026-07-22T21:36:30Z,33,222,,
+2,90,Three tab,52.034,2026-07-22T21:38:53Z,33,222,,
+
+Deviation Records
+Test #,Any Deviations?,Description of Deviation,Effect on Uncertainty,Approved By,Approved Date
+1,No,,,ffffffffff,2026-07-22
+2,No,,,ffffffffff,2026-07-22
+
+End Job Record,

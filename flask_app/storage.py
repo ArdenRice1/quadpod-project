@@ -460,6 +460,35 @@ def list_samples(test_id):
     return [dict(row) for row in rows]
 
 
+def finalize_interrupted_tests():
+    """Close out any test still marked 'running' (interrupted by power loss/crash
+    mid-pull -- on boot the actuator is neutral, so no live pull exists). Recompute
+    the peak from the committed force samples so the record isn't left showing
+    Max Load = 0, and mark it complete. Returns [(test_id, recovered_peak), ...]."""
+    finalized = []
+    with db() as conn:
+        rows = conn.execute("SELECT id FROM tests WHERE status='running'").fetchall()
+        for row in rows:
+            tid = row["id"]
+            agg = conn.execute(
+                "SELECT MAX(force_lbs) AS mx, COUNT(*) AS n FROM force_samples WHERE test_id=?",
+                (tid,),
+            ).fetchone()
+            peak = round(float(agg["mx"] or 0.0), 3)
+            now = utc_now()
+            conn.execute(
+                """
+                UPDATE tests
+                SET status='complete', completed_at=?, peak_load_lbs=?,
+                    stop_reason=?, sample_count=?, updated_at=?
+                WHERE id=?
+                """,
+                (now, peak, "interrupted -- recovered on restart", agg["n"] or 0, now, tid),
+            )
+            finalized.append((tid, peak))
+    return finalized
+
+
 def add_event(message, level="info", job_id=None, test_id=None, data=None):
     with db() as conn:
         conn.execute(

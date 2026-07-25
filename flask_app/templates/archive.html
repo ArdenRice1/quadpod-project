@@ -18,6 +18,7 @@
     <div class="muted small">Job # {{ active_job.form.job_number }} - {{ active_job.form.project_address }}</div>
   </div>
   <form method="POST" action="{{ url_for('complete_job', job_id=active_job.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <button class="full-width secondary" type="submit">End Job</button>
   </form>
 </section>
@@ -47,7 +48,8 @@
         </div>
         <div class="archive-actions">
           <form method="POST" action="{{ url_for('copy_job_usb', job_id=job.id) }}">
-            <button class="full-width secondary" type="submit">Copy Job Folder to USB/Exports</button>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button class="full-width secondary" type="submit">Copy Job Folder to USB</button>
           </form>
           <button class="full-width danger deleteJobOpen" type="button">Delete Job From Pi</button>
         </div>
@@ -56,6 +58,7 @@
           <div class="btnrow">
             <form method="POST" action="{{ url_for('delete_job', job_id=job.id) }}">
               <input type="hidden" name="confirm" value="yes">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
               <button class="danger" type="submit">Yes</button>
             </form>
             <button class="secondary deleteJobCancel" type="button">Cancel</button>
