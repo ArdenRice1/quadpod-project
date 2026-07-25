@@ -1,4 +1,0 @@
-{"abort_lbs": 1.0, "event": "start", "load": -1.329, "max_lbs": 0.0, "min_lbs": -0.25, "t": 10321.1053}
-{"desired_speed": 5.0, "event": "continuous_speed", "increase": true, "load": -1.329, "predicted_load": -1.329, "rate_lbs_per_s": 0.0, "speed_percent": 1, "t": 10321.1854}
-{"desired_speed": 5.0, "event": "continuous_speed", "increase": true, "load": -1.329, "predicted_load": -1.3275, "rate_lbs_per_s": 0.0, "speed_percent": 4, "t": 10321.2791}
-{"desired_speed": 5.0, "event": "continuous_speed", "increase": true, "load": -1.329, "predicted_load": -1.3182, "rate_lbs_per_s": 0.0, "speed_percent": 5, "t": 10321.3783}

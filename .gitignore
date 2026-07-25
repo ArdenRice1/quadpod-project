@@ -19,3 +19,17 @@ artifacts/
 
 # OS generated files
 .DS_Store
+
+# Runtime data: DB WAL, auto-tension traces, generated secret key
+flask_app/data/
+*.db-wal
+*.db-shm
+secret_key
+
+# Generated customer artifacts
+flask_app/static/exports/
+flask_app/static/photos/
+
+# Local backups / archived snapshots
+backups/
+archive/
