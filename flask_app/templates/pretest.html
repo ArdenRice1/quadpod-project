@@ -89,7 +89,10 @@
       <div class="item">
         <strong>Test {{ test.form.test_number or test.id }}</strong>
         <span class="muted">- {{ test.status }} - peak {{ "%.2f"|format(test.peak_load_lbs) }} lbs</span>
-        {% if test.sample_count %}<a href="{{ url_for('download_trace', test_id=test.id) }}">Trace CSV</a>{% endif %}
+        <div class="btnrow">
+          <a class="button secondary" href="{{ url_for('review_test', test_id=test.id) }}">Review / Edit</a>
+          {% if test.sample_count %}<a class="button secondary" href="{{ url_for('download_trace', test_id=test.id) }}">Trace CSV</a>{% endif %}
+        </div>
       </div>
     {% endfor %}
   </div>

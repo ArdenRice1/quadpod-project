@@ -158,7 +158,18 @@ def pretest():
     job_id = session.get("job_id")
     job = storage.get_job(job_id) if job_id else None
     if not job:
+        # Recover a lost session (e.g. the cookie rotated on a secret-key change):
+        # the operator almost certainly still has an active job in the DB.
+        recovered = storage.most_recent_active_job()
+        if recovered:
+            session["job_id"] = recovered["id"]
+            job = recovered
+            job_id = recovered["id"]
+    if not job:
         if request.method == "POST":
+            # No job to attach to: stash the entered data so it survives the
+            # detour to create/resume a job, rather than silently discarding it.
+            session["pending_test_form"] = _form_payload(storage.TEST_FIELDS)
             return redirect(url_for("home"))
         return render_template(
             "pretest.html",
@@ -197,7 +208,22 @@ def pretest():
             "air_temperature_f": "",
             "roof_temperature_f": "",
         }
+    # Restore any form stashed when the session was lost mid-entry.
+    pending = session.pop("pending_test_form", None)
+    if pending:
+        defaults.update({key: value for key, value in pending.items() if value})
     return render_template("pretest.html", defaults=defaults, tests=tests)
+
+
+@app.route("/test/<int:test_id>/review")
+def review_test(test_id):
+    # Re-open a saved test's result page to correct a wrong Failure Type / notes.
+    test = storage.get_test(test_id)
+    if not test:
+        return redirect(url_for("pretest"))
+    session["job_id"] = test["job_id"]
+    session["test_id"] = test_id
+    return redirect(url_for("result"))
 
 
 @app.route("/test")

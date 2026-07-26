@@ -303,6 +303,16 @@ def list_jobs():
     return [_job_from_row(row) for row in rows]
 
 
+def most_recent_active_job():
+    """The newest still-active job. Used to recover context after a lost session
+    (e.g. the cookie rotated on a secret-key change) so entries aren't discarded."""
+    with db() as conn:
+        row = conn.execute(
+            "SELECT * FROM jobs WHERE status='active' ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+    return _job_from_row(row) if row else None
+
+
 def search_jobs(query=""):
     jobs = list_jobs()
     term = str(query or "").strip().lower()

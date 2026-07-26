@@ -57,6 +57,38 @@ class AppApiTests(unittest.TestCase):
         resp = self.client.get("/setup-check")
         self.assertIn("no-store", resp.headers.get("Cache-Control", ""))
 
+    def test_pretest_recovers_active_job_after_session_loss(self):
+        job_id = storage.create_job({"project_name": "Recover", "job_number": "R1"})
+        resp = self.client.get("/pretest")  # no session job_id; active job in DB
+        self.assertEqual(resp.status_code, 200)
+        with self.client.session_transaction() as session:
+            self.assertEqual(session.get("job_id"), job_id)
+
+    def test_pretest_stashes_form_when_no_job_then_restores(self):
+        resp = self.client.post(
+            "/pretest", data={"test_number": "7", "angle_degrees": "90"}, follow_redirects=False
+        )
+        self.assertEqual(resp.status_code, 302)
+        with self.client.session_transaction() as session:
+            self.assertEqual(session.get("pending_test_form", {}).get("test_number"), "7")
+        job_id = storage.create_job({"project_name": "Stash"})
+        with self.client.session_transaction() as session:
+            session["job_id"] = job_id
+        page = self.client.get("/pretest").get_data(as_text=True)
+        self.assertIn('value="7"', page)  # stashed test_number restored into the form
+
+    def test_review_reopens_completed_result(self):
+        job_id = storage.create_job({"project_name": "Reopen"})
+        tid = storage.create_test(job_id, {"test_number": "1"})
+        storage.update_test(tid, status="complete", peak_load_lbs=50.0)
+        storage.add_sample(tid, 0.0, 50.0)
+        resp = self.client.get(f"/test/{tid}/review", follow_redirects=False)
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("/result", resp.headers["Location"])
+        with self.client.session_transaction() as session:
+            self.assertEqual(session.get("test_id"), tid)
+        self.assertEqual(self.client.get("/result").status_code, 200)
+
     def test_network_switch_result_is_recorded_and_read_back(self):
         app_module._record_network_switch(
             "Wi-Fi connection", False, "did not associate", {"ssid": "HomeNet"}
