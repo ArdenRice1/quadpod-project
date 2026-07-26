@@ -53,6 +53,10 @@ class AppApiTests(unittest.TestCase):
             app_module._network_status(force=True)  # force bypasses cache
             self.assertEqual(calls["n"], 2)
 
+    def test_html_responses_are_not_cached(self):
+        resp = self.client.get("/setup-check")
+        self.assertIn("no-store", resp.headers.get("Cache-Control", ""))
+
     def test_network_switch_result_is_recorded_and_read_back(self):
         app_module._record_network_switch(
             "Wi-Fi connection", False, "did not associate", {"ssid": "HomeNet"}

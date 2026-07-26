@@ -96,5 +96,14 @@ class ActuatorTests(unittest.TestCase):
         self.assertIn("PWM command failed", actuator.last_error)
 
 
+    def test_init_hardware_failure_is_degraded_not_fatal(self):
+        # A boot I2C fault must not crash the service; it degrades so health()
+        # reports not-ok (and the pull gate blocks) until hardware recovers.
+        with patch.object(Actuator, "_init_hardware", side_effect=RuntimeError("i2c")):
+            actuator = Actuator(use_mock=False)  # must not raise
+        self.assertFalse(actuator.health()["ok"])
+        self.assertTrue(actuator.health()["last_error"])
+
+
 if __name__ == "__main__":
     unittest.main()

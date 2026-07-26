@@ -81,6 +81,17 @@ def inject_globals():
     }
 
 
+@app.after_request
+def _no_cache_html(response):
+    # Field phones cache pages aggressively (caused stale UI: a fixed button
+    # label and an old test view kept showing). Serve HTML uncached so operators
+    # always get the current page/state; static assets stay cacheable.
+    if response.mimetype == "text/html":
+        response.headers["Cache-Control"] = "no-store, max-age=0, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+    return response
+
+
 @app.route("/", methods=["GET", "POST"])
 def home():
     if request.method == "POST":

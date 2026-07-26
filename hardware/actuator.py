@@ -42,7 +42,13 @@ class Actuator:
         self._mock_pwm_fail = 0  # test hook: simulate N consecutive PWM failures
 
         if not self.use_mock:
-            self._init_hardware()
+            try:
+                self._init_hardware()
+            except Exception:
+                # Degraded mode: don't crash-loop the whole service on a transient
+                # I2C fault at boot. last_error is set, so health() reports not-ok
+                # and the pull-start gate blocks until the hardware recovers.
+                pass
         self.stop()
         if not self.use_mock:
             # If the process ever exits or crashes, force the actuator to neutral so

@@ -1528,6 +1528,13 @@ class ControlGateTests(unittest.TestCase):
         self.engine.max_force_samples = 0
         self.assertEqual(self.engine._stop_reason_locked(0.0, 1.0), "")
 
+    def test_stop_failure_is_surfaced(self):
+        # If the neutral write fails, the stop path must flag it (not silently
+        # report "stopped" while the actuator may still be driving).
+        self.engine.actuator._mock_pwm_fail = 50
+        self.engine._finish_stop_locked("operator stop")
+        self.assertIn("ACTUATOR STOP FAILED", self.engine.state.get("last_error", ""))
+
     def test_client_disconnect_watchdog(self):
         self.engine.last_client_poll = time.monotonic()
         self.assertFalse(self.engine._client_disconnected_locked())

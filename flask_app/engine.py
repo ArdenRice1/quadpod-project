@@ -2421,7 +2421,8 @@ class QuadpodEngine:
         if self.state.get("stop_pending"):
             return
         self._bump_actuator_epoch_locked()
-        self.actuator.stop()
+        if not self.actuator.stop():
+            self.state["last_error"] = "ACTUATOR STOP FAILED -- check power/wiring"
         self.state["actuator_command"] = self.actuator.last_command
         self.state["stop_pending"] = True
         self.state["stop_pending_started_at"] = time.monotonic()
@@ -2429,7 +2430,8 @@ class QuadpodEngine:
 
     def _finish_stop_locked(self, reason):
         self._stop_preload_hold_locked()
-        self.actuator.stop()
+        if not self.actuator.stop():
+            self.state["last_error"] = "ACTUATOR STOP FAILED -- check power/wiring"
         self.state["actuator_command"] = self.actuator.last_command
         test_id = self.state.get("active_test_id")
         peak = round(float(self.state.get("peak_load") or 0.0), 3)

@@ -52,6 +52,10 @@
           {% endfor %}
         </select>
       </div>
+      <div class="field full">
+        <label>Site Photo{% if defaults.get('photo_reference') %} <span class="muted small">(saved: {{ defaults.get('photo_reference') }})</span>{% endif %}</label>
+        <input name="photo" type="file" accept="image/*" capture="environment">
+      </div>
     </div>
   </section>
 
