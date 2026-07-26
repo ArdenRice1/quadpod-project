@@ -90,6 +90,11 @@ DATABASE_PATH = os.getenv("QUADPOD_DATABASE", str(DATA_DIR / "quadpod.db"))
 LOADCELL_DOUT_PIN = env_int("QUADPOD_LOADCELL_DOUT_PIN", 5)
 LOADCELL_PD_SCK_PIN = env_int("QUADPOD_LOADCELL_PD_SCK_PIN", 6)
 LOADCELL_REFERENCE_UNIT = env_float("QUADPOD_LOADCELL_REFERENCE_UNIT", 1.0)
+if LOADCELL_REFERENCE_UNIT == 0:
+    # A zero reference unit divides every force read by zero and silently
+    # bricks all readings. Fall back to the 1.0 uncalibrated sentinel, which
+    # the pull start-gate already refuses -- fail visible, not silently dead.
+    LOADCELL_REFERENCE_UNIT = 1.0
 LOADCELL_AVERAGE_SAMPLES = env_int("QUADPOD_LOADCELL_AVERAGE_SAMPLES", 5)
 LOADCELL_FILTER_WINDOW = env_int("QUADPOD_LOADCELL_FILTER_WINDOW", 5)
 LOADCELL_CONTROL_SAMPLES = env_int("QUADPOD_LOADCELL_CONTROL_SAMPLES", 3)
@@ -131,6 +136,10 @@ CALIBRATION_PATH = Path(os.getenv("QUADPOD_CALIBRATION_FILE", str(DATA_DIR / "ca
 PWM_I2C_ADDRESS = env_int("QUADPOD_PWM_I2C_ADDRESS", 0x40)
 PWM_I2C_BUSNUM = env_int("QUADPOD_PWM_I2C_BUSNUM", 1)
 PWM_FREQUENCY_HZ = env_int("QUADPOD_PWM_FREQUENCY_HZ", 50)
+if PWM_FREQUENCY_HZ <= 0:
+    # A zero/negative PWM frequency divides by zero when computing the pulse
+    # period, silently disabling every actuator command (including neutral).
+    PWM_FREQUENCY_HZ = 50
 VICTOR_CHANNEL = env_int("QUADPOD_VICTOR_CHANNEL", 0)
 # True motor-stop for this Victor+PA-17P is 1650us (field-measured); the whole
 # glide dead-band is tuned to it. A unit that boots without /etc/quadpod.env must
@@ -431,6 +440,9 @@ PRELOAD_AUTO_TRACE_DIR = Path(os.getenv("QUADPOD_PRELOAD_AUTO_TRACE_DIR", str(DA
 # without limit -- generous enough that a real pull is never truncated.
 EXPORT_RETENTION_MAX = env_int("QUADPOD_EXPORT_RETENTION_MAX", 200)
 FORCE_SAMPLES_MAX = env_int("QUADPOD_FORCE_SAMPLES_MAX", 200000)
+# Max size of an uploaded request body (the site photo). Caps disk use so a large
+# photo can't fill the SD mid-job; 25 MB is generous for a phone image.
+MAX_UPLOAD_BYTES = env_int("QUADPOD_MAX_UPLOAD_BYTES", 25 * 1024 * 1024)
 
 FAILURE_DROP_LBS = env_float("QUADPOD_FAILURE_DROP_LBS", 12.0)
 FAILURE_DROP_PERCENT = env_float("QUADPOD_FAILURE_DROP_PERCENT", 0.35)

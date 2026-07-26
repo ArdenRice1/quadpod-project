@@ -1,4 +1,5 @@
 import datetime as dt
+import html as html_lib
 import json
 import os
 import secrets
@@ -11,6 +12,7 @@ from pathlib import Path
 
 from flask import (
     Flask,
+    abort,
     jsonify,
     redirect,
     render_template,
@@ -31,6 +33,7 @@ from config import (
     EMAIL_TO,
     EXPORT_DIR,
     HOTSPOT_IP,
+    MAX_UPLOAD_BYTES,
     PHOTO_DIR,
     PUBLIC_URL,
     SECRET_KEY,
@@ -46,6 +49,10 @@ import exporter  # noqa: E402
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
+# Cap request bodies so a large phone photo (or a mis-picked file) can't stream
+# unbounded onto the SD card mid-job and fill the disk (which would then fail all
+# DB writes). A generous ceiling for a site photo; oversized uploads 413 cleanly.
+app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_BYTES
 
 CHECKBOX_FIELDS = [
     "deviation_from_standard",
@@ -390,26 +397,36 @@ def complete_job(job_id):
 
 @app.route("/job/<int:job_id>/summary.csv")
 def download_summary(job_id):
+    if not storage.get_job(job_id):
+        abort(404)
     return send_file(exporter.export_job_summary_csv(job_id), as_attachment=True)
 
 
 @app.route("/job/<int:job_id>/job-and-tests.csv")
 def download_job_report(job_id):
+    if not storage.get_job(job_id):
+        abort(404)
     return send_file(exporter.export_job_report_csv(job_id), as_attachment=True)
 
 
 @app.route("/test/<int:test_id>/trace.csv")
 def download_trace(test_id):
+    if not storage.get_test(test_id):
+        abort(404)
     return send_file(exporter.export_test_trace_csv(test_id), as_attachment=True)
 
 
 @app.route("/test/<int:test_id>/force-time.svg")
 def download_force_time_graph(test_id):
+    if not storage.get_test(test_id):
+        abort(404)
     return send_file(exporter.export_force_time_graph_svg(test_id), mimetype="image/svg+xml")
 
 
 @app.route("/job/<int:job_id>/bundle.zip")
 def download_bundle(job_id):
+    if not storage.get_job(job_id):
+        abort(404)
     return send_file(exporter.export_job_bundle(job_id), as_attachment=True)
 
 
@@ -426,12 +443,35 @@ def copy_job_usb(job_id):
         return redirect(url_for("archive", copy_status="error", copy_error=str(exc)), code=303)
 
 
+def _job_has_active_engine_test(job_id):
+    """True if the engine is currently running/stopping a pull (or auto-tension)
+    for this job. Deleting it would cascade-delete the row the 40 Hz sample loop
+    is still writing to and crash that thread with a foreign-key error."""
+    snap = quadpod_engine.snapshot()
+    if not (snap.get("test_running") or snap.get("auto_preload_running") or snap.get("stop_pending")):
+        return False
+    active_tid = snap.get("active_test_id")
+    if not active_tid:
+        return False
+    active = storage.get_test(active_tid)
+    return bool(active and active.get("job_id") == job_id)
+
+
 @app.route("/job/<int:job_id>/delete", methods=["POST"])
 def delete_job(job_id):
     if not _form_token_ok() or request.form.get("confirm", "") != "yes":
         return redirect(url_for("archive"), code=303)
     if not storage.get_job(job_id):
         return redirect(url_for("archive"), code=303)
+    if _job_has_active_engine_test(job_id):
+        return redirect(
+            url_for(
+                "archive",
+                copy_status="error",
+                copy_error="Can't delete this job while its test is running. Stop the test first.",
+            ),
+            code=303,
+        )
     _delete_job_artifacts(job_id)
     storage.delete_job(job_id)
     if session.get("job_id") == job_id:
@@ -444,6 +484,8 @@ def delete_job(job_id):
 def email_job(job_id):
     if not _form_token_ok():
         return redirect(url_for("archive"), code=303)
+    if not storage.get_job(job_id):
+        return redirect(url_for("archive"), code=303)
     if not EMAIL_FEATURE_VISIBLE:
         storage.add_event("Email request rejected", level="error", job_id=job_id, data={"message": "Email feature hidden"})
         return redirect(url_for("archive"), code=303)
@@ -454,7 +496,11 @@ def email_job(job_id):
     recipient = request.form.get("recipient", EMAIL_TO).strip()
     if not recipient:
         return redirect(url_for("exports"))
-    bundle = exporter.export_job_bundle(job_id)
+    try:
+        bundle = exporter.export_job_bundle(job_id)
+    except Exception as exc:
+        storage.add_event("Email request failed", level="error", job_id=job_id, data={"error": str(exc)})
+        return redirect(url_for("archive", copy_status="error", copy_error=str(exc)), code=303)
     subject = f"Quadpod job {job_id} export"
     body = "Attached is the Quadpod field export bundle. If the Pi was offline, this email may have been sent after the field work was completed."
     email_queue.queue_job_email(job_id, recipient, subject, body, bundle)
@@ -465,6 +511,35 @@ def email_job(job_id):
 @app.route("/health")
 def health():
     return jsonify({"ok": True, "version": APP_VERSION, "status": quadpod_engine.snapshot()})
+
+
+def _error_page(title, message, code):
+    # Plain static hrefs (no url_for/template) so the handler itself can't raise
+    # and turn into a second error. Keeps an operator on the roof from hitting a
+    # bare Flask stack trace with no way back.
+    body = (
+        "<!doctype html><meta name=viewport content='width=device-width,initial-scale=1'>"
+        "<div style='font-family:system-ui;max-width:32rem;margin:3rem auto;padding:0 1rem;text-align:center'>"
+        f"<h1 style='font-size:1.4rem'>{html_lib.escape(title)}</h1>"
+        f"<p>{html_lib.escape(message)}</p>"
+        "<p><a href='/'>Home</a> &middot; <a href='/archive'>Archive</a></p></div>"
+    )
+    return body, code
+
+
+@app.errorhandler(404)
+def _handle_404(_exc):
+    return _error_page("Not found", "That job or file no longer exists.", 404)
+
+
+@app.errorhandler(413)
+def _handle_413(_exc):
+    return _error_page("Photo too large", "That file is too big to upload. Try a smaller photo.", 413)
+
+
+@app.errorhandler(500)
+def _handle_500(_exc):
+    return _error_page("Something went wrong", "That action didn't complete. Go back and try again.", 500)
 
 
 @app.route("/api/status")

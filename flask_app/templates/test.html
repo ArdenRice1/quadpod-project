@@ -135,7 +135,9 @@
             setStatus("warn", "Running");
           }
         } else if (data.test_complete && data.active_test_id === {{ test.id }}) {
-          startBtn.disabled = false;
+          // Keep Start disabled once this test is complete: its samples are
+          // certified and re-pulling would wipe them. A redo is a NEW test.
+          startBtn.disabled = true;
           reviewLink.hidden = false;
           setStatus("good", "Complete");
         } else {

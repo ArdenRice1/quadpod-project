@@ -282,17 +282,21 @@ class ControlGateTests(unittest.TestCase):
 
         self.assertFalse(self.engine.state["preload_ready_latched"])
 
-    def test_jog_stop_does_not_cancel_preload_hold(self):
+    def test_jog_stop_cancels_preload_hold(self):
+        # A jog "stop" during a preload hold must actually stop -- previously it
+        # was a silent no-op that reported success while the hold kept pulsing.
         self.engine.preload_hold_active = True
         self.engine.preload_hold_trim_us = 3
         self.engine.actuator.set_pulse_us(engine_module.VICTOR_NEUTRAL_US - 3, command="hold_trim")
+        epoch_before = self.engine.actuator_epoch
 
         ok, message = self.engine.jog("stop")
 
         self.assertTrue(ok, message)
-        self.assertTrue(self.engine.preload_hold_active)
-        self.assertEqual(self.engine.preload_hold_trim_us, 3)
-        self.assertEqual(self.engine.actuator.last_command, "hold_trim")
+        self.assertFalse(self.engine.preload_hold_active)
+        self.assertEqual(self.engine.preload_hold_trim_us, 0)
+        self.assertEqual(self.engine.actuator.last_command, "neutral")
+        self.assertGreater(self.engine.actuator_epoch, epoch_before)
 
     def test_jog_up_cancels_preload_hold(self):
         self.engine.preload_hold_active = True
@@ -324,7 +328,9 @@ class ControlGateTests(unittest.TestCase):
         self.assertEqual(self.engine.state["actuator_command"], "neutral")
         self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "cancel_requested")
 
-    def test_start_pull_clears_samples_when_restarting_test_record(self):
+    def test_start_pull_refuses_completed_test_and_keeps_samples(self):
+        # A completed test holds certified samples. Re-running it would wipe them
+        # (clear_samples), so start_pull must refuse and force a new test.
         storage.add_sample(self.test_id, 0.0, 10.0)
         storage.add_sample(self.test_id, 0.5, 12.0)
         storage.update_test(
@@ -340,13 +346,36 @@ class ControlGateTests(unittest.TestCase):
         self._set_load(0.0)
         ok, message = self.engine.start_pull(self.test_id)
 
-        self.assertTrue(ok, message)
-        self.assertEqual(storage.list_samples(self.test_id), [])
+        self.assertFalse(ok)
+        self.assertIn("already complete", message)
+        # Certified samples and the completion record are untouched.
+        self.assertEqual(len(storage.list_samples(self.test_id)), 2)
         test = storage.get_test(self.test_id)
-        self.assertEqual(test["status"], "running")
-        self.assertIsNone(test["completed_at"])
-        self.assertEqual(test["sample_count"], 0)
-        self.assertEqual(test["stop_reason"], "")
+        self.assertEqual(test["status"], "complete")
+        self.assertEqual(test["completed_at"], "2026-07-03T17:01:00Z")
+
+    def test_jog_rejected_while_auto_preload_running(self):
+        self.engine.state["auto_preload_running"] = True
+        for action in ("up", "down", "stop"):
+            ok, message = self.engine.jog(action)
+            self.assertFalse(ok, action)
+            self.assertIn("Auto Tension", message)
+
+    def test_second_stop_press_forces_immediate_finish(self):
+        # First Stop enters the settling window (stop_pending); a second press
+        # must hard-finish now, not no-op, so a stuck actuator can be forced down.
+        self.test_id = storage.create_test(self.job_id, self._test_form())
+        self._set_load(0.0)
+        self.assertTrue(self.engine.start_pull(self.test_id)[0])
+        self.engine.stop("first stop")
+        self.assertTrue(self.engine.state["stop_pending"])
+        self.assertTrue(self.engine.state["test_running"])
+
+        self.engine.stop("second stop")
+
+        self.assertFalse(self.engine.state["test_running"])
+        self.assertFalse(self.engine.state["stop_pending"])
+        self.assertTrue(self.engine.state["test_complete"])
 
 
 

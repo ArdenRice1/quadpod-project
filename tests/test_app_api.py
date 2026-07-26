@@ -390,6 +390,34 @@ class AppApiTests(unittest.TestCase):
             self.assertNotIn("job_id", session)
             self.assertNotIn("test_id", session)
 
+    def test_delete_job_blocked_while_its_test_is_running(self):
+        job_id = storage.create_job({"project_name": "Live", "job_number": "LIVE-1"})
+        test_id = storage.create_test(job_id, {"test_number": "1"})
+        with self.client.session_transaction() as session:
+            session["csrf_token"] = "tok"
+        snap = {"test_running": True, "auto_preload_running": False, "stop_pending": False, "active_test_id": test_id}
+        with patch.object(app_module.quadpod_engine, "snapshot", return_value=snap):
+            resp = self.client.post(
+                f"/job/{job_id}/delete", data={"confirm": "yes", "csrf_token": "tok"}, follow_redirects=False
+            )
+        self.assertEqual(resp.status_code, 303)
+        self.assertIsNotNone(storage.get_job(job_id))  # not deleted while its test runs
+
+    def test_oversized_upload_returns_413(self):
+        original = app.config.get("MAX_CONTENT_LENGTH")
+        app.config["MAX_CONTENT_LENGTH"] = 100
+        try:
+            resp = self.client.post("/pretest", data={"blob": "x" * 5000})
+            self.assertEqual(resp.status_code, 413)
+            self.assertIn("too large", resp.get_data(as_text=True).lower())
+        finally:
+            app.config["MAX_CONTENT_LENGTH"] = original
+
+    def test_download_missing_job_returns_friendly_404(self):
+        resp = self.client.get("/job/999999/summary.csv")
+        self.assertEqual(resp.status_code, 404)
+        self.assertIn("/archive", resp.get_data(as_text=True))
+
     def test_wifi_switch_returns_transition_before_scheduling_command(self):
         with self.client.session_transaction() as session:
             session["csrf_token"] = "network-test-token"

@@ -3,6 +3,7 @@ import datetime as dt
 import json
 import os
 import sqlite3
+import uuid
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -130,6 +131,12 @@ def connect():
     conn = sqlite3.connect(DATABASE_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
+    # Keep synchronous=FULL explicit (it is the default, but say so): in WAL mode
+    # this fsyncs each commit so the last force samples and the completion write
+    # survive a yanked battery. Do NOT drop this to NORMAL as a WAL "speed" tweak
+    # -- it would make the most recent transactions loss-prone on power cut, which
+    # is exactly what the interrupted-test recovery depends on.
+    conn.execute("PRAGMA synchronous=FULL")
     conn.execute("PRAGMA foreign_keys=ON")
     return conn
 
@@ -566,7 +573,9 @@ def _num(value):
 def write_csv(path, rows, fieldnames):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+    # uuid, not getpid: gunicorn threads share a PID, so concurrent writers to the
+    # same CSV would otherwise collide on the temp name.
+    tmp = path.with_name(f"{path.name}.{uuid.uuid4().hex}.tmp")
     try:
         with open(tmp, "w", newline="", encoding="utf-8") as handle:
             writer = csv.DictWriter(handle, fieldnames=fieldnames, extrasaction="ignore")

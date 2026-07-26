@@ -5,6 +5,7 @@ import os
 import re
 import shutil
 import subprocess
+import uuid
 import zipfile
 from contextlib import contextmanager
 from pathlib import Path
@@ -49,7 +50,10 @@ def _atomic_writer(path, mode="w", **kwargs):
     (a real hazard on a battery-powered field unit)."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+    # Per-call unique temp name: gunicorn runs multiple threads in ONE process,
+    # so os.getpid() collides between concurrent requests exporting the same file
+    # and one would os.replace a half-written temp into place. uuid4 can't collide.
+    tmp = path.with_name(f"{path.name}.{uuid.uuid4().hex}.tmp")
     handle = open(tmp, mode, **kwargs)
     try:
         yield handle
@@ -79,7 +83,7 @@ def _atomic_produce(path, produce_fn):
     content, then it is os.replace'd onto path (for zip bundles)."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+    tmp = path.with_name(f"{path.name}.{uuid.uuid4().hex}.tmp")
     try:
         produce_fn(tmp)
         os.replace(tmp, path)
@@ -496,8 +500,10 @@ def export_job_folder(job_id, root_dir):
 
     # Build the whole folder in a temp dir, then atomically rename it into place,
     # so a pulled/full stick mid-copy leaves NO partial folder and never harms an
-    # existing copy.
-    staging = root / f".{base}.tmp.{os.getpid()}"
+    # existing copy. Unique (uuid) staging name: threads share a PID under gunicorn,
+    # so two concurrent copies of the same job must not share a staging dir (and
+    # must not sweep each other's in-flight staging).
+    staging = root / f".{base}.tmp.{uuid.uuid4().hex}"
     shutil.rmtree(staging, ignore_errors=True)
     try:
         tests_dir = staging / "tests"

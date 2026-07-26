@@ -279,6 +279,8 @@ class QuadpodEngine:
         with self.lock:
             if self.state["test_running"]:
                 return False, "Cannot jog while a pull test is running."
+            if self.state["auto_preload_running"]:
+                return False, "Cannot jog while Auto Tension is running."
             if action in {"up", "down"}:
                 self._clear_preload_ready_latch_locked()
                 self._stop_preload_hold_locked()
@@ -290,9 +292,12 @@ class QuadpodEngine:
             elif action == "down":
                 ok = self.actuator.move_down(fast=True, speed_percent=speed)
             elif action == "stop":
-                if self.preload_hold_active:
-                    return True, self.actuator.last_error
-                self._bump_actuator_epoch_locked()
+                # Tear down any active preload hold too -- otherwise the hold
+                # loop keeps micro-pulsing and jog-stop is a silent no-op that
+                # still reports success. _stop_preload_hold_locked bumps the
+                # epoch and commands neutral; the stop() below is idempotent.
+                self._clear_preload_ready_latch_locked()
+                self._stop_preload_hold_locked()
                 ok = self.actuator.stop()
             else:
                 return False, "Unknown jog action."
@@ -375,6 +380,10 @@ class QuadpodEngine:
             test = storage.get_test(test_id)
             if not test:
                 return False, "Test record not found."
+            if str(test.get("status") or "").lower() == "complete":
+                # A completed test already holds certified samples; clear_samples
+                # below would wipe them. Force the operator onto a fresh test.
+                return False, "This test is already complete. Start a new test to run another pull."
 
             load = float(self.state["current_load"])
             gate_errors = self._start_gate_errors_locked(test, load)
@@ -507,7 +516,13 @@ class QuadpodEngine:
                 )
                 return True
             if self.state.get("test_running"):
-                self._begin_stop_locked(reason)
+                if self.state.get("stop_pending"):
+                    # Operator pressed Stop again while the first stop was still
+                    # settling -- honor it as an immediate hard finish, not a
+                    # no-op, so a stuck actuator can be forced down now.
+                    self._finish_stop_locked(reason)
+                else:
+                    self._begin_stop_locked(reason)
             else:
                 self._finish_stop_locked(reason)
             return True
@@ -568,6 +583,13 @@ class QuadpodEngine:
             self.state["sample_count"] = sample_count
 
             if self.state.get("stop_pending"):
+                # Re-command neutral every cycle while the load settles: a single
+                # failed actuator.stop() (flaky I2C) must not leave the actuator
+                # driving for the whole post-stop window -- as soon as the bus
+                # recovers, this stops it.
+                if not self.actuator.stop():
+                    self.state["last_error"] = "ACTUATOR STOP FAILED -- check power/wiring"
+                self.state["actuator_command"] = self.actuator.last_command
                 pending_for = time.monotonic() - (self.state.get("stop_pending_started_at") or time.monotonic())
                 if self._load_stable_locked() or pending_for >= POST_STOP_LOG_MAX_SECONDS:
                     self._finish_stop_locked(self.state.get("stop_reason") or "test stopped")

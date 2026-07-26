@@ -27,6 +27,13 @@ class StorageExportTests(unittest.TestCase):
     def tearDown(self):
         self.tempdir.cleanup()
 
+    def test_connection_uses_synchronous_full(self):
+        # Durability of the last samples / completion write depends on FULL; guard
+        # against a future "NORMAL" WAL tweak silently weakening power-loss safety.
+        with storage.db() as conn:
+            self.assertEqual(conn.execute("PRAGMA synchronous").fetchone()[0], 2)  # 2 == FULL
+            self.assertEqual(conn.execute("PRAGMA journal_mode").fetchone()[0].lower(), "wal")
+
     def test_export_row_contains_every_form_point(self):
         job_id = storage.create_job(
             {
