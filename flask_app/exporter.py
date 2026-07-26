@@ -484,28 +484,45 @@ def export_job_folder(job_id, root_dir):
     if not job:
         raise ValueError("Job not found")
     root = Path(root_dir)
-    folder = root / _job_folder_name(job)
-    if folder.exists():
-        shutil.rmtree(folder)
-    tests_dir = folder / "tests"
-    photos_dir = folder / "photos"
-    tests_dir.mkdir(parents=True, exist_ok=True)
-    photos_dir.mkdir(parents=True, exist_ok=True)
+    root.mkdir(parents=True, exist_ok=True)
+    # Never delete an existing copy on the media -- pick the next free versioned
+    # name so re-copies accumulate and the operator archives/removes old ones.
+    base = _job_folder_name(job)
+    folder = root / base
+    version = 2
+    while folder.exists():
+        folder = root / f"{base}_{version}"
+        version += 1
 
-    composite_path = Path(export_job_report_csv(job_id))
-    audit_path = Path(EXPORT_DIR) / f"job_{job_id}_audit.json"
-    _atomic_write_text(
-        audit_path, json.dumps(build_audit_payload(job_id), indent=2), encoding="utf-8"
-    )
-    shutil.copy2(composite_path, folder / composite_path.name)
-    shutil.copy2(audit_path, folder / "audit.json")
-    for test in storage.list_tests(job_id):
-        trace_path = Path(export_test_trace_csv(test["id"]))
-        graph_path = Path(export_force_time_graph_svg(test["id"]))
-        shutil.copy2(trace_path, tests_dir / trace_path.name)
-        shutil.copy2(graph_path, tests_dir / graph_path.name)
-    for photo_path in _job_photo_paths(job_id):
-        shutil.copy2(photo_path, photos_dir / photo_path.name)
+    # Build the whole folder in a temp dir, then atomically rename it into place,
+    # so a pulled/full stick mid-copy leaves NO partial folder and never harms an
+    # existing copy.
+    staging = root / f".{base}.tmp.{os.getpid()}"
+    shutil.rmtree(staging, ignore_errors=True)
+    try:
+        tests_dir = staging / "tests"
+        photos_dir = staging / "photos"
+        tests_dir.mkdir(parents=True, exist_ok=True)
+        photos_dir.mkdir(parents=True, exist_ok=True)
+
+        composite_path = Path(export_job_report_csv(job_id))
+        audit_path = Path(EXPORT_DIR) / f"job_{job_id}_audit.json"
+        _atomic_write_text(
+            audit_path, json.dumps(build_audit_payload(job_id), indent=2), encoding="utf-8"
+        )
+        shutil.copy2(composite_path, staging / composite_path.name)
+        shutil.copy2(audit_path, staging / "audit.json")
+        for test in storage.list_tests(job_id):
+            trace_path = Path(export_test_trace_csv(test["id"]))
+            graph_path = Path(export_force_time_graph_svg(test["id"]))
+            shutil.copy2(trace_path, tests_dir / trace_path.name)
+            shutil.copy2(graph_path, tests_dir / graph_path.name)
+        for photo_path in _job_photo_paths(job_id):
+            shutil.copy2(photo_path, photos_dir / photo_path.name)
+        os.replace(staging, folder)  # atomic on the same filesystem
+    except BaseException:
+        shutil.rmtree(staging, ignore_errors=True)
+        raise
     return folder
 
 
@@ -521,9 +538,13 @@ def copy_job_to_usb(job_id):
         raise NoUsbError(
             "No writable USB drive found. Insert a FAT/exFAT USB stick and try again."
         )
-    folder = export_job_folder(job_id, root)
-    _sync_path(folder)
-    _unmount_usb_export(folder)
+    try:
+        folder = export_job_folder(job_id, root)
+        _sync_path(folder)
+    finally:
+        # Always release an auto-mounted stick, even if the copy failed, so the
+        # mount can't leak (no-ops if we didn't auto-mount it).
+        _unmount_usb_export(root)
     return folder
 
 

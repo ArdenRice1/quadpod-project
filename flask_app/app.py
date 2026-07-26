@@ -117,6 +117,16 @@ def home():
     return render_template("home.html", defaults=defaults)
 
 
+_CLOCK_MIN_VALID = dt.datetime(2026, 1, 1)
+
+
+def _clock_looks_set():
+    """False if the system clock is clearly unset (e.g. reset with no NTP/RTC),
+    which would stamp records with a wrong time. Field units run offline, so an
+    RTC or fake-hwclock is the real fix -- this just warns."""
+    return dt.datetime.now() >= _CLOCK_MIN_VALID
+
+
 @app.route("/setup-check")
 def setup_check():
     status = quadpod_engine.snapshot()
@@ -128,6 +138,13 @@ def setup_check():
     ]
     if power["message"]:
         checks.append(("Pi power", power["kind"], power["message"]))
+    if not _clock_looks_set():
+        checks.append((
+            "System clock",
+            "bad",
+            "Clock not set -- test timestamps will be wrong. Connect to Wi-Fi to "
+            "sync, or fit an RTC module.",
+        ))
     paths = {
         "database": DATABASE_PATH,
         "exports": str(EXPORT_DIR),

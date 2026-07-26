@@ -9,7 +9,7 @@ from pathlib import Path
 from config import DATABASE_PATH, DATA_DIR, FORCE_SAMPLES_MAX
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 _CSV_INJECT_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
 
@@ -144,6 +144,17 @@ def db():
         conn.close()
 
 
+def checkpoint():
+    """Flush the write-ahead log into the main DB file so a just-finished test is
+    durable across a hard power loss. Called once at test completion (NOT in the
+    40 Hz sample loop, so it never affects control timing or the operator)."""
+    try:
+        with db() as conn:
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    except sqlite3.OperationalError:
+        pass
+
+
 def init_db():
     with db() as conn:
         conn.executescript(
@@ -212,6 +223,9 @@ def init_db():
             );
             """
         )
+        # The force_samples index is created by the v2 migration (a write, so it
+        # must go through the try/except path -- keeping it out of the
+        # unconditional script above keeps a read-only import from crashing).
         _run_migrations(conn)
 
 
@@ -229,8 +243,14 @@ def _run_migrations(conn):
     if version >= SCHEMA_VERSION:
         return
     try:
-        # (future ALTER blocks go here, each bumping `version`)
-        conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+        if version < 2:
+            # v2: index force_samples by test_id so the per-insert COUNT and the
+            # export/list scans don't do a full-table scan as the table grows.
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_force_samples_test_id ON force_samples(test_id)"
+            )
+            version = 2
+        conn.execute(f"PRAGMA user_version = {version}")
     except sqlite3.OperationalError:
         # DB opened by a non-writer (e.g. importing the app against a root-owned
         # DB as a normal user): can't stamp/migrate, and there's nothing to do

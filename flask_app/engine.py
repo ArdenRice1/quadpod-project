@@ -2463,6 +2463,9 @@ class QuadpodEngine:
                 test_id=test_id,
                 data={"reason": reason, "peak_load_lbs": peak, "sample_count": sample_count},
             )
+            # Flush the completed test to the main DB so a hard power loss right
+            # after a pull can't lose it (one-off; not in the sample loop).
+            storage.checkpoint()
 
 
 quadpod_engine = QuadpodEngine()

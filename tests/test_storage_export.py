@@ -192,17 +192,22 @@ class StorageExportTests(unittest.TestCase):
         self.assertTrue((Path(folder) / "tests" / f"USB_Job_USB-001_J{job_id}_Test-1_T{test_id}.csv").exists())
         self.assertTrue((Path(folder) / "tests" / f"USB_Job_USB-001_J{job_id}_Test-1_T{test_id}_force_time.svg").exists())
 
-    def test_job_folder_export_replaces_previous_same_named_folder(self):
+    def test_job_folder_export_versions_and_never_deletes_previous(self):
         job_id = storage.create_job({"project_name": "Overwrite Job", "job_number": "OW-1"})
         storage.create_test(job_id, {"test_number": "1"})
-        folder = Path(exporter.export_job_folder(job_id, self.root / "usb"))
-        stale_file = folder / "tests" / "stale.csv"
-        stale_file.write_text("old", encoding="utf-8")
+        usb = self.root / "usb"
+        first = Path(exporter.export_job_folder(job_id, usb))
+        keep = first / "operator_note.txt"
+        keep.write_text("do not delete", encoding="utf-8")
 
-        folder = Path(exporter.export_job_folder(job_id, self.root / "usb"))
+        second = Path(exporter.export_job_folder(job_id, usb))
 
-        self.assertFalse(stale_file.exists())
-        self.assertTrue((folder / f"Overwrite_Job_OW-1_J{job_id}_ALL.csv").exists())
+        # The previous copy (and the operator's file) is preserved; the re-copy
+        # went to a new versioned folder. No leftover temp/partial dir.
+        self.assertTrue(keep.exists())
+        self.assertNotEqual(first, second)
+        self.assertTrue((second / f"Overwrite_Job_OW-1_J{job_id}_ALL.csv").exists())
+        self.assertEqual([p for p in usb.glob("*.tmp*")], [])
 
     def test_usb_root_auto_mounts_before_falling_back_to_local_exports(self):
         mounted = self.root / "mounted-usb"
@@ -229,7 +234,9 @@ class StorageExportTests(unittest.TestCase):
             folder = exporter.copy_job_to_usb(job_id)
 
         sync_path.assert_called_once_with(folder)
-        unmount_export.assert_called_once_with(folder)
+        # Unmount targets the media root (in a finally), so it releases the stick
+        # even if the copy failed and no folder was produced.
+        unmount_export.assert_called_once_with(self.root / "usb")
 
     def test_removable_flag_parsing_does_not_treat_zero_string_as_true(self):
         self.assertFalse(exporter._is_removable("0"))
@@ -325,6 +332,19 @@ class StorageExportTests(unittest.TestCase):
         self.assertEqual(t["peak_load_lbs"], 55.0)
         self.assertIn("interrupted", t["stop_reason"])
         self.assertEqual(storage.finalize_interrupted_tests(), [])  # idempotent
+
+    def test_schema_v2_has_force_samples_index(self):
+        with storage.db() as conn:
+            version = conn.execute("PRAGMA user_version").fetchone()[0]
+            idx = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='index' "
+                "AND name='idx_force_samples_test_id'"
+            ).fetchone()
+        self.assertGreaterEqual(version, 2)
+        self.assertIsNotNone(idx)
+
+    def test_checkpoint_runs_without_error(self):
+        storage.checkpoint()  # WAL flush; must not raise
 
     def test_copy_to_usb_fails_when_no_removable_media(self):
         job_id = storage.create_job({"project_name": "NoUSB", "job_number": "N1"})

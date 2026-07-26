@@ -57,6 +57,9 @@ class AppApiTests(unittest.TestCase):
         resp = self.client.get("/setup-check")
         self.assertIn("no-store", resp.headers.get("Cache-Control", ""))
 
+    def test_clock_sanity_helper(self):
+        self.assertTrue(app_module._clock_looks_set())  # test host is well past 2026-01-01
+
     def test_pretest_recovers_active_job_after_session_loss(self):
         job_id = storage.create_job({"project_name": "Recover", "job_number": "R1"})
         resp = self.client.get("/pretest")  # no session job_id; active job in DB
