@@ -169,7 +169,7 @@
         liveLoad.textContent = shownLoad.toFixed(2);
         tareBtn.disabled = Boolean(data.auto_preload_running || data.test_running);
         autoPreloadBtn.disabled = Boolean(data.auto_preload_running || data.test_running);
-        stopAutoPreloadBtn.hidden = !data.auto_preload_running;
+        stopAutoPreloadBtn.hidden = !(data.auto_preload_running || data.preload_ready);
         const autoMessage = data.auto_preload_message || "";
         const needsAction = autoMessage === "Check tension";
         if (data.auto_preload_running || needsAction) {

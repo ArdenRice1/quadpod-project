@@ -98,7 +98,9 @@ from config import (
     PRELOAD_AUTO_TIMEOUT_SECONDS,
     PRELOAD_AUTO_TRACE_DIR,
     PRELOAD_AUTO_TRACE_MAX_ENTRIES,
+    PRELOAD_GLIDE_ABORT_GRACE_S,
     PRELOAD_GLIDE_ABORT_LBS,
+    PRELOAD_GLIDE_READY_FLOOR_LBS,
     PRELOAD_GLIDE_CRAWL_PCT,
     PRELOAD_GLIDE_EASE_MARGIN_LBS,
     PRELOAD_GLIDE_EMA_ALPHA,
@@ -150,6 +152,7 @@ from config import (
     PRELOAD_READY_LATCH_POSITIVE_MARGIN_LBS,
     PRELOAD_TARGET_LBS,
     PRELOAD_TOLERANCE_LBS,
+    PULL_START_SANITY_LBS,
     PULL_TARGET_IN_PER_MIN,
     SAMPLE_RATE_HZ,
     USE_MOCK_HARDWARE,
@@ -171,6 +174,10 @@ class QuadpodEngine:
         self.last_client_poll = time.monotonic()
         self.failure_drop_samples = 0
         self.max_force_samples = 0
+        # Load (lbs) captured at pull start = the seated zero. During a pull the
+        # recorded/displayed force is measured from it (trace starts at 0). 0 at
+        # all other times, so it's a no-op outside a pull.
+        self.pull_zero_offset = 0.0
         self.load_history = deque()
         self.scan_load_history = deque()
         self.auto_preload_trace = deque(maxlen=max(1, int(PRELOAD_AUTO_TRACE_MAX_ENTRIES)))
@@ -292,12 +299,15 @@ class QuadpodEngine:
             elif action == "down":
                 ok = self.actuator.move_down(fast=True, speed_percent=speed)
             elif action == "stop":
-                # Tear down any active preload hold too -- otherwise the hold
-                # loop keeps micro-pulsing and jog-stop is a silent no-op that
-                # still reports success. _stop_preload_hold_locked bumps the
-                # epoch and commands neutral; the stop() below is idempotent.
-                self._clear_preload_ready_latch_locked()
-                self._stop_preload_hold_locked()
+                # Do NOT tear down an active post-tension hold here. The hold is
+                # autonomous (its own disconnect watchdog neutralizes it if the
+                # phone truly drops), and the page fires jog("stop") AUTOMATICALLY
+                # on pagehide (screen-lock / app-switch / navigation) -- letting
+                # that cancel the hold silently dropped the seat right after Ready.
+                # jog-stop only stops jog motion; to abandon a seat, use Stop.
+                if self.preload_hold_active:
+                    return True, self.actuator.last_error
+                self._bump_actuator_epoch_locked()
                 ok = self.actuator.stop()
             else:
                 return False, "Unknown jog action."
@@ -392,6 +402,9 @@ class QuadpodEngine:
 
             self._stop_preload_hold_locked()
             self._clear_preload_ready_latch_locked()
+            # The seated load is the zero: measure/record the pull from here so the
+            # trace and display start at 0 (Auto Tension already removed the slack).
+            self.pull_zero_offset = round(load, 3)
             storage.clear_samples(test_id)
             self.failure_drop_samples = 0
             self.load_history.clear()
@@ -401,7 +414,7 @@ class QuadpodEngine:
             self.preload_hold_trim_us = 0
             self.state.update(
                 {
-                    "peak_load": max(load, 0.0),
+                    "peak_load": 0.0,  # zeroed at the seat; the pull measures from 0
                     "test_running": True,
                     "test_complete": False,
                     "active_test_id": test_id,
@@ -421,8 +434,8 @@ class QuadpodEngine:
                 status="running",
                 started_at=storage.utc_now(),
                 completed_at=None,
-                initial_preload_lbs=round(load, 3),
-                peak_load_lbs=round(load, 3),
+                initial_preload_lbs=round(load, 3),  # absolute seat (provenance)
+                peak_load_lbs=0.0,  # peak measured from the seated zero
                 stop_reason="",
                 sample_count=0,
                 software_version=APP_VERSION,
@@ -454,8 +467,11 @@ class QuadpodEngine:
 
     def _start_gate_errors_locked(self, test, load):
         errors = []
-        if not self._preload_start_allowed_locked(load):
-            errors.append(f"tension must be {PRELOAD_MIN_LBS:.1f}-{PRELOAD_MAX_LBS:.1f} lb")
+        if not self._pull_may_start_locked(load):
+            if not self.state.get("preload_ready_latched"):
+                errors.append("run Auto Tension to seat before starting the pull")
+            else:
+                errors.append(f"tension reading is off ({load:.1f} lb) -- re-run Auto Tension")
 
         load_health = self.load_cell.health()
         if not load_health.get("ok"):
@@ -555,6 +571,9 @@ class QuadpodEngine:
             raw_counts = getattr(self.load_cell, "last_raw_lbs", load)
 
         with self.lock:
+            # Measure from the seated zero during a pull so the trace/display start
+            # at 0. pull_zero_offset is 0 outside a pull, so this is a no-op then.
+            load = round(load - self.pull_zero_offset, 3)
             previous_load = float(self.state.get("current_load") or 0.0)
             if (
                 not self.state["test_running"]
@@ -679,6 +698,7 @@ class QuadpodEngine:
         target = float(PRELOAD_GLIDE_TARGET_LBS)
         seated_hi = float(PRELOAD_GLIDE_READY_CEILING_LBS)
         seated_lo = float(PRELOAD_GLIDE_SEATED_FLOOR_LBS)
+        ready_floor = min(seated_hi, float(PRELOAD_GLIDE_READY_FLOOR_LBS))
         overshoot_lbs = float(PRELOAD_GLIDE_OVERSHOOT_LBS)
         wall_latch_enabled = bool(PRELOAD_GLIDE_WALL_LATCH)
         ease_margin = max(0.0, float(PRELOAD_GLIDE_EASE_MARGIN_LBS))
@@ -699,6 +719,7 @@ class QuadpodEngine:
         stable_s = max(0.0, float(PRELOAD_GLIDE_STABLE_S))
         stable_lbs = max(0.0, float(PRELOAD_GLIDE_STABLE_LBS))
         relax_s = max(0.0, float(PRELOAD_GLIDE_RELAX_S))
+        abort_grace_s = max(0.0, float(PRELOAD_GLIDE_ABORT_GRACE_S))
         deadline = time.monotonic() + max(1.0, float(PRELOAD_GLIDE_TIMEOUT_S))
 
         ema = None
@@ -707,6 +728,7 @@ class QuadpodEngine:
         last_update = time.monotonic()
         in_band_since = None
         over_since = None
+        over_limit_since = None
         wall_latched = False
         hold_should_start = False
         recent = deque()
@@ -759,10 +781,27 @@ class QuadpodEngine:
                         recent.popleft()
 
                     if load > abort_lbs:
-                        self._auto_preload_stop_actuator_locked()
-                        self.state["auto_preload_message"] = "Check tension"
-                        self._record_auto_preload_trace_locked("abort", load=load, abort_lbs=abort_lbs)
-                        break
+                        # Don't fail the instant it blips past the limit -- on this
+                        # compliant rig it almost always relaxes back toward 0. Start
+                        # (or continue) a watch: the overshoot branch below eases the
+                        # actuator to neutral, and only if the load STAYS above the
+                        # limit for abort_grace_s do we give up. If it dips back down,
+                        # over_limit_since clears and it carries on to a Ready latch.
+                        if over_limit_since is None:
+                            over_limit_since = now
+                            self._record_auto_preload_trace_locked(
+                                "glide_over_limit_watch", load=load, abort_lbs=abort_lbs
+                            )
+                        if now - over_limit_since >= abort_grace_s:
+                            self._auto_preload_stop_actuator_locked()
+                            self.state["auto_preload_message"] = "Check tension"
+                            self._record_auto_preload_trace_locked(
+                                "abort", load=load, abort_lbs=abort_lbs,
+                                seconds=now - over_limit_since,
+                            )
+                            break
+                    else:
+                        over_limit_since = None
 
                     # Rate of rise from RAW readings (responsive; the EMA would
                     # lag the taut wall). Predict past feedback latency so we ease
@@ -811,11 +850,11 @@ class QuadpodEngine:
                             )
                             break
                         self.state["auto_preload_message"] = "Settling"
-                    elif load >= seated_lo:
-                        # Seated band (slack removed, at/just below 0). Come to
-                        # rest, confirm stable, then latch Ready = pull can start.
-                        # Latch on the window MEAN (not a single noisy sample) and
-                        # only if that mean is at/below 0.
+                    elif load >= ready_floor:
+                        # Ready zone [ready_floor, seated_hi] (slack removed, near
+                        # target). Come to rest, confirm stable, then latch Ready =
+                        # pull can start. Latch on the window MEAN (not a single
+                        # noisy sample) and only within the Ready zone.
                         over_since = None
                         desired = 0.0
                         if in_band_since is None:
@@ -829,11 +868,20 @@ class QuadpodEngine:
                             hold_should_start = bool(PRELOAD_GLIDE_HOLD_AFTER)
                             self._record_auto_preload_trace_locked(
                                 "glide_ready", load=load, seconds=now - in_band_since,
-                                seated_lo=seated_lo, seated_hi=seated_hi,
+                                seated_lo=seated_lo, seated_hi=seated_hi, ready_floor=ready_floor,
                             )
                             stop_loop = True
                         else:
                             self.state["auto_preload_message"] = "Settling"
+                    elif load >= seated_lo:
+                        # In the band but still slack of the target (undershoot):
+                        # don't latch a loose seat. Gently crawl the last bit up
+                        # toward target, holding the dwell reset so we only latch
+                        # once actually settled in the Ready zone above.
+                        over_since = None
+                        in_band_since = None
+                        desired = crawl_pct
+                        self.state["auto_preload_message"] = "Auto Tension"
                     else:
                         # Below the band: still slack -> drive up. Governed by how
                         # fast force rises (proximity to the wall) and eased on the
@@ -1043,10 +1091,17 @@ class QuadpodEngine:
                 "hold_settle_done", load=self.state.get("current_load")
             )
 
-        # 2) Verify: discrete open-loop micro-pulses, re-measuring at rest.
-        for _ in range(max_iters):
-            if time.monotonic() > deadline:
-                break
+        # 2) Maintain: hold the load in [AIM_LO, AIM_HI] with discrete settle-verify
+        # micro-pulses, re-measuring at rest, CONTINUOUSLY until a pull starts / the
+        # hold is cancelled / the phone drops / the hold timeout -- so the seat is
+        # held against ongoing slack-return or a soft/moving anchor (and roof
+        # wind/bump), not corrected once and left to coast. Still discrete and
+        # re-measured at rest (no continuous integral) so the stick-slip actuator
+        # can't wind up. If it can't make upward progress for MAX_ITERS pulses in a
+        # row (no anchor / end of travel) it stops rather than driving forever.
+        in_aim_logged = False
+        stuck = 0
+        while time.monotonic() < deadline:
             with self.lock:
                 if handoff_or_selfstop_locked():
                     return
@@ -1068,9 +1123,17 @@ class QuadpodEngine:
                     self._record_auto_preload_trace_locked("hold_abort_high", load=m)
                 break
             if aim_lo <= m <= aim_hi:
-                with self.lock:
-                    self._record_auto_preload_trace_locked("hold_in_aim", load=m)
-                break
+                # Seated in the aim band: hold position, re-check after a rest, and
+                # keep maintaining (don't exit -- that's what let it drift before).
+                stuck = 0
+                if not in_aim_logged:
+                    with self.lock:
+                        self._record_auto_preload_trace_locked("hold_in_aim", load=m)
+                    in_aim_logged = True
+                if sleep_checked(rest_s):
+                    return
+                continue
+            in_aim_logged = False
             take_up = m < aim_lo  # True -> raise the load (reduce slack)
             gap = (aim_lo - m) if take_up else (m - aim_hi)
             this_ms = pulse_ms if gap >= gentle_gap else max(30, pulse_ms // 2)
@@ -1105,6 +1168,25 @@ class QuadpodEngine:
                 self._record_auto_preload_trace_locked(
                     "hold_pulse_result", before=m, after=after, moved=round(moved, 3),
                 )
+            # Net movement toward the aim band resets the stuck counter; a correction
+            # that can't move the load the way we need (no anchor / end of travel)
+            # increments it. Enough in a row -> stop instead of driving forever.
+            gained = moved if take_up else -moved
+            if gained > 0.02:
+                stuck = 0
+            else:
+                stuck += 1
+            if stuck >= max_iters:
+                with self.lock:
+                    if not pull_or_lost_ownership_locked():
+                        self.actuator.set_pulse_us(VICTOR_NEUTRAL_US, command="neutral")
+                        self.state["actuator_command"] = self.actuator.last_command
+                    # Can't seat (likely no rigid anchor / end of travel): invalidate
+                    # the seat so a pull can't start on it, and surface it.
+                    self._clear_preload_ready_latch_locked()
+                    self.state["auto_preload_message"] = "Check tension"
+                    self._record_auto_preload_trace_locked("hold_no_progress", load=after)
+                break
             if abs(moved) < 0.03:
                 # stiction didn't break (stochastic): bump amplitude, grow duration a little (capped)
                 pulse_us = min(pulse_max, pulse_us + 4)
@@ -1115,8 +1197,8 @@ class QuadpodEngine:
                 pulse_us = max(pulse_min, pulse_us - 4)
 
         with self.lock:
-            # Finished on our own terms: neutral the actuator only if we still own
-            # it and no pull has taken over; otherwise hand off silently.
+            # Finished on our own terms (hold timeout): neutral the actuator only if
+            # we still own it and no pull has taken over; otherwise hand off silently.
             if not pull_or_lost_ownership_locked():
                 self.actuator.set_pulse_us(VICTOR_NEUTRAL_US, command="neutral")
                 self.state["actuator_command"] = self.actuator.last_command
@@ -2293,6 +2375,17 @@ class QuadpodEngine:
         alpha = max(0.0, min(1.0, float(LOADCELL_DISPLAY_ALPHA)))
         return round(previous + ((load - previous) * alpha), 3)
 
+    def _pull_may_start_locked(self, load):
+        # Owner decision: trust a completed Auto Tension to have removed the slack,
+        # so the seat IS the zero. Once Ready is latched, allow the pull regardless
+        # of small +/- drift (the pull is re-zeroed at start so the trace begins at
+        # 0). Only a wildly wrong reading -- a sensor/anchor fault, not a real seat
+        # -- past the sanity bound blocks the start. Separate from the band helper
+        # below, which the seating hold + display still use for the tight band.
+        if not self.state.get("preload_ready_latched"):
+            return False
+        return abs(float(load)) <= float(PULL_START_SANITY_LBS)
+
     def _preload_start_allowed_locked(self, load):
         load = float(load)
         if PRELOAD_MIN_LBS <= load <= PRELOAD_MAX_LBS:
@@ -2460,6 +2553,7 @@ class QuadpodEngine:
         sample_count = int(self.state.get("sample_count") or 0)
         was_running = bool(self.state.get("test_running") or self.state.get("stop_pending"))
         self.failure_drop_samples = 0
+        self.pull_zero_offset = 0.0  # back to absolute reads once the pull ends
 
         self.state["test_running"] = False
         self.state["test_complete"] = True if test_id else False

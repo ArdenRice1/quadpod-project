@@ -217,6 +217,14 @@ def pretest():
             test_id = current_test["id"]
             storage.update_test(test_id, form=form, status=current_test["status"])
         else:
+            # New test: auto-assign the next sequential number if the submitted one
+            # is blank or already used. A back/cached form re-submitting "1" was
+            # creating duplicate test-1 records instead of advancing (stuck-on-1 bug).
+            existing = storage.list_tests(job_id)
+            submitted = str(form.get("test_number", "")).strip()
+            taken = {str(t["form"].get("test_number", "")).strip() for t in existing}
+            if not submitted or submitted in taken:
+                form["test_number"] = _next_test_number(existing)
             test_id = storage.create_test(job_id, form)
         session["test_id"] = test_id
         return redirect(url_for("test"))
@@ -228,7 +236,9 @@ def pretest():
         defaults = dict(current_test["form"])
     else:
         defaults = {
-            "test_number": str(len(tests) + 1),
+            # max existing number + 1 (same logic the create path uses) so the shown
+            # default is consistent even if earlier numbers were duplicated/gapped.
+            "test_number": _next_test_number(tests),
             "air_temperature_f": "",
             "roof_temperature_f": "",
         }
@@ -706,6 +716,18 @@ def _require_form_token():
             delay_seconds=3,
         ), 403
     return None
+
+
+def _next_test_number(tests):
+    """Next sequential test number for a job = highest existing numeric number + 1
+    (1 for the first test). Non-numeric labels are ignored."""
+    highest = 0
+    for test in tests:
+        try:
+            highest = max(highest, int(str(test["form"].get("test_number", "")).strip()))
+        except (ValueError, TypeError):
+            continue
+    return str(highest + 1)
 
 
 def _current_editable_test(job_id):

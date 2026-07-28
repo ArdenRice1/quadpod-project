@@ -48,11 +48,16 @@ class ControlGateTests(unittest.TestCase):
         self.original_hold_interval = engine_module.PRELOAD_HOLD_TRIM_INTERVAL_SECONDS
         self.original_glide_hold_settle = engine_module.PRELOAD_GLIDE_HOLD_SETTLE_S
         self.original_glide_hold_timeout = engine_module.PRELOAD_GLIDE_HOLD_TIMEOUT_S
+        self.original_glide_hold_rest = engine_module.PRELOAD_GLIDE_HOLD_REST_S
         engine_module.PRELOAD_AUTO_DRIFT_WINDOW_SECONDS = 5.0
         engine_module.PRELOAD_AUTO_DIRECT_LOAD_READ = False
         engine_module.PRELOAD_AUTO_TRACE_DIR = self.root / "auto_tension_traces"
         self.job_id = storage.create_job(self._job_form())
         self.test_id = storage.create_test(self.job_id, self._test_form())
+        # Default fixture: Auto Tension has already seated and latched Ready, since
+        # a pull now requires that (owner decision). Latch-specific tests set/clear
+        # it explicitly. Set the flag directly to avoid polluting the trace.
+        self.engine.state["preload_ready_latched"] = True
 
     def tearDown(self):
         self.engine.stop("test cleanup")
@@ -75,6 +80,7 @@ class ControlGateTests(unittest.TestCase):
         engine_module.PRELOAD_HOLD_TRIM_INTERVAL_SECONDS = self.original_hold_interval
         engine_module.PRELOAD_GLIDE_HOLD_SETTLE_S = self.original_glide_hold_settle
         engine_module.PRELOAD_GLIDE_HOLD_TIMEOUT_S = self.original_glide_hold_timeout
+        engine_module.PRELOAD_GLIDE_HOLD_REST_S = self.original_glide_hold_rest
         self.tempdir.cleanup()
 
     def _job_form(self, **updates):
@@ -101,64 +107,49 @@ class ControlGateTests(unittest.TestCase):
         self.engine.state["current_load"] = value
 
 
-    def test_start_rejects_low_preload(self):
-        self._set_load(-0.6)
+    def test_start_rejected_without_auto_tension(self):
+        # Owner decision: a pull may only begin after Auto Tension has latched Ready.
+        self.engine._clear_preload_ready_latch_locked()
+        self._set_load(0.0)
         ok, message = self.engine.start_pull(self.test_id)
         self.assertFalse(ok)
-        self.assertIn("tension", message)
+        self.assertIn("Auto Tension", message)
 
-    def test_start_rejects_high_preload(self):
-        self._set_load(0.6)
-        ok, message = self.engine.start_pull(self.test_id)
-        self.assertFalse(ok)
-        self.assertIn("tension", message)
-
-    def test_start_accepts_preload_inside_tight_band(self):
-        for load in (engine_module.PRELOAD_MIN_LBS, 0.0, engine_module.PRELOAD_MAX_LBS):
+    def test_start_allowed_after_ready_latch_across_drift(self):
+        # Once Auto Tension latches Ready, any small +/- drift within the sanity
+        # bound is fine -- the slack is gone and the pull is re-zeroed at start.
+        for load in (-3.0, -0.5, 0.0, 0.8, 3.0):
             with self.subTest(load=load):
                 self.engine.state["test_running"] = False
+                self.engine._set_preload_ready_latch_locked(0.0)
                 self._set_load(load)
                 ok, message = self.engine.start_pull(self.test_id)
                 self.assertTrue(ok, message)
                 self.assertTrue(self.engine.state["test_running"])
 
-    def test_start_accepts_small_drift_after_auto_preload_ready_latch(self):
+    def test_start_rejected_when_reading_insane_even_if_latched(self):
+        # A wildly wrong reading (sensor/anchor fault, not a real seat) still blocks.
+        for load in (6.0, -6.0):
+            with self.subTest(load=load):
+                self.engine.state["test_running"] = False
+                self.engine._set_preload_ready_latch_locked(0.0)
+                self._set_load(load)
+                ok, message = self.engine.start_pull(self.test_id)
+                self.assertFalse(ok)
+                self.assertIn("off", message)
+
+    def test_pull_is_zeroed_at_start(self):
+        # The seated load becomes the zero: the offset is captured, the DB peak
+        # starts at 0 (measured from the seat), and the absolute seat is kept as
+        # initial_preload_lbs provenance.
         self.engine._set_preload_ready_latch_locked(0.0)
-        self._set_load(engine_module.PRELOAD_MIN_LBS - 0.05)
-
+        self._set_load(-0.2)
         ok, message = self.engine.start_pull(self.test_id)
-
         self.assertTrue(ok, message)
-        self.assertTrue(self.engine.state["test_running"])
-
-    def test_start_accepts_small_positive_recovery_within_ready_latch_margin(self):
-        # A little load-cell noise above the band ceiling is tolerated.
-        self.engine._set_preload_ready_latch_locked(0.0)
-        self._set_load(0.1)
-
-        ok, message = self.engine.start_pull(self.test_id)
-
-        self.assertTrue(ok, message)
-        self.assertTrue(self.engine.state["test_running"])
-
-    def test_start_rejects_large_positive_pretension_after_ready_latch(self):
-        # A pull must not begin on a pre-tensioned specimen -- it biases the peak.
-        self.engine._set_preload_ready_latch_locked(0.0)
-        self._set_load(0.8)
-
-        ok, message = self.engine.start_pull(self.test_id)
-
-        self.assertFalse(ok)
-        self.assertIn("tension", message)
-
-    def test_start_rejects_drift_outside_ready_latch_margin(self):
-        self.engine._set_preload_ready_latch_locked(0.0)
-        self._set_load(engine_module.PRELOAD_MIN_LBS - engine_module.PRELOAD_READY_LATCH_MARGIN_LBS - 0.01)
-
-        ok, message = self.engine.start_pull(self.test_id)
-
-        self.assertFalse(ok)
-        self.assertIn("tension", message)
+        self.assertAlmostEqual(self.engine.pull_zero_offset, -0.2, places=3)
+        rec = storage.get_test(self.test_id)
+        self.assertEqual(rec["peak_load_lbs"], 0.0)
+        self.assertAlmostEqual(rec["initial_preload_lbs"], -0.2, places=3)
 
     def test_preload_ready_stays_latched_for_small_drift_after_auto_preload(self):
         self.engine._set_preload_ready_latch_locked(0.0)
@@ -262,8 +253,10 @@ class ControlGateTests(unittest.TestCase):
 
     def test_glide_hold_settles_in_aim_without_pulsing(self):
         engine_module.PRELOAD_GLIDE_HOLD_SETTLE_S = 0.0
-        engine_module.PRELOAD_GLIDE_HOLD_TIMEOUT_S = 5.0
-        # Load already inside the aim band -> no correction pulse should fire.
+        engine_module.PRELOAD_GLIDE_HOLD_REST_S = 0.05
+        engine_module.PRELOAD_GLIDE_HOLD_TIMEOUT_S = 0.2
+        # Load already inside the aim band -> it maintains (re-checks at rest) but
+        # never fires a correction pulse, then exits at the hold timeout.
         mid = (engine_module.PRELOAD_GLIDE_HOLD_AIM_LO_LBS + engine_module.PRELOAD_GLIDE_HOLD_AIM_HI_LBS) / 2
         self.engine.state["current_load"] = mid
         self.engine.preload_hold_active = True
@@ -282,21 +275,21 @@ class ControlGateTests(unittest.TestCase):
 
         self.assertFalse(self.engine.state["preload_ready_latched"])
 
-    def test_jog_stop_cancels_preload_hold(self):
-        # A jog "stop" during a preload hold must actually stop -- previously it
-        # was a silent no-op that reported success while the hold kept pulsing.
+    def test_jog_stop_does_not_cancel_preload_hold(self):
+        # jog("stop") must NOT tear down an autonomous post-tension hold: the page
+        # fires it automatically on pagehide (screen-lock / app-switch / navigate),
+        # which was silently dropping the seat right after Ready. Abandoning a seat
+        # is Stop's job; jog-stop only stops actual jog motion.
         self.engine.preload_hold_active = True
         self.engine.preload_hold_trim_us = 3
         self.engine.actuator.set_pulse_us(engine_module.VICTOR_NEUTRAL_US - 3, command="hold_trim")
-        epoch_before = self.engine.actuator_epoch
 
         ok, message = self.engine.jog("stop")
 
         self.assertTrue(ok, message)
-        self.assertFalse(self.engine.preload_hold_active)
-        self.assertEqual(self.engine.preload_hold_trim_us, 0)
-        self.assertEqual(self.engine.actuator.last_command, "neutral")
-        self.assertGreater(self.engine.actuator_epoch, epoch_before)
+        self.assertTrue(self.engine.preload_hold_active)
+        self.assertEqual(self.engine.preload_hold_trim_us, 3)
+        self.assertEqual(self.engine.actuator.last_command, "hold_trim")
 
     def test_jog_up_cancels_preload_hold(self):
         self.engine.preload_hold_active = True
@@ -750,6 +743,7 @@ class ControlGateTests(unittest.TestCase):
         self.assertEqual(self.engine.auto_preload_trace[-1]["event"], "hold_trim")
 
     def test_preload_hold_trim_does_not_increase_below_allowed_band(self):
+        self.engine.state["preload_ready_latched"] = False  # test the tight band, no latch margin
         self.engine.preload_hold_active = True
         self.engine.preload_hold_trim_us = 3
         self.engine.state["current_load"] = engine_module.PRELOAD_MIN_LBS - 0.01
@@ -761,6 +755,7 @@ class ControlGateTests(unittest.TestCase):
         self.assertEqual(self.engine.actuator.last_command, "neutral")
 
     def test_preload_hold_uses_scan_load_without_direct_control_read(self):
+        self.engine.state["preload_ready_latched"] = False  # test the tight band, no latch margin
         self.engine.preload_hold_active = True
         self.engine.state["current_load"] = engine_module.PRELOAD_MIN_LBS - 0.01
         self.engine._refresh_auto_preload_load = lambda *args, **kwargs: self.fail("hold should not direct-read load")
@@ -1385,6 +1380,7 @@ class ControlGateTests(unittest.TestCase):
         self.engine.jog("up")
         jog_pulse = self.engine.actuator.last_pulse_us
         self._set_load(-0.10)
+        self.engine.state["preload_ready_latched"] = True  # jog cleared it; re-seat
 
         ok, message = self.engine.start_pull(self.test_id)
 
@@ -1447,6 +1443,7 @@ class ControlGateTests(unittest.TestCase):
         self.assertGreater(self.engine.actuator_epoch, e1)
         e2 = self.engine.actuator_epoch
         self._set_load(-0.10)
+        self.engine.state["preload_ready_latched"] = True  # jog cleared it; re-seat
         ok, message = self.engine.start_pull(self.test_id)
         self.assertTrue(ok, message)
         self.assertGreater(self.engine.actuator_epoch, e2)

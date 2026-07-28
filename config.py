@@ -148,7 +148,10 @@ VICTOR_NEUTRAL_US = env_int("QUADPOD_VICTOR_NEUTRAL_US", 1650)
 VICTOR_FORWARD_US = env_int("QUADPOD_VICTOR_FORWARD_US", 2004)
 VICTOR_REVERSE_US = env_int("QUADPOD_VICTOR_REVERSE_US", 250)
 VICTOR_JOG_US = env_int("QUADPOD_VICTOR_JOG_US", VICTOR_FORWARD_US)
-VICTOR_PULL_US = env_int("QUADPOD_VICTOR_PULL_US", 1850)
+# Pull speed = throttle above neutral (1650). Reduced 20% per owner: was 1850
+# (200us throttle) -> 1810 (160us). _mirror() applies the same reduced magnitude
+# for the opposite direction, so the pull is 20% slower whichever way it runs.
+VICTOR_PULL_US = env_int("QUADPOD_VICTOR_PULL_US", 1810)
 ACTUATOR_PULL_DIRECTION = os.getenv("QUADPOD_PULL_DIRECTION", "down").strip().lower()
 ACTUATOR_INVERT = env_bool("QUADPOD_ACTUATOR_INVERT", False)
 
@@ -343,15 +346,16 @@ PRELOAD_AUTO_MAX_RISE_RATE_LBS_PER_SECOND = env_float("QUADPOD_PRELOAD_AUTO_MAX_
 # because velocity tracks live error, not fixed lb zones.
 # Enable with QUADPOD_PRELOAD_AUTO_MODE=glide.
 # -----------------------------------------------------------------------------
-# Overshoot above 0 lb ruins the test, and the real (nailed/adhesive) specimen
-# has a steeper wall than the bench mock, so bias BELOW zero: land at/just under
-# 0 and never above. Undershooting slightly is acceptable; overshoot is not.
+# The drive still AIMS for ~0 (a light seat, slack just removed). But per owner:
+# since the pull re-zeroes at start, a small positive seat doesn't ruin anything,
+# so Ready may latch a settled load anywhere up to ~1 lb; only a seat that STAYS
+# above 1 lb (grace-watched via ABORT_LBS) fails. READY_CEILING is the latch
+# ceiling; OVERSHOOT_LBS is where the relax-or-fail watch begins -- both at the
+# 1 lb comfort limit so the two agree with the pull-start gate.
 PRELOAD_GLIDE_TARGET_LBS = env_float("QUADPOD_PRELOAD_GLIDE_TARGET_LBS", -0.25)
 PRELOAD_GLIDE_TOL_LBS = env_float("QUADPOD_PRELOAD_GLIDE_TOL_LBS", 0.25)
-# Hard ceiling: a settled reading above this counts as overshoot (relax-or-fail);
-# Ready is only declared at rest at or below READY_CEILING_LBS.
-PRELOAD_GLIDE_READY_CEILING_LBS = env_float("QUADPOD_PRELOAD_GLIDE_READY_CEILING_LBS", 0.0)
-PRELOAD_GLIDE_OVERSHOOT_LBS = env_float("QUADPOD_PRELOAD_GLIDE_OVERSHOOT_LBS", 0.10)
+PRELOAD_GLIDE_READY_CEILING_LBS = env_float("QUADPOD_PRELOAD_GLIDE_READY_CEILING_LBS", 1.0)
+PRELOAD_GLIDE_OVERSHOOT_LBS = env_float("QUADPOD_PRELOAD_GLIDE_OVERSHOOT_LBS", 1.0)
 # Once force-rate signals the wall, latch to a crawl and never re-accelerate.
 # Latch OFF by default: it was firing on normal slack-takeoff rate (far from the
 # target) and pinning speed to crawl for the whole run. The instantaneous rate
@@ -361,6 +365,12 @@ PRELOAD_GLIDE_WALL_LATCH = env_bool("QUADPOD_PRELOAD_GLIDE_WALL_LATCH", False)
 # (i.e. just below 0). This IS the band the pull-start gate accepts, so once
 # seated it latches Ready and you can start the pull without re-running.
 PRELOAD_GLIDE_SEATED_FLOOR_LBS = env_float("QUADPOD_PRELOAD_GLIDE_SEATED_FLOOR_LBS", PRELOAD_MIN_LBS)
+# Low edge of the Ready zone. Per owner: don't be fussy/easy-to-block -- latch a
+# settled seat anywhere in [READY_FLOOR, READY_CEILING]. At the seated floor (-0.5)
+# there's no crawl zone, so it latches the whole band instead of stalling; only a
+# load slacker than this drives back up. (Set above the floor to re-enable a gentle
+# anti-undershoot crawl in the gap.)
+PRELOAD_GLIDE_READY_FLOOR_LBS = env_float("QUADPOD_PRELOAD_GLIDE_READY_FLOOR_LBS", -0.5)
 PRELOAD_GLIDE_KP_PCT_PER_LB = env_float("QUADPOD_PRELOAD_GLIDE_KP_PCT_PER_LB", 12.0)
 # Min effective duty: below ~14% the Victor/actuator is in its dead-band (pulse
 # too close to the 1650us neutral) and does not move. Keep the floor above that.
@@ -385,10 +395,19 @@ PRELOAD_GLIDE_POST_LOG_S = env_float("QUADPOD_PRELOAD_GLIDE_POST_LOG_S", 45.0)
 PRELOAD_GLIDE_POST_LOG_INTERVAL_S = env_float("QUADPOD_PRELOAD_GLIDE_POST_LOG_INTERVAL_S", 0.2)
 PRELOAD_GLIDE_EMA_ALPHA = env_float("QUADPOD_PRELOAD_GLIDE_EMA_ALPHA", 0.4)
 PRELOAD_GLIDE_READ_SAMPLES = env_int("QUADPOD_PRELOAD_GLIDE_READ_SAMPLES", 1)
-PRELOAD_GLIDE_STABLE_S = env_float("QUADPOD_PRELOAD_GLIDE_STABLE_S", 1.0)
-PRELOAD_GLIDE_STABLE_LBS = env_float("QUADPOD_PRELOAD_GLIDE_STABLE_LBS", 0.15)
+# Ready latch tolerance. The compliant rig rings down ~0.3-0.4 lb before it fully
+# settles, so requiring it to hold within a tight band was unlatchable; latch once
+# it is at rest and holding within STABLE_LBS for STABLE_S with a mean at/below the
+# seat. The pull start-gate independently re-checks the preload is in band, so a
+# looser latch can never let an out-of-band pull start.
+PRELOAD_GLIDE_STABLE_S = env_float("QUADPOD_PRELOAD_GLIDE_STABLE_S", 0.6)
+PRELOAD_GLIDE_STABLE_LBS = env_float("QUADPOD_PRELOAD_GLIDE_STABLE_LBS", 0.35)
 PRELOAD_GLIDE_MAX_LBS = env_float("QUADPOD_PRELOAD_GLIDE_MAX_LBS", 0.5)
 PRELOAD_GLIDE_ABORT_LBS = env_float("QUADPOD_PRELOAD_GLIDE_ABORT_LBS", PRELOAD_AUTO_ABORT_LBS)
+# Don't fail the instant load blips past the abort limit -- on the compliant rig it
+# almost always relaxes back toward 0. Ease to neutral and watch for this long; only
+# "Check tension" if it STAYS above the limit the whole window.
+PRELOAD_GLIDE_ABORT_GRACE_S = env_float("QUADPOD_PRELOAD_GLIDE_ABORT_GRACE_S", 2.0)
 PRELOAD_GLIDE_TIMEOUT_S = env_float("QUADPOD_PRELOAD_GLIDE_TIMEOUT_S", 60.0)
 PRELOAD_GLIDE_POLL_S = env_float("QUADPOD_PRELOAD_GLIDE_POLL_S", 0.02)
 PRELOAD_GLIDE_RELAX_S = env_float("QUADPOD_PRELOAD_GLIDE_RELAX_S", 2.0)
@@ -402,7 +421,10 @@ PRELOAD_GLIDE_RELAX_S = env_float("QUADPOD_PRELOAD_GLIDE_RELAX_S", 2.0)
 # adapts to the random stick-slip. Validated 2026-07-16 across full and partial slack.
 PRELOAD_GLIDE_HOLD_AFTER = env_bool("QUADPOD_PRELOAD_GLIDE_HOLD_AFTER", False)
 PRELOAD_GLIDE_HOLD_TIMEOUT_S = env_float("QUADPOD_PRELOAD_GLIDE_HOLD_TIMEOUT_S", 120.0)
-PRELOAD_GLIDE_HOLD_SETTLE_S = env_float("QUADPOD_PRELOAD_GLIDE_HOLD_SETTLE_S", 15.0)
+# Short settle before the hold's first correction (wait out any residual ring-down
+# -- the glide already confirmed the load was settled before latching Ready, so this
+# is just a buffer). Kept short so the continuous hold engages before the seat drifts.
+PRELOAD_GLIDE_HOLD_SETTLE_S = env_float("QUADPOD_PRELOAD_GLIDE_HOLD_SETTLE_S", 2.0)
 PRELOAD_GLIDE_HOLD_AIM_LO_LBS = env_float("QUADPOD_PRELOAD_GLIDE_HOLD_AIM_LO_LBS", -0.35)
 PRELOAD_GLIDE_HOLD_AIM_HI_LBS = env_float("QUADPOD_PRELOAD_GLIDE_HOLD_AIM_HI_LBS", -0.10)
 PRELOAD_GLIDE_HOLD_PULSE_US = env_int("QUADPOD_PRELOAD_GLIDE_HOLD_PULSE_US", 35)
@@ -443,6 +465,10 @@ FORCE_SAMPLES_MAX = env_int("QUADPOD_FORCE_SAMPLES_MAX", 200000)
 # Max size of an uploaded request body (the site photo). Caps disk use so a large
 # photo can't fill the SD mid-job; 25 MB is generous for a phone image.
 MAX_UPLOAD_BYTES = env_int("QUADPOD_MAX_UPLOAD_BYTES", 25 * 1024 * 1024)
+# Owner decision: once Auto Tension latches Ready, trust it removed the slack and
+# allow the pull regardless of small +/- drift (the pull is re-zeroed at start).
+# Only a wildly wrong reading (sensor/anchor fault) past this bound blocks the start.
+PULL_START_SANITY_LBS = env_float("QUADPOD_PULL_START_SANITY_LBS", 5.0)
 
 FAILURE_DROP_LBS = env_float("QUADPOD_FAILURE_DROP_LBS", 12.0)
 FAILURE_DROP_PERCENT = env_float("QUADPOD_FAILURE_DROP_PERCENT", 0.35)

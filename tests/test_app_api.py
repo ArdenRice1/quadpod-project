@@ -245,6 +245,22 @@ class AppApiTests(unittest.TestCase):
         self.assertEqual(len(tests), 1)
         self.assertEqual(tests[0]["form"]["test_area"], "Area B")
 
+    def test_new_test_number_increments_after_completed_test(self):
+        # The stuck-on-test-1 bug: after a pull completes, a back/cached form
+        # re-submitting "1" must create the NEXT test (2), not another test 1.
+        job_id = storage.create_job({"project_name": "Advance", "job_number": "ADV-1"})
+        with self.client.session_transaction() as session:
+            session["job_id"] = job_id
+        self.client.post("/pretest", data={"test_number": "1", "angle_degrees": "90"})
+        tid1 = storage.list_tests(job_id)[0]["id"]
+        storage.update_test(tid1, status="complete", peak_load_lbs=10.0)
+
+        self.client.post("/pretest", data={"test_number": "1", "angle_degrees": "90"})  # stale "1"
+
+        tests = storage.list_tests(job_id)
+        self.assertEqual(len(tests), 2)
+        self.assertEqual(sorted(t["form"].get("test_number") for t in tests), ["1", "2"])
+
     def test_archive_search_filters_jobs(self):
         storage.create_job({"project_name": "Alpha Roof", "job_number": "A-1"})
         storage.create_job({"project_name": "Beta Roof", "job_number": "B-1"})
